@@ -65,7 +65,7 @@ export async function officeWorkers(ctx: Ctx, req: http.IncomingMessage, res: ht
       workers: list.map((w) => workerRow(w, view, me.id)),
     });
   }
-  if (req.method !== 'POST' || !['', '/home', '/tell', '/pr'].includes(action)) return send(res, 405, { error: 'GET /office/workers, or POST to /office/workers, /office/workers/home, /office/workers/tell or /office/workers/pr' });
+  if (req.method !== 'POST' || !['', '/home', '/tell', '/pr', '/review'].includes(action)) return send(res, 405, { error: 'GET /office/workers, or POST to /office/workers, /office/workers/home, /office/workers/tell, /office/workers/pr or /office/workers/review' });
   let body: unknown;
   try {
     body = JSON.parse((await readBody(req)) || '{}');
@@ -140,6 +140,24 @@ export async function officeWorkers(ctx: Ctx, req: http.IncomingMessage, res: ht
     const whose = w.id === me.id ? 'its own' : `${w.name}'s`;
     ctx.toastFloor(floor, pr ? `${who} said PR #${pr.number} is ${whose}` : `${who} said ${w.id === me.id ? 'it has' : `${w.name} has`} no pull request`);
     return send(res, 200, { ok: true, worker: row(w.id) });
+  }
+
+  if (action === '/review') {
+    // A worker stages its one deliverable link in the Review Room for a person's verdict
+    // (see reviews.ts); the verdict comes back to its terminal.
+    const b = (body ?? {}) as { title?: unknown; url?: unknown; note?: unknown; gate?: unknown };
+    const r = ctx.reviews.submit({
+      title: str(b.title, 200),
+      url: str(b.url, 600),
+      note: str(b.note, 600),
+      gate: b.gate === 'passed' || b.gate === 'failed' ? b.gate : undefined,
+      by: who,
+      workerId: me.id,
+      floorId: floor.id,
+    });
+    if (typeof r === 'string') return send(res, 400, { error: r });
+    ctx.toastFloor(floor, `🎬 ${who} staged “${r.title}” for review`);
+    return send(res, 200, { ok: true, review: { id: r.id, title: r.title, url: r.url } });
   }
 
   const ask = readHireRequest(body, floor.project.agentProviders);
