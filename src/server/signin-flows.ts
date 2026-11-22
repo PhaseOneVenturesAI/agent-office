@@ -72,6 +72,31 @@ export function findKimi(out: string): { url?: string; code?: string } | undefin
   return { url: url ?? 'https://www.kimi.ai/code/authorize_device', code };
 }
 
+/** Codex's one-time code and device page in `codex login --device-auth` output (ANSI between words). */
+export function findCodex(out: string): { url?: string; code?: string } | undefined {
+  const code = /one-time code[\s\S]{0,120}?([A-Z0-9]{4}-[A-Z0-9]{5})/i.exec(out)?.[1];
+  if (!code) return undefined;
+  const url = /https:\/\/auth\.openai\.com\/codex\/device[\w/?=&%-]*/.exec(out)?.[0];
+  return { url: url ?? 'https://auth.openai.com/codex/device', code };
+}
+
+/** Whether a CODEX_HOME holds login credentials (auth.json, written by any of its logins). */
+export function codexSignedIn(codexHome: string): boolean {
+  return existsSync(path.join(codexHome, 'auth.json'));
+}
+
+/** The CODEX_HOME of the office machine itself, when its environment doesn't say. */
+export function defaultCodexHome(env: Record<string, string>): string {
+  return env.CODEX_HOME || path.join(os.homedir(), '.codex');
+}
+
+/** Who a signed-in Codex answers as, from `codex login status` (an email when it prints one). */
+export async function codexWho(codex: string, env: Record<string, string>): Promise<string | undefined> {
+  const r = await run(codex, ['login', 'status'], env);
+  if (!r.out || /not logged in/i.test(r.out)) return undefined;
+  return /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/.exec(r.out)?.[0] ?? 'your ChatGPT account';
+}
+
 /** Whether a KIMI_CODE_HOME holds login credentials (the CLI refreshes them itself). */
 export function kimiSignedIn(kimiHome: string): boolean {
   try {

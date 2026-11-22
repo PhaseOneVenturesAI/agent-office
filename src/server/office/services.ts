@@ -50,12 +50,13 @@ export function createServices(ctx: Ctx): BuildingServices {
   );
 
   const claudeBin = configuredProvider(cfg.agentCmd) === 'claude' ? resolveCommand(cfg.agentCmd) : resolveCommand('claude');
-  // Everyone with an account runs on their own Claude, Kimi and GitHub sign-ins (see signins.ts).
+  // Everyone with an account runs on their own Claude, Kimi, Codex and GitHub sign-ins (see signins.ts).
   // On the shared password, with no accounts, the office's own are used, as they always were.
   const signins = new SignIns(
     cfg.dataDir,
     claudeBin,
     resolveCommand('kimi'),
+    resolveCommand('codex'),
     resolveCommand('gh'),
     childEnv,
     (id) => accounts.get(id)?.role === 'admin',
