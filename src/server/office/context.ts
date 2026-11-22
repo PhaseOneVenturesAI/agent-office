@@ -6,6 +6,7 @@ import type { Config } from '../config.js';
 import type { Auth } from '../auth.js';
 import type { Accounts } from '../accounts.js';
 import type { SignIns, GhAs } from '../signins.js';
+import type { Harness } from '../harness.js';
 import type { ModelCatalogue } from '../models.js';
 import type { Tailnet } from '../tailnet.js';
 import type { Team } from '../team.js';
@@ -63,6 +64,8 @@ export interface BuildingServices {
   leaveOnMerge: LeaveOnMerge;
   ledger: Ledger;
   signins: SignIns;
+  /** The instruction and skill files every worker runs with (☰ → 🧰 Harness). */
+  harness: Harness;
   /** The office's own Claude plan limits. */
   limits: PlanLimitsReader;
   /** Each account's own, once it runs on a Claude sign-in of its own. */
