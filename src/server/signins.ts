@@ -2,24 +2,26 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import path from 'node:path';
 import * as pty from '@lydell/node-pty';
 import type { SignInKind, SignInState, SignInsState } from '../shared/protocol.js';
-import { defaultKimiHome, deviceLogin, findGithub, findKimi, kimiSignedIn, lastWords, plain, run, seed, trust, writeGitConfig, type Flow } from './signin-flows.js';
+import { codexSignedIn, codexWho, defaultCodexHome, defaultKimiHome, deviceLogin, findCodex, findGithub, findKimi, kimiSignedIn, lastWords, plain, run, seed, trust, writeGitConfig, type Flow } from './signin-flows.js';
 
 /*
- * Everyone's own Claude, Kimi and GitHub
- * --------------------------------------
+ * Everyone's own Claude, Kimi, Codex and GitHub
+ * ---------------------------------------------
  * In an office with accounts, each person's workers run on that person's own Claude plan, Kimi
- * account and GitHub account. Every account gets a folder, .agent-office/homes/<id>/, holding its
- * own Claude config (CLAUDE_CONFIG_DIR), Kimi home (KIMI_CODE_HOME), gh config (GH_CONFIG_DIR) and
- * git config (GIT_CONFIG_GLOBAL), and whatever runs for that account gets those in its environment
- * in place of the office's: its workers, and what the office does on GitHub when they click
- * (comment, merge, open a PR). Nothing global changes, so any number of people can be signed in to
- * different accounts at once.
+ * account, Codex (ChatGPT) account and GitHub account. Every account gets a folder,
+ * .agent-office/homes/<id>/, holding its own Claude config (CLAUDE_CONFIG_DIR), Kimi home
+ * (KIMI_CODE_HOME), Codex home (CODEX_HOME), gh config (GH_CONFIG_DIR) and git config
+ * (GIT_CONFIG_GLOBAL), and whatever runs for that account gets those in its environment in place of
+ * the office's: its workers, and what the office does on GitHub when they click (comment, merge,
+ * open a PR). Nothing global changes, so any number of people can be signed in to different
+ * accounts at once.
  *
- * Signing in happens from the office: it runs `claude auth login`, `kimi login` or
- * `gh auth login --web` against the account's folders and hands the browser the page to open (and
- * the one-time code). A token from `claude setup-token`, a Kimi API key, or a GitHub token can be
- * pasted instead, and a shell at a desk runs with the same folders, so `claude auth login` typed
- * there works too. Admins may keep using the office machine's own sign-ins.
+ * Signing in happens from the office: it runs `claude auth login`, `kimi login`,
+ * `codex login --device-auth` or `gh auth login --web` against the account's folders and hands the
+ * browser the page to open (and the one-time code). A token from `claude setup-token`, a Kimi or
+ * OpenAI API key, or a GitHub token can be pasted instead, and a shell at a desk runs with the same
+ * folders, so `claude auth login` typed there works too. Admins may keep using the office machine's
+ * own sign-ins.
  *
  * An office without accounts (you alone, on the shared password) never comes here: everything runs
  * on the machine's own CLIs, exactly as before.
@@ -28,9 +30,10 @@ import { defaultKimiHome, deviceLogin, findGithub, findKimi, kimiSignedIn, lastW
 /** Credentials the office's own environment may carry. None of them reach anything run as someone else. */
 const CLAUDE_VARS = ['CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_OAUTH_REFRESH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CONFIG_DIR', 'CLAUDE_SECURESTORAGE_CONFIG_DIR'];
 const KIMI_VARS = ['KIMI_API_KEY', 'KIMI_BASE_URL', 'KIMI_CODE_HOME'];
+const CODEX_VARS = ['OPENAI_API_KEY', 'OPENAI_BASE_URL', 'CODEX_HOME', 'CODEX_ACCESS_TOKEN'];
 const GITHUB_VARS = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN', 'GH_CONFIG_DIR', 'GIT_CONFIG_GLOBAL'];
-const KINDS: SignInKind[] = ['claude', 'kimi', 'github'];
-/** GitHub's one-time codes last 15 minutes; a Claude sign-in link gets as long. Kimi's last 30. */
+const KINDS: SignInKind[] = ['claude', 'kimi', 'codex', 'github'];
+/** GitHub's and Codex's one-time codes last 15 minutes; a Claude sign-in link gets as long. Kimi's last 30. */
 const FLOW_MS = 15 * 60_000;
 const KIMI_FLOW_MS = 30 * 60_000;
 /** Someone's sign-ins are looked at again at most this often, unless they ask. */
@@ -38,8 +41,8 @@ const LOOK_GAP_MS = 20_000;
 /** From `claude setup-token` (sk-ant-oat01-…), or an Anthropic API key (sk-ant-api03-…). */
 const CLAUDE_TOKEN = /^sk-ant-[a-z]+\d*-[A-Za-z0-9_-]{20,}$/;
 const API_KEY = /^sk-ant-api/;
-/** A Kimi (Moonshot) API key. */
-const KIMI_TOKEN = /^sk-[A-Za-z0-9_-]{16,}$/;
+/** A Kimi (Moonshot) or OpenAI API key. */
+const SK_TOKEN = /^sk-[A-Za-z0-9_-]{16,}$/;
 /** ghp_…, github_pat_…, gho_… and the like. */
 const GITHUB_TOKEN = /^[A-Za-z0-9_]{20,255}$/;
 const ACCOUNT_ID = /^[A-Za-z0-9]{6,64}$/;
@@ -50,14 +53,17 @@ interface Saved {
   claude?: { use: 'token'; token: string } | { use: 'office' };
   /** Unset: its own device login. A pasted Kimi API key. The office machine's own (admins). */
   kimi?: { use: 'token'; token: string } | { use: 'office' };
+  /** Unset: its own device login or pasted API key (kept in its CODEX_HOME). The office machine's own (admins). */
+  codex?: { use: 'office' };
   github?: { use: 'office' };
   /** Who the last look found each signed in as, so workers can start before the next look. */
-  seen?: { claude?: string; kimi?: string; github?: string };
+  seen?: { claude?: string; kimi?: string; codex?: string; github?: string };
 }
 
 interface Live {
   claude: Omit<SignInState, 'how'>;
   kimi: Omit<SignInState, 'how'>;
+  codex: Omit<SignInState, 'how'>;
   github: Omit<SignInState, 'how'>;
   flows: Partial<Record<SignInKind, Flow>>;
   looking?: Promise<void>;
@@ -76,9 +82,10 @@ export class SignIns {
 
   constructor(
     dataDir: string,
-    /** The `claude`, `kimi` and `gh` binaries, or null when they aren't installed. */
+    /** The `claude`, `kimi`, `codex` and `gh` binaries, or null when they aren't installed. */
     private claude: string | null,
     private kimi: string | null,
+    private codex: string | null,
     private gh: string | null,
     /** The office's own environment, which everyone's is built on. */
     private base: () => Record<string, string>,
@@ -95,6 +102,7 @@ export class SignIns {
     return {
       claude: { ...l.claude, how: this.how(id, s, 'claude') },
       kimi: { ...l.kimi, how: this.how(id, s, 'kimi') },
+      codex: { ...l.codex, how: this.how(id, s, 'codex') },
       github: { ...l.github, how: this.how(id, s, 'github') },
       office: this.mayUseOffice(id),
     };
@@ -109,6 +117,7 @@ export class SignIns {
   /** What to tell someone who needs `which` signed in first. */
   why(which: SignInKind): string {
     if (which === 'kimi') return `Sign in to Kimi first (${HELP_WHERE}): your workers run on your own Kimi account`;
+    if (which === 'codex') return `Sign in to Codex first (${HELP_WHERE}): your workers run on your own ChatGPT account`;
     return which === 'claude'
       ? `Sign in to Claude first (${HELP_WHERE}): your workers run on your own Claude plan`
       : `Sign in to GitHub first (${HELP_WHERE}): the office acts on GitHub as you`;
@@ -138,18 +147,23 @@ export class SignIns {
   apply(id: string, env: Record<string, string>, dirs: string[] = [], only?: SignInKind): Record<string, string> {
     const s = this.load(id);
     const home = this.prepare(id);
-    if (only !== 'github' && only !== 'kimi' && this.how(id, s, 'claude') !== 'office') {
+    const skip = (k: SignInKind) => only !== undefined && only !== k;
+    if (!skip('claude') && this.how(id, s, 'claude') !== 'office') {
       for (const k of CLAUDE_VARS) delete env[k];
       env.CLAUDE_CONFIG_DIR = path.join(home, 'claude');
       if (s.claude?.use === 'token') env[API_KEY.test(s.claude.token) ? 'ANTHROPIC_API_KEY' : 'CLAUDE_CODE_OAUTH_TOKEN'] = s.claude.token;
       if (dirs.length) trust(env.CLAUDE_CONFIG_DIR, dirs, this.base());
     }
-    if (only !== 'github' && only !== 'claude' && this.how(id, s, 'kimi') !== 'office') {
+    if (!skip('kimi') && this.how(id, s, 'kimi') !== 'office') {
       for (const k of KIMI_VARS) delete env[k];
       env.KIMI_CODE_HOME = path.join(home, 'kimi');
       if (s.kimi?.use === 'token') env.KIMI_API_KEY = s.kimi.token;
     }
-    if (only !== 'claude' && only !== 'kimi' && this.how(id, s, 'github') !== 'office') {
+    if (!skip('codex') && this.how(id, s, 'codex') !== 'office') {
+      for (const k of CODEX_VARS) delete env[k];
+      env.CODEX_HOME = path.join(home, 'codex');
+    }
+    if (!skip('github') && this.how(id, s, 'github') !== 'office') {
       for (const k of GITHUB_VARS) delete env[k];
       env.GH_CONFIG_DIR = path.join(home, 'gh');
       env.GIT_CONFIG_GLOBAL = path.join(home, 'gitconfig');
@@ -170,7 +184,7 @@ export class SignIns {
     const l = this.get(id);
     if (l.looking) return l.looking;
     if (!force && Date.now() - l.lookedAt < LOOK_GAP_MS) return Promise.resolve();
-    l.looking = Promise.all([this.lookClaude(id), this.lookKimi(id), this.lookGithub(id)]).then(() => {
+    l.looking = Promise.all([this.lookClaude(id), this.lookKimi(id), this.lookCodex(id), this.lookGithub(id)]).then(() => {
       l.lookedAt = Date.now();
       l.looking = undefined;
       this.onChange(id);
@@ -180,7 +194,7 @@ export class SignIns {
 
   /** Starts signing `id` in from the office. The page to open comes through state(). Returns why it can't. */
   start(id: string, which: SignInKind): string | undefined {
-    return which === 'claude' ? this.startClaude(id) : which === 'kimi' ? this.startKimi(id) : this.startGithub(id);
+    return which === 'claude' ? this.startClaude(id) : this.startDevice(id, which);
   }
 
   /** The code Claude's sign-in page showed, typed in where `claude auth login` waits for it. */
@@ -201,17 +215,24 @@ export class SignIns {
     void this.look(id, true);
   }
 
-  /** A pasted token: from `claude setup-token` (or an API key), a Kimi API key, or a GitHub token. Resolves to why it didn't take. */
+  /** A pasted token: from `claude setup-token` (or an API key), a Kimi or OpenAI API key, or a GitHub token. Resolves to why it didn't take. */
   async token(id: string, which: SignInKind, raw: string): Promise<string | undefined> {
     const token = raw.trim();
     this.stop(id, which);
     if (which === 'kimi') {
-      if (!KIMI_TOKEN.test(token)) return "That isn't a Kimi API key (sk-…): make one in Kimi's platform settings";
+      if (!SK_TOKEN.test(token)) return "That isn't a Kimi API key (sk-…): make one in Kimi's platform settings";
       const s = this.load(id);
       s.kimi = { use: 'token', token };
       this.save(id, s);
       await this.look(id, true);
       return undefined;
+    }
+    if (which === 'codex') {
+      if (!this.codex) return "Codex isn't installed where the office can run it";
+      if (!SK_TOKEN.test(token)) return "That isn't an OpenAI API key (sk-…): make one at platform.openai.com/api-keys";
+      const r = await run(this.codex, ['login', '--with-api-key'], this.envFor(id, CODEX_VARS, 'codex', 'CODEX_HOME'), `${token}\n`);
+      await this.look(id, true);
+      return r.code === 0 ? undefined : `Codex didn't take that key: ${r.last || 'codex login failed'}`;
     }
     if (which === 'claude') {
       if (!CLAUDE_TOKEN.test(token)) return "That isn't a token from `claude setup-token` (sk-ant-oat01-…) or an Anthropic API key (sk-ant-api03-…)";
@@ -310,6 +331,7 @@ export class SignIns {
       l = {
         claude: seen.claude ? { status: 'ok', who: seen.claude } : { status: 'none' },
         kimi: seen.kimi ? { status: 'ok', who: seen.kimi } : { status: 'none' },
+        codex: seen.codex ? { status: 'ok', who: seen.codex } : { status: 'none' },
         github: seen.github ? { status: 'ok', who: seen.github } : { status: 'none' },
         flows: {},
         lookedAt: 0,
@@ -328,7 +350,7 @@ export class SignIns {
   private prepare(id: string): string {
     const home = this.home(id);
     if (!existsSync(path.join(home, 'gitconfig'))) {
-      for (const d of [this.homes, home, path.join(home, 'claude'), path.join(home, 'kimi'), path.join(home, 'gh')]) mkdirSync(d, { recursive: true, mode: 0o700 });
+      for (const d of [this.homes, home, path.join(home, 'claude'), path.join(home, 'kimi'), path.join(home, 'codex'), path.join(home, 'gh')]) mkdirSync(d, { recursive: true, mode: 0o700 });
       seed(path.join(home, 'claude'));
       this.writeGitConfig(id);
     }
@@ -362,19 +384,11 @@ export class SignIns {
     l[which] = { ...l[which], status: l[which].who ? 'ok' : 'none', pending: undefined };
   }
 
-  /** The environment for `claude` run as `id`'s own login (never a pasted token or the office's). */
-  private claudeEnv(id: string): Record<string, string> {
+  /** The environment for a CLI run as `id`'s own login of a kind (never a pasted token or the office's). */
+  private envFor(id: string, vars: string[], sub: string, key: string): Record<string, string> {
     const env = this.base();
-    for (const k of CLAUDE_VARS) delete env[k];
-    env.CLAUDE_CONFIG_DIR = path.join(this.prepare(id), 'claude');
-    return env;
-  }
-
-  /** The environment for `kimi` run as `id`'s own login (never a pasted key or the office's). */
-  private kimiEnv(id: string): Record<string, string> {
-    const env = this.base();
-    for (const k of KIMI_VARS) delete env[k];
-    env.KIMI_CODE_HOME = path.join(this.prepare(id), 'kimi');
+    for (const k of vars) delete env[k];
+    env[key] = path.join(this.prepare(id), sub);
     return env;
   }
 
@@ -392,7 +406,7 @@ export class SignIns {
     this.stop(id, 'claude');
     const l = this.get(id);
     // BROWSER=true: Claude "opens" the page with the `true` command and just prints it, for the browser to show.
-    const env = { ...this.claudeEnv(id), BROWSER: 'true', TERM: 'xterm-256color' };
+    const env = { ...this.envFor(id, CLAUDE_VARS, 'claude', 'CLAUDE_CONFIG_DIR'), BROWSER: 'true', TERM: 'xterm-256color' };
     let p: pty.IPty;
     try {
       // Wide, so the link comes out on one line.
@@ -455,63 +469,42 @@ export class SignIns {
     return undefined;
   }
 
-  private startKimi(id: string): string | undefined {
-    if (!this.kimi) return "Kimi isn't installed where the office can run it — paste a Kimi API key instead";
-    this.stop(id, 'kimi');
+  /** A device-code login (Kimi, Codex or GitHub): prints a one-time code and a page, then waits. */
+  private startDevice(id: string, which: 'kimi' | 'codex' | 'github'): string | undefined {
+    const cmd = which === 'kimi' ? this.kimi : which === 'codex' ? this.codex : this.gh;
+    if (!cmd) {
+      if (which === 'kimi') return "Kimi isn't installed where the office can run it — paste a Kimi API key instead";
+      if (which === 'codex') return "Codex isn't installed where the office can run it — paste an OpenAI API key instead";
+      return "The GitHub CLI (gh) isn't installed on the office's machine";
+    }
+    this.stop(id, which);
     const l = this.get(id);
-    // BROWSER=true: Kimi "opens" the page with the `true` command and just prints it, for the browser to show.
-    const env = { ...this.kimiEnv(id), BROWSER: 'true' };
-    // Over pipes, kimi prints the one-time code and the page, then waits for Kimi to say yes.
+    // BROWSER=true: the CLI "opens" the page with the `true` command and just prints it, for the browser to show.
+    const env = which === 'kimi' ? { ...this.envFor(id, KIMI_VARS, 'kimi', 'KIMI_CODE_HOME'), BROWSER: 'true' } : which === 'codex' ? { ...this.envFor(id, CODEX_VARS, 'codex', 'CODEX_HOME'), BROWSER: 'true' } : { ...this.githubEnv(id), BROWSER: 'true', GH_BROWSER: 'true' };
+    // Over pipes it prints the one-time code and the page, then waits for the service to say yes.
     const flow = deviceLogin({
-      cmd: this.kimi,
-      args: ['login'],
+      cmd,
+      args: which === 'kimi' ? ['login'] : which === 'codex' ? ['login', '--device-auth'] : ['auth', 'login', '--hostname', 'github.com', '--git-protocol', 'https', '--web', '--insecure-storage', '--skip-ssh-key'],
       cwd: this.home(id),
       env,
-      timeoutMs: KIMI_FLOW_MS,
-      find: findKimi,
+      timeoutMs: which === 'kimi' ? KIMI_FLOW_MS : FLOW_MS,
+      find: which === 'kimi' ? findKimi : which === 'codex' ? findCodex : findGithub,
       onPending: (pending) => {
-        if (l.flows.kimi !== flow || l.kimi.pending?.code) return;
-        l.kimi = { status: 'busy', pending };
+        if (l.flows[which] !== flow || l[which].pending?.code) return;
+        l[which] = { status: 'busy', pending };
         this.onChange(id);
       },
-      onError: (message) => this.flowFailed(id, 'kimi', flow, `Couldn't start kimi: ${message}`),
-      onExit: (exitCode, out) => this.flowExited(id, 'kimi', flow, exitCode, out),
+      onError: (message) => this.flowFailed(id, which, flow, `Couldn't start ${which === 'github' ? 'gh' : which}: ${message}`),
+      onExit: (exitCode, out) => this.flowExited(id, which, flow, exitCode, out),
     });
-    l.flows.kimi = flow;
-    l.kimi = { status: 'busy', pending: {} };
-    this.onChange(id);
-    return undefined;
-  }
-
-  private startGithub(id: string): string | undefined {
-    if (!this.gh) return "The GitHub CLI (gh) isn't installed on the office's machine";
-    this.stop(id, 'github');
-    const l = this.get(id);
-    const env = { ...this.githubEnv(id), BROWSER: 'true', GH_BROWSER: 'true' };
-    // Over pipes, gh prints the one-time code and the page, then waits for GitHub to say yes.
-    const flow = deviceLogin({
-      cmd: this.gh,
-      args: ['auth', 'login', '--hostname', 'github.com', '--git-protocol', 'https', '--web', '--insecure-storage', '--skip-ssh-key'],
-      cwd: this.home(id),
-      env,
-      timeoutMs: FLOW_MS,
-      find: findGithub,
-      onPending: (pending) => {
-        if (l.flows.github !== flow || l.github.pending?.code) return;
-        l.github = { status: 'busy', pending };
-        this.onChange(id);
-      },
-      onError: (message) => this.flowFailed(id, 'github', flow, `Couldn't start gh: ${message}`),
-      onExit: (exitCode, out) => this.flowExited(id, 'github', flow, exitCode, out),
-    });
-    l.flows.github = flow;
-    l.github = { status: 'busy', pending: {} };
+    l.flows[which] = flow;
+    l[which] = { status: 'busy', pending: {} };
     this.onChange(id);
     return undefined;
   }
 
   /** A device-code login the office was running ended: take its login, or say why not. */
-  private flowExited(id: string, which: 'kimi' | 'github', flow: Flow, exitCode: number | null, out: string) {
+  private flowExited(id: string, which: 'kimi' | 'codex' | 'github', flow: Flow, exitCode: number | null, out: string) {
     const l = this.get(id);
     if (l.flows[which] !== flow) return;
     delete l.flows[which];
@@ -526,7 +519,7 @@ export class SignIns {
     void this.look(id, true);
   }
 
-  private flowFailed(id: string, which: 'kimi' | 'github', flow: Flow, message: string) {
+  private flowFailed(id: string, which: 'kimi' | 'codex' | 'github', flow: Flow, message: string) {
     const l = this.get(id);
     if (l.flows[which] !== flow) return;
     delete l.flows[which];
@@ -587,6 +580,23 @@ export class SignIns {
     this.remember(id, 'kimi', l.kimi.who);
   }
 
+  private async lookCodex(id: string) {
+    const l = this.get(id);
+    if (l.flows.codex) return;
+    const s = this.load(id);
+    const how = this.how(id, s, 'codex');
+    if (how === 'office') {
+      l.codex = codexSignedIn(defaultCodexHome(this.base())) ? { status: 'ok', who: 'the office’s own' } : { status: 'none' };
+    } else if (!this.codex) {
+      l.codex = { status: 'none', error: "Codex isn't installed on the office's machine" };
+    } else {
+      const home = path.join(this.prepare(id), 'codex');
+      const who = codexSignedIn(home) ? ((await codexWho(this.codex, this.envFor(id, CODEX_VARS, 'codex', 'CODEX_HOME'))) ?? 'your ChatGPT account') : undefined;
+      l.codex = who ? { status: 'ok', who } : { status: 'none' };
+    }
+    this.remember(id, 'codex', how === 'office' ? undefined : l.codex.who);
+  }
+
   private async lookGithub(id: string) {
     const l = this.get(id);
     if (l.flows.github) return;
@@ -625,10 +635,13 @@ export class SignIns {
 
   private async logout(id: string, which: SignInKind) {
     if (which === 'claude') {
-      if (this.claude) await run(this.claude, ['auth', 'logout'], this.claudeEnv(id));
+      if (this.claude) await run(this.claude, ['auth', 'logout'], this.envFor(id, CLAUDE_VARS, 'claude', 'CLAUDE_CONFIG_DIR'));
     } else if (which === 'kimi') {
       // Kimi keeps its login as files in its home: deleting them signs it out.
       rmSync(path.join(this.home(id), 'kimi', 'credentials'), { recursive: true, force: true });
+    } else if (which === 'codex') {
+      if (this.codex) await run(this.codex, ['logout'], this.envFor(id, CODEX_VARS, 'codex', 'CODEX_HOME'));
+      rmSync(path.join(this.home(id), 'codex', 'auth.json'), { force: true });
     } else {
       if (this.gh) await run(this.gh, ['auth', 'logout', '--hostname', 'github.com'], this.githubEnv(id));
       rmSync(path.join(this.home(id), 'gh', 'hosts.yml'), { force: true });

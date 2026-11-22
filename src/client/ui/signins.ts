@@ -6,8 +6,8 @@ import { h, openModal, type Modal } from './dom';
 import { confirmDialog } from './prompt';
 import { copyButton } from './team';
 
-const NAMES: Record<SignInKind, string> = { claude: 'Claude', kimi: 'Kimi', github: 'GitHub' };
-const ICONS: Record<SignInKind, string> = { claude: '✳️', kimi: '🌙', github: '🐙' };
+const NAMES: Record<SignInKind, string> = { claude: 'Claude', kimi: 'Kimi', codex: 'Codex', github: 'GitHub' };
+const ICONS: Record<SignInKind, string> = { claude: '✳️', kimi: '🌙', codex: '🤖', github: '🐙' };
 
 let open: { modal: Modal; say(why?: string): void } | null = null;
 
@@ -29,10 +29,10 @@ export function openSignIns(net: Net, why?: string) {
     h(
       'div.body.team',
       {},
-      h('p.note.lead', {}, 'Your workers run on your own Claude plan and Kimi account, and the office acts on GitHub as you: comments, merges and pull requests show up under your name. Only your workers use them.'),
+      h('p.note.lead', {}, 'Your workers run on your own Claude plan, Kimi account and ChatGPT account, and the office acts on GitHub as you: comments, merges and pull requests show up under your name. Only your workers use them.'),
       banner,
       cards,
-      h('p.note', {}, 'Or open a 🐚 shell at any desk: it runs as you, so ', h('code', {}, 'claude auth login'), ', ', h('code', {}, 'kimi login'), ' and ', h('code', {}, 'gh auth login'), ' typed there sign you in too.'),
+      h('p.note', {}, 'Or open a 🐚 shell at any desk: it runs as you, so ', h('code', {}, 'claude auth login'), ', ', h('code', {}, 'kimi login'), ', ', h('code', {}, 'codex login'), ' and ', h('code', {}, 'gh auth login'), ' typed there sign you in too.'),
     ),
   );
 
@@ -41,6 +41,7 @@ export function openSignIns(net: Net, why?: string) {
     code: h('input', { type: 'text', placeholder: 'Paste the code here', 'aria-label': 'Code from the sign-in page', autocomplete: 'off', spellcheck: 'false' }) as HTMLInputElement,
     claude: h('input', { type: 'password', placeholder: 'sk-ant-oat01-…', 'aria-label': 'Claude token', autocomplete: 'off', spellcheck: 'false' }) as HTMLInputElement,
     kimi: h('input', { type: 'password', placeholder: 'sk-…', 'aria-label': 'Kimi API key', autocomplete: 'off', spellcheck: 'false' }) as HTMLInputElement,
+    codex: h('input', { type: 'password', placeholder: 'sk-…', 'aria-label': 'OpenAI API key', autocomplete: 'off', spellcheck: 'false' }) as HTMLInputElement,
     github: h('input', { type: 'password', placeholder: 'ghp_… or github_pat_…', 'aria-label': 'GitHub token', autocomplete: 'off', spellcheck: 'false' }) as HTMLInputElement,
   };
 
@@ -138,7 +139,9 @@ export function openSignIns(net: Net, why?: string) {
         ? h('p.note', {}, 'Or paste a token: run ', h('code', {}, 'claude setup-token'), ' on your own computer (or use an Anthropic API key).')
         : which === 'kimi'
           ? h('p.note', {}, 'Or paste a Kimi API key (from your Kimi platform settings). A 🐚 shell at a desk runs as you, so ', h('code', {}, 'kimi login'), ' typed there signs you in too.')
-          : h('p.note', {}, 'Or paste a GitHub token (', h('a', { href: 'https://github.com/settings/tokens/new?scopes=repo,read:org,workflow&description=Agent%20Office', target: '_blank', rel: 'noopener noreferrer' }, 'make one'), ' with repo, read:org and workflow).'),
+          : which === 'codex'
+            ? h('p.note', {}, 'Or paste an OpenAI API key (from ', h('a', { href: 'https://platform.openai.com/api-keys', target: '_blank', rel: 'noopener noreferrer' }, 'platform.openai.com/api-keys'), ').')
+            : h('p.note', {}, 'Or paste a GitHub token (', h('a', { href: 'https://github.com/settings/tokens/new?scopes=repo,read:org,workflow&description=Agent%20Office', target: '_blank', rel: 'noopener noreferrer' }, 'make one'), ' with repo, read:org and workflow).'),
       tokenRow(which),
     );
     return box;
@@ -152,10 +155,10 @@ export function openSignIns(net: Net, why?: string) {
       cards.append(h('p.empty', {}, store.me.account ? 'Loading…' : 'On the shared office password, workers run on the office’s own sign-ins.'));
       return;
     }
-    cards.append(card('claude', s.claude, s.office), card('kimi', s.kimi, s.office), card('github', s.github, s.office));
+    cards.append(card('claude', s.claude, s.office), card('kimi', s.kimi, s.office), card('codex', s.codex, s.office), card('github', s.github, s.office));
     if (typing instanceof HTMLInputElement && Object.values(inputs).includes(typing) && typing.isConnected) typing.focus();
     // Once all are sorted, whatever sent you here is too.
-    if (s.claude.status === 'ok' && s.kimi.status === 'ok' && s.github.status === 'ok') say();
+    if (s.claude.status === 'ok' && s.kimi.status === 'ok' && s.codex.status === 'ok' && s.github.status === 'ok') say();
   };
 
   const unsub = store.on('signins', render);

@@ -88,6 +88,7 @@ function codexHook(h: WorkerHandle<CodexState>, event: string, payload: unknown)
 
 export const codex: ProviderAdapter<CodexState, CodexSetup> = {
   id: 'codex',
+  signIn: 'codex',
   scrubEnv: ['CODEX_THREAD_ID', 'CODEX_INTERNAL_ORIGINATOR_OVERRIDE'],
   createState: () => ({ usage: new CodexUsageReader(), tools: new Map(), pending: new Set() }),
   prepare: ({ dataDir, mcpScript }) => ({ hook: writeCodexHook(dataDir), mcpScript }),
