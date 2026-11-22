@@ -101,6 +101,7 @@ export function onConnection(ctx: Ctx, ws: WebSocket, url: URL, session: Session
   }
   sendTo(client, { t: 'reviews', state: reviews.state() });
   sendTo(client, { t: 'deploys', state: ctx.deploys.state() });
+  sendTo(client, { t: 'hygiene', state: ctx.hygiene.state() });
 
   ws.on('message', (raw) => {
     let msg: ClientMsg;

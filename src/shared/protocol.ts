@@ -10,6 +10,7 @@ import type { DeploysClientMsg, DeploysServerMsg } from './protocol/deploys.js';
 import type { FloorClientMsg, FloorServerMsg, PlanClientMsg } from './protocol/floors.js';
 import type { GitHubClientMsg, GitHubServerMsg } from './protocol/github.js';
 import type { HarnessClientMsg, HarnessServerMsg } from './protocol/harness.js';
+import type { HygieneClientMsg, HygieneServerMsg } from './protocol/hygiene.js';
 import type { MeetingClientMsg, MeetingServerMsg } from './protocol/meetings.js';
 import type { PresenceClientMsg, PresenceServerMsg } from './protocol/presence.js';
 import type { QueueClientMsg, QueueServerMsg } from './protocol/queue.js';
@@ -27,6 +28,7 @@ export * from './protocol/deploys.js';
 export * from './protocol/floors.js';
 export * from './protocol/github.js';
 export * from './protocol/harness.js';
+export * from './protocol/hygiene.js';
 export * from './protocol/meetings.js';
 export * from './protocol/presence.js';
 export * from './protocol/queue.js';
@@ -53,6 +55,7 @@ export type ClientMsg =
   | AccountsClientMsg
   | SignInsClientMsg
   | HarnessClientMsg
+  | HygieneClientMsg
   | SettingsClientMsg
   | UsageClientMsg
   | DecorClientMsg
@@ -76,6 +79,7 @@ export type ServerMsg =
   | DeploysServerMsg
   | AccountsServerMsg
   | HarnessServerMsg
+  | HygieneServerMsg
   | SettingsServerMsg
   | UsageServerMsg
   | ToysServerMsg;
