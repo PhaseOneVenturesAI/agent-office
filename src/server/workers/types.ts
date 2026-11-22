@@ -1,7 +1,8 @@
 // The shapes the workers' modules and the provider adapters (server/providers/) share.
 import type serialize from '@xterm/addon-serialize';
-import type { Run, WorkerInfo, WorkerStatus } from '../../shared/protocol.js';
+import type { Run, SignInKind, WorkerInfo, WorkerStatus } from '../../shared/protocol.js';
 import type { DshSession } from '../dsh.js';
+import type { KimiSession } from '../kimi.js';
 import type { PromptSource } from '../prompts.js';
 import type { Pty } from '../ptys.js';
 import type { UsageTracker } from '../usage.js';
@@ -39,14 +40,14 @@ export interface OpenedPr {
 }
 
 /**
- * Runs a worker as the account that hired it, on that account's own Claude and GitHub sign-ins
- * (see signins.ts). Workers hired without an account run as the office, as they always have.
+ * Runs a worker as the account that hired it, on that account's own Claude, Kimi and GitHub
+ * sign-ins (see signins.ts). Workers hired without an account run as the office, as they always have.
  */
 export interface RunAs {
-  /** Whether the account has a Claude sign-in its workers can start on. */
-  claudeReady(owner: string): boolean;
+  /** Whether the account has a sign-in of `which` its workers can start on. */
+  ready(owner: string, which: SignInKind): boolean;
   /** What to tell the account when it hasn't. */
-  why(which: 'claude'): string;
+  why(which: SignInKind): string;
   /** Puts the account's sign-ins in place of the office's in `env`; `dirs` are where the worker starts. */
   apply(owner: string, env: Record<string, string>, dirs: string[]): Record<string, string>;
 }
@@ -57,10 +58,10 @@ export interface Worker {
   owner?: string;
   pty?: Pty;
   /**
-   * A DeepSeek Harness worker's ACP connection. It has no PTY: ACP updates are rendered into the
-   * same headless terminal the other providers mirror a process into (see dsh.ts).
+   * An ACP worker's connection (DeepSeek Harness, Kimi). It has no PTY: ACP updates are rendered
+   * into the same headless terminal the other providers mirror a process into (see dsh.ts, kimi.ts).
    */
-  dsh?: DshSession;
+  dsh?: DshSession | KimiSession;
   term?: HeadlessTerminal;
   ser?: InstanceType<typeof serialize.SerializeAddon>;
   /** The screen so far, for a browser opening the terminal (see screen.ts). */

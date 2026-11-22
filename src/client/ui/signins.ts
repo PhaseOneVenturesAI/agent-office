@@ -6,7 +6,8 @@ import { h, openModal, type Modal } from './dom';
 import { confirmDialog } from './prompt';
 import { copyButton } from './team';
 
-const NAMES: Record<SignInKind, string> = { claude: 'Claude', github: 'GitHub' };
+const NAMES: Record<SignInKind, string> = { claude: 'Claude', kimi: 'Kimi', github: 'GitHub' };
+const ICONS: Record<SignInKind, string> = { claude: '✳️', kimi: '🌙', github: '🐙' };
 
 let open: { modal: Modal; say(why?: string): void } | null = null;
 
@@ -28,10 +29,10 @@ export function openSignIns(net: Net, why?: string) {
     h(
       'div.body.team',
       {},
-      h('p.note.lead', {}, 'Your workers run on your own Claude plan, and the office acts on GitHub as you: comments, merges and pull requests show up under your name. Only your workers use them.'),
+      h('p.note.lead', {}, 'Your workers run on your own Claude plan and Kimi account, and the office acts on GitHub as you: comments, merges and pull requests show up under your name. Only your workers use them.'),
       banner,
       cards,
-      h('p.note', {}, 'Or open a 🐚 shell at any desk: it runs as you, so ', h('code', {}, 'claude auth login'), ' and ', h('code', {}, 'gh auth login'), ' typed there sign you in too.'),
+      h('p.note', {}, 'Or open a 🐚 shell at any desk: it runs as you, so ', h('code', {}, 'claude auth login'), ', ', h('code', {}, 'kimi login'), ' and ', h('code', {}, 'gh auth login'), ' typed there sign you in too.'),
     ),
   );
 
@@ -39,6 +40,7 @@ export function openSignIns(net: Net, why?: string) {
   const inputs = {
     code: h('input', { type: 'text', placeholder: 'Paste the code here', 'aria-label': 'Code from the sign-in page', autocomplete: 'off', spellcheck: 'false' }) as HTMLInputElement,
     claude: h('input', { type: 'password', placeholder: 'sk-ant-oat01-…', 'aria-label': 'Claude token', autocomplete: 'off', spellcheck: 'false' }) as HTMLInputElement,
+    kimi: h('input', { type: 'password', placeholder: 'sk-…', 'aria-label': 'Kimi API key', autocomplete: 'off', spellcheck: 'false' }) as HTMLInputElement,
     github: h('input', { type: 'password', placeholder: 'ghp_… or github_pat_…', 'aria-label': 'GitHub token', autocomplete: 'off', spellcheck: 'false' }) as HTMLInputElement,
   };
 
@@ -74,7 +76,7 @@ export function openSignIns(net: Net, why?: string) {
         : s.status === 'busy'
           ? h('span.signin-who', {}, '⏳ Signing in…')
           : h('span.signin-who.none', {}, 'Not signed in');
-    const head = h('div.team-head', {}, h('h4', {}, which === 'claude' ? '✳️ Claude' : '🐙 GitHub'), status);
+    const head = h('div.team-head', {}, h('h4', {}, `${ICONS[which]} ${NAMES[which]}`), status);
     const body = h('div.signin-body');
     const box = h('section.signin', { class: s.status }, head, body);
     if (s.error) body.append(h('p.team-status.error', {}, s.error));
@@ -104,8 +106,8 @@ export function openSignIns(net: Net, why?: string) {
             'ol.signin-steps',
             {},
             h('li', {}, 'Copy your one-time code:', h('div.cmd', {}, h('pre.signin-code', {}, code), copyButton('Copy', () => code))),
-            h('li', {}, h('a.btn.primary', { href: url, target: '_blank', rel: 'noopener noreferrer' }, 'Open github.com/login/device ↗'), ' and enter it there.'),
-            h('li', {}, 'This updates by itself once GitHub says yes.'),
+            h('li', {}, h('a.btn.primary', { href: url, target: '_blank', rel: 'noopener noreferrer' }, `Open ${NAMES[which]}’s sign-in page ↗`), ' and enter it there.'),
+            h('li', {}, `This updates by itself once ${NAMES[which]} says yes.`),
           ),
         );
       }
@@ -116,7 +118,11 @@ export function openSignIns(net: Net, why?: string) {
     if (s.status === 'ok') {
       const change = button(s.how === 'office' ? 'Use my own instead' : 'Sign out', () => {
         if (s.how === 'office') return net.send({ t: 'signins.signout', which });
-        confirmDialog(`Sign out of ${NAMES[which]}?`, which === 'claude' ? 'Workers you hire from now on need a new sign-in. The ones already running keep going.' : 'The office stops acting on GitHub as you until you sign in again.', 'Sign out', () => net.send({ t: 'signins.signout', which }));
+        const consequence =
+          which === 'github'
+            ? 'The office stops acting on GitHub as you until you sign in again.'
+            : 'Workers you hire from now on need a new sign-in. The ones already running keep going.';
+        confirmDialog(`Sign out of ${NAMES[which]}?`, consequence, 'Sign out', () => net.send({ t: 'signins.signout', which }));
       });
       body.append(h('div.signin-actions', {}, change));
       return box;
@@ -130,7 +136,9 @@ export function openSignIns(net: Net, why?: string) {
       actions,
       which === 'claude'
         ? h('p.note', {}, 'Or paste a token: run ', h('code', {}, 'claude setup-token'), ' on your own computer (or use an Anthropic API key).')
-        : h('p.note', {}, 'Or paste a GitHub token (', h('a', { href: 'https://github.com/settings/tokens/new?scopes=repo,read:org,workflow&description=Agent%20Office', target: '_blank', rel: 'noopener noreferrer' }, 'make one'), ' with repo, read:org and workflow).'),
+        : which === 'kimi'
+          ? h('p.note', {}, 'Or paste a Kimi API key (from your Kimi platform settings). A 🐚 shell at a desk runs as you, so ', h('code', {}, 'kimi login'), ' typed there signs you in too.')
+          : h('p.note', {}, 'Or paste a GitHub token (', h('a', { href: 'https://github.com/settings/tokens/new?scopes=repo,read:org,workflow&description=Agent%20Office', target: '_blank', rel: 'noopener noreferrer' }, 'make one'), ' with repo, read:org and workflow).'),
       tokenRow(which),
     );
     return box;
@@ -144,10 +152,10 @@ export function openSignIns(net: Net, why?: string) {
       cards.append(h('p.empty', {}, store.me.account ? 'Loading…' : 'On the shared office password, workers run on the office’s own sign-ins.'));
       return;
     }
-    cards.append(card('claude', s.claude, s.office), card('github', s.github, s.office));
+    cards.append(card('claude', s.claude, s.office), card('kimi', s.kimi, s.office), card('github', s.github, s.office));
     if (typing instanceof HTMLInputElement && Object.values(inputs).includes(typing) && typing.isConnected) typing.focus();
-    // Once both are sorted, whatever sent you here is too.
-    if (s.claude.status === 'ok' && s.github.status === 'ok') say();
+    // Once all are sorted, whatever sent you here is too.
+    if (s.claude.status === 'ok' && s.kimi.status === 'ok' && s.github.status === 'ok') say();
   };
 
   const unsub = store.on('signins', render);

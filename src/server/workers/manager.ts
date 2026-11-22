@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import type { AgentChoice, AgentEffort, AgentProvider, TerminalHit, WorkerInfo, WorkerKind, WorkerRepo, WorkerStatus } from '../../shared/protocol.js';
-import { AGENT_PROVIDERS, takesEffort, takesModel } from '../../shared/providers.js';
+import { AGENT_PROVIDERS, providerMeta, takesEffort, takesModel } from '../../shared/providers.js';
 import { Worktrees, workspaceOf, type WorktreeCleanup, type WorktreeState } from '../worktrees.js';
 import { DESK_BY_ID, STATION_AGENT, deskBuilt } from '../../shared/layout.js';
 import { stationBrief } from '../stations.js';
@@ -244,7 +244,7 @@ export class WorkerManager {
       if (paused) return paused;
     }
     const signIn = providerAdapter(selectedProvider)?.signIn;
-    if (owner && signIn && this.runAs && !this.runAs.claudeReady(owner)) return this.runAs.why(signIn);
+    if (owner && signIn && this.runAs && !this.runAs.ready(owner, signIn)) return this.runAs.why(signIn);
     const full = this.capacity?.full();
     if (full) return full;
     const used = new Set([...this.workers.values()].map((w) => w.info.name.replace(/ 🐚$/, '')));
@@ -688,8 +688,8 @@ export class WorkerManager {
     // find that checkout (and switch its branch, say) instead of saying it's no repository.
     if (info.repos?.length) env.GIT_CEILING_DIRECTORIES = [path.dirname(cwd), env.GIT_CEILING_DIRECTORIES].filter(Boolean).join(path.delimiter);
     if (w.owner && this.runAs) {
-      if (adapter?.signIn && !this.runAs.claudeReady(w.owner)) {
-        this.startFailed(w, `whoever hired ${info.name} (${info.createdBy}) isn't signed in to Claude — they can sign in under ☰ → 🔐 Your sign-ins, then press R here`);
+      if (adapter?.signIn && !this.runAs.ready(w.owner, adapter.signIn)) {
+        this.startFailed(w, `whoever hired ${info.name} (${info.createdBy}) isn't signed in to ${providerMeta(info.provider)?.name ?? 'its agent'} — they can sign in under ☰ → 🔐 Your sign-ins, then press R here`);
         return;
       }
       this.runAs.apply(w.owner, env, [this.dir, cwd]);

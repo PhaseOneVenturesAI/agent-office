@@ -1,18 +1,31 @@
-// A worker that runs over ACP rather than in a terminal (DeepSeek Harness, see ProviderAdapter.transport):
-// the office holds the connection and draws what it says into the worker's terminal itself.
+// A worker that runs over ACP rather than in a terminal (DeepSeek Harness, Kimi; see
+// ProviderAdapter.transport): the office holds the connection and draws what it says into the
+// worker's terminal itself.
 import { DshSession, terminalSafe } from '../dsh.js';
+import { KimiSession } from '../kimi.js';
 import type { HeadlessTerminal } from './terminal.js';
 import type { Worker, WorkerContext } from './types.js';
 import { truncate } from './util.js';
 
+/** The ACP session a provider runs on: DSH and Kimi speak the same wire, with their own dressing. */
+function sessionFor(w: Worker, launch: ConstructorParameters<typeof DshSession>[0], events: ConstructorParameters<typeof DshSession>[1]): DshSession | KimiSession {
+  return w.info.provider === 'kimi' ? new KimiSession(launch, events) : new DshSession(launch, events);
+}
+
+/** What the office calls the agent on an ACP worker's terminal lines. */
+function acpName(w: Worker): string {
+  return w.info.provider === 'kimi' ? 'Kimi' : 'DeepSeek Harness';
+}
+
 /**
- * Starts (or resumes) a DeepSeek Harness worker over ACP. The session renders its transcript into
- * the worker's terminal and reports status, acted-out actions, usage and its session id; the
- * office answers permission requests from whoever is typing (see dsh.ts).
+ * Starts (or resumes) an ACP worker. The session renders its transcript into the worker's terminal
+ * and reports status, acted-out actions, usage and its session id; the office answers permission
+ * requests from whoever is typing (see dsh.ts, kimi.ts).
  */
 export function launchAcp(ctx: WorkerContext, w: Worker, term: HeadlessTerminal, options: { file: string; args: string[]; cwd: string; env: NodeJS.ProcessEnv; resumeSessionId?: string; prompt?: string }) {
   const { info } = w;
-  const session = new DshSession(
+  const session = sessionFor(
+    w,
     {
       file: options.file,
       args: options.args,
@@ -52,7 +65,7 @@ export function launchAcp(ctx: WorkerContext, w: Worker, term: HeadlessTerminal,
         ctx.persist();
       },
       prompted: (text) => {
-        // A line typed into the terminal: there are no hooks for DSH, so the card learns from here.
+        // A line typed into the terminal: there are no hooks over ACP, so the card learns from here.
         if (w.dsh !== session) return;
         ctx.notePrompt(w, text);
         ctx.emit(w);
@@ -64,20 +77,20 @@ export function launchAcp(ctx: WorkerContext, w: Worker, term: HeadlessTerminal,
   session.start();
 }
 
-/** A DeepSeek Harness child ended: while the office is up, its desk says so and R resumes it. */
-function acpExited(ctx: WorkerContext, w: Worker, session: DshSession, term: HeadlessTerminal, code: number | null, error: string | undefined, quiet: boolean) {
+/** An ACP child ended: while the office is up, its desk says so and R resumes it. */
+function acpExited(ctx: WorkerContext, w: Worker, session: DshSession | KimiSession, term: HeadlessTerminal, code: number | null, error: string | undefined, quiet: boolean) {
   const { info } = w;
   if (w.dsh !== session || ctx.workers.get(info.id) !== w) return; // sent home: stay quiet
   w.dsh = undefined;
   // The office is going down: the next office marks this worker offline and resumes it, so its
   // status must stay as it was (see the restart difference in docs/dsh-acp-integration.md).
   if (quiet || ctx.closing) return;
-  const note = error ? `\r\n\x1b[31m[DeepSeek Harness: ${terminalSafe(truncate(error, 300)).replace(/\n/g, ' ')}]\x1b[0m\r\n` : '';
+  const note = error ? `\r\n\x1b[31m[${acpName(w)}: ${terminalSafe(truncate(error, 300)).replace(/\n/g, ' ')}]\x1b[0m\r\n` : '';
   if (note) {
     term.write(note);
     if (w.viewers.size) ctx.events.data(info.id, note, [...w.viewers.keys()]);
   }
-  // It never got as far as a session: most often `dsh` is missing, or the profile will not boot.
+  // It never got as far as a session: most often the CLI is missing, or the login will not boot.
   if (error && !info.sessionId) ctx.events.toast(`Could not start ${ctx.command(info)}: ${truncate(error, 200)}`, 'error');
   info.exitCode = code ?? -1;
   info.status = 'exited';

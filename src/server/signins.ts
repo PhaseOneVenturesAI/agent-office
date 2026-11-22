@@ -1,41 +1,45 @@
-import { execFile, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import * as pty from '@lydell/node-pty';
 import type { SignInKind, SignInState, SignInsState } from '../shared/protocol.js';
+import { defaultKimiHome, deviceLogin, findGithub, findKimi, kimiSignedIn, lastWords, plain, run, seed, trust, writeGitConfig, type Flow } from './signin-flows.js';
 
 /*
- * Everyone's own Claude and GitHub
- * --------------------------------
- * In an office with accounts, each person's workers run on that person's own Claude plan and
- * GitHub account. Every account gets a folder, .agent-office/homes/<id>/, holding its own Claude
- * config (CLAUDE_CONFIG_DIR), gh config (GH_CONFIG_DIR) and git config (GIT_CONFIG_GLOBAL), and
- * whatever runs for that account gets those in its environment in place of the office's: its
- * workers, and what the office does on GitHub when they click (comment, merge, open a PR). Nothing
- * global changes, so any number of people can be signed in to different accounts at once.
+ * Everyone's own Claude, Kimi and GitHub
+ * --------------------------------------
+ * In an office with accounts, each person's workers run on that person's own Claude plan, Kimi
+ * account and GitHub account. Every account gets a folder, .agent-office/homes/<id>/, holding its
+ * own Claude config (CLAUDE_CONFIG_DIR), Kimi home (KIMI_CODE_HOME), gh config (GH_CONFIG_DIR) and
+ * git config (GIT_CONFIG_GLOBAL), and whatever runs for that account gets those in its environment
+ * in place of the office's: its workers, and what the office does on GitHub when they click
+ * (comment, merge, open a PR). Nothing global changes, so any number of people can be signed in to
+ * different accounts at once.
  *
- * Signing in happens from the office: it runs `claude auth login` or `gh auth login --web` against
- * the account's folders and hands the browser the page to open (and GitHub's one-time code). A
- * token from `claude setup-token`, or a GitHub token, can be pasted instead, and a shell at a desk
- * runs with the same folders, so `claude auth login` typed there works too. Admins may keep using
- * the office machine's own sign-ins.
+ * Signing in happens from the office: it runs `claude auth login`, `kimi login` or
+ * `gh auth login --web` against the account's folders and hands the browser the page to open (and
+ * the one-time code). A token from `claude setup-token`, a Kimi API key, or a GitHub token can be
+ * pasted instead, and a shell at a desk runs with the same folders, so `claude auth login` typed
+ * there works too. Admins may keep using the office machine's own sign-ins.
  *
  * An office without accounts (you alone, on the shared password) never comes here: everything runs
- * on the machine's own `claude` and `gh`, exactly as before.
+ * on the machine's own CLIs, exactly as before.
  */
 
 /** Credentials the office's own environment may carry. None of them reach anything run as someone else. */
 const CLAUDE_VARS = ['CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_OAUTH_REFRESH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CONFIG_DIR', 'CLAUDE_SECURESTORAGE_CONFIG_DIR'];
+const KIMI_VARS = ['KIMI_API_KEY', 'KIMI_BASE_URL', 'KIMI_CODE_HOME'];
 const GITHUB_VARS = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN', 'GH_CONFIG_DIR', 'GIT_CONFIG_GLOBAL'];
-/** GitHub's one-time codes last 15 minutes; a Claude sign-in link gets as long. */
+const KINDS: SignInKind[] = ['claude', 'kimi', 'github'];
+/** GitHub's one-time codes last 15 minutes; a Claude sign-in link gets as long. Kimi's last 30. */
 const FLOW_MS = 15 * 60_000;
+const KIMI_FLOW_MS = 30 * 60_000;
 /** Someone's sign-ins are looked at again at most this often, unless they ask. */
 const LOOK_GAP_MS = 20_000;
-const LOOK_TIMEOUT_MS = 30_000;
 /** From `claude setup-token` (sk-ant-oat01-…), or an Anthropic API key (sk-ant-api03-…). */
 const CLAUDE_TOKEN = /^sk-ant-[a-z]+\d*-[A-Za-z0-9_-]{20,}$/;
 const API_KEY = /^sk-ant-api/;
+/** A Kimi (Moonshot) API key. */
+const KIMI_TOKEN = /^sk-[A-Za-z0-9_-]{16,}$/;
 /** ghp_…, github_pat_…, gho_… and the like. */
 const GITHUB_TOKEN = /^[A-Za-z0-9_]{20,255}$/;
 const ACCOUNT_ID = /^[A-Za-z0-9]{6,64}$/;
@@ -44,20 +48,16 @@ const HELP_WHERE = '☰ → 🔐 Your sign-ins';
 interface Saved {
   /** Unset: its own login, in its folder. A token pasted from `claude setup-token` (or an API key). The office machine's own (admins). */
   claude?: { use: 'token'; token: string } | { use: 'office' };
+  /** Unset: its own device login. A pasted Kimi API key. The office machine's own (admins). */
+  kimi?: { use: 'token'; token: string } | { use: 'office' };
   github?: { use: 'office' };
   /** Who the last look found each signed in as, so workers can start before the next look. */
-  seen?: { claude?: string; github?: string };
-}
-
-/** A sign-in the office is running for someone. */
-interface Flow {
-  stop(): void;
-  /** Types into it: the code from Claude's sign-in page. */
-  write?(data: string): void;
+  seen?: { claude?: string; kimi?: string; github?: string };
 }
 
 interface Live {
   claude: Omit<SignInState, 'how'>;
+  kimi: Omit<SignInState, 'how'>;
   github: Omit<SignInState, 'how'>;
   flows: Partial<Record<SignInKind, Flow>>;
   looking?: Promise<void>;
@@ -76,8 +76,9 @@ export class SignIns {
 
   constructor(
     dataDir: string,
-    /** The `claude` and `gh` binaries, or null when they aren't installed. */
+    /** The `claude`, `kimi` and `gh` binaries, or null when they aren't installed. */
     private claude: string | null,
+    private kimi: string | null,
     private gh: string | null,
     /** The office's own environment, which everyone's is built on. */
     private base: () => Record<string, string>,
@@ -93,24 +94,21 @@ export class SignIns {
     const l = this.get(id);
     return {
       claude: { ...l.claude, how: this.how(id, s, 'claude') },
+      kimi: { ...l.kimi, how: this.how(id, s, 'kimi') },
       github: { ...l.github, how: this.how(id, s, 'github') },
       office: this.mayUseOffice(id),
     };
   }
 
-  /** Whether `id` has a Claude sign-in its workers can start on, as far as the last look knows. */
-  claudeReady(id: string): boolean {
+  /** Whether `id` has a sign-in of `which` its workers can start on, as far as the last look knows. */
+  ready(id: string, which: SignInKind): boolean {
     const s = this.load(id);
-    return this.how(id, s, 'claude') !== 'login' || !!s.seen?.claude;
-  }
-
-  githubReady(id: string): boolean {
-    const s = this.load(id);
-    return this.how(id, s, 'github') === 'office' || !!s.seen?.github;
+    return this.how(id, s, which) !== 'login' || !!s.seen?.[which];
   }
 
   /** What to tell someone who needs `which` signed in first. */
   why(which: SignInKind): string {
+    if (which === 'kimi') return `Sign in to Kimi first (${HELP_WHERE}): your workers run on your own Kimi account`;
     return which === 'claude'
       ? `Sign in to Claude first (${HELP_WHERE}): your workers run on your own Claude plan`
       : `Sign in to GitHub first (${HELP_WHERE}): the office acts on GitHub as you`;
@@ -140,13 +138,18 @@ export class SignIns {
   apply(id: string, env: Record<string, string>, dirs: string[] = [], only?: SignInKind): Record<string, string> {
     const s = this.load(id);
     const home = this.prepare(id);
-    if (only !== 'github' && this.how(id, s, 'claude') !== 'office') {
+    if (only !== 'github' && only !== 'kimi' && this.how(id, s, 'claude') !== 'office') {
       for (const k of CLAUDE_VARS) delete env[k];
       env.CLAUDE_CONFIG_DIR = path.join(home, 'claude');
       if (s.claude?.use === 'token') env[API_KEY.test(s.claude.token) ? 'ANTHROPIC_API_KEY' : 'CLAUDE_CODE_OAUTH_TOKEN'] = s.claude.token;
-      if (dirs.length) this.trust(env.CLAUDE_CONFIG_DIR, dirs);
+      if (dirs.length) trust(env.CLAUDE_CONFIG_DIR, dirs, this.base());
     }
-    if (only !== 'claude' && this.how(id, s, 'github') !== 'office') {
+    if (only !== 'github' && only !== 'claude' && this.how(id, s, 'kimi') !== 'office') {
+      for (const k of KIMI_VARS) delete env[k];
+      env.KIMI_CODE_HOME = path.join(home, 'kimi');
+      if (s.kimi?.use === 'token') env.KIMI_API_KEY = s.kimi.token;
+    }
+    if (only !== 'claude' && only !== 'kimi' && this.how(id, s, 'github') !== 'office') {
       for (const k of GITHUB_VARS) delete env[k];
       env.GH_CONFIG_DIR = path.join(home, 'gh');
       env.GIT_CONFIG_GLOBAL = path.join(home, 'gitconfig');
@@ -167,7 +170,7 @@ export class SignIns {
     const l = this.get(id);
     if (l.looking) return l.looking;
     if (!force && Date.now() - l.lookedAt < LOOK_GAP_MS) return Promise.resolve();
-    l.looking = Promise.all([this.lookClaude(id), this.lookGithub(id)]).then(() => {
+    l.looking = Promise.all([this.lookClaude(id), this.lookKimi(id), this.lookGithub(id)]).then(() => {
       l.lookedAt = Date.now();
       l.looking = undefined;
       this.onChange(id);
@@ -177,7 +180,7 @@ export class SignIns {
 
   /** Starts signing `id` in from the office. The page to open comes through state(). Returns why it can't. */
   start(id: string, which: SignInKind): string | undefined {
-    return which === 'claude' ? this.startClaude(id) : this.startGithub(id);
+    return which === 'claude' ? this.startClaude(id) : which === 'kimi' ? this.startKimi(id) : this.startGithub(id);
   }
 
   /** The code Claude's sign-in page showed, typed in where `claude auth login` waits for it. */
@@ -198,10 +201,18 @@ export class SignIns {
     void this.look(id, true);
   }
 
-  /** A pasted token: from `claude setup-token` (or an API key), or a GitHub token. Resolves to why it didn't take. */
+  /** A pasted token: from `claude setup-token` (or an API key), a Kimi API key, or a GitHub token. Resolves to why it didn't take. */
   async token(id: string, which: SignInKind, raw: string): Promise<string | undefined> {
     const token = raw.trim();
     this.stop(id, which);
+    if (which === 'kimi') {
+      if (!KIMI_TOKEN.test(token)) return "That isn't a Kimi API key (sk-…): make one in Kimi's platform settings";
+      const s = this.load(id);
+      s.kimi = { use: 'token', token };
+      this.save(id, s);
+      await this.look(id, true);
+      return undefined;
+    }
     if (which === 'claude') {
       if (!CLAUDE_TOKEN.test(token)) return "That isn't a token from `claude setup-token` (sk-ant-oat01-…) or an Anthropic API key (sk-ant-api03-…)";
       const s = this.load(id);
@@ -209,7 +220,7 @@ export class SignIns {
       this.save(id, s);
       // Claude asks once before it uses an API key from the environment; this one is theirs, so it's approved.
       if (API_KEY.test(token)) {
-        this.seed(path.join(this.prepare(id), 'claude'), (c) => {
+        seed(path.join(this.prepare(id), 'claude'), (c) => {
           c.customApiKeyResponses ??= { approved: [], rejected: [] };
           const tail = token.slice(-20);
           if (!c.customApiKeyResponses.approved.includes(tail)) c.customApiKeyResponses.approved.push(tail);
@@ -254,8 +265,7 @@ export class SignIns {
   /** An account is gone: sign its logins out and delete its folder. */
   forget(id: string) {
     if (!ACCOUNT_ID.test(id)) return;
-    this.stop(id, 'claude');
-    this.stop(id, 'github');
+    for (const which of KINDS) this.stop(id, which);
     this.live.delete(id);
     const home = path.join(this.homes, id);
     if (!existsSync(home)) return;
@@ -281,10 +291,7 @@ export class SignIns {
   }
 
   shutdown() {
-    for (const [id] of this.live) {
-      this.stop(id, 'claude');
-      this.stop(id, 'github');
-    }
+    for (const [id] of this.live) for (const which of KINDS) this.stop(id, which);
   }
 
   // ---------------------------------------------------------------------------
@@ -302,6 +309,7 @@ export class SignIns {
       const seen = this.load(id).seen ?? {};
       l = {
         claude: seen.claude ? { status: 'ok', who: seen.claude } : { status: 'none' },
+        kimi: seen.kimi ? { status: 'ok', who: seen.kimi } : { status: 'none' },
         github: seen.github ? { status: 'ok', who: seen.github } : { status: 'none' },
         flows: {},
         lookedAt: 0,
@@ -320,8 +328,8 @@ export class SignIns {
   private prepare(id: string): string {
     const home = this.home(id);
     if (!existsSync(path.join(home, 'gitconfig'))) {
-      for (const d of [this.homes, home, path.join(home, 'claude'), path.join(home, 'gh')]) mkdirSync(d, { recursive: true, mode: 0o700 });
-      this.seed(path.join(home, 'claude'));
+      for (const d of [this.homes, home, path.join(home, 'claude'), path.join(home, 'kimi'), path.join(home, 'gh')]) mkdirSync(d, { recursive: true, mode: 0o700 });
+      seed(path.join(home, 'claude'));
       this.writeGitConfig(id);
     }
     return home;
@@ -359,6 +367,14 @@ export class SignIns {
     const env = this.base();
     for (const k of CLAUDE_VARS) delete env[k];
     env.CLAUDE_CONFIG_DIR = path.join(this.prepare(id), 'claude');
+    return env;
+  }
+
+  /** The environment for `kimi` run as `id`'s own login (never a pasted key or the office's). */
+  private kimiEnv(id: string): Record<string, string> {
+    const env = this.base();
+    for (const k of KIMI_VARS) delete env[k];
+    env.KIMI_CODE_HOME = path.join(this.prepare(id), 'kimi');
     return env;
   }
 
@@ -439,51 +455,83 @@ export class SignIns {
     return undefined;
   }
 
+  private startKimi(id: string): string | undefined {
+    if (!this.kimi) return "Kimi isn't installed where the office can run it — paste a Kimi API key instead";
+    this.stop(id, 'kimi');
+    const l = this.get(id);
+    // BROWSER=true: Kimi "opens" the page with the `true` command and just prints it, for the browser to show.
+    const env = { ...this.kimiEnv(id), BROWSER: 'true' };
+    // Over pipes, kimi prints the one-time code and the page, then waits for Kimi to say yes.
+    const flow = deviceLogin({
+      cmd: this.kimi,
+      args: ['login'],
+      cwd: this.home(id),
+      env,
+      timeoutMs: KIMI_FLOW_MS,
+      find: findKimi,
+      onPending: (pending) => {
+        if (l.flows.kimi !== flow || l.kimi.pending?.code) return;
+        l.kimi = { status: 'busy', pending };
+        this.onChange(id);
+      },
+      onError: (message) => this.flowFailed(id, 'kimi', flow, `Couldn't start kimi: ${message}`),
+      onExit: (exitCode, out) => this.flowExited(id, 'kimi', flow, exitCode, out),
+    });
+    l.flows.kimi = flow;
+    l.kimi = { status: 'busy', pending: {} };
+    this.onChange(id);
+    return undefined;
+  }
+
   private startGithub(id: string): string | undefined {
     if (!this.gh) return "The GitHub CLI (gh) isn't installed on the office's machine";
     this.stop(id, 'github');
     const l = this.get(id);
     const env = { ...this.githubEnv(id), BROWSER: 'true', GH_BROWSER: 'true' };
     // Over pipes, gh prints the one-time code and the page, then waits for GitHub to say yes.
-    const p = spawn(this.gh, ['auth', 'login', '--hostname', 'github.com', '--git-protocol', 'https', '--web', '--insecure-storage', '--skip-ssh-key'], { cwd: this.home(id), env, stdio: ['pipe', 'pipe', 'pipe'] });
-    let out = '';
-    const flow: Flow = { stop: () => p.kill() };
-    const timer = setTimeout(flow.stop, FLOW_MS);
-    const onData = (d: Buffer) => {
-      out = (out + d.toString('utf8')).slice(-20_000);
-      if (l.flows.github !== flow || l.github.pending?.code) return;
-      const code = /one-time code:\s*([A-Z0-9]{4}-[A-Z0-9]{4})/i.exec(out)?.[1];
-      if (!code) return;
-      const url = /https:\/\/github\.com\/login\/device\S*/.exec(out)?.[0] ?? 'https://github.com/login/device';
-      l.github = { status: 'busy', pending: { url, code } };
-      this.onChange(id);
-    };
-    p.stdout.on('data', onData);
-    p.stderr.on('data', onData);
-    p.on('error', (err) => {
-      if (l.flows.github !== flow) return;
-      delete l.flows.github;
-      clearTimeout(timer);
-      l.github = { status: 'none', error: `Couldn't start gh: ${err.message}` };
-      this.onChange(id);
-    });
-    p.on('exit', (exitCode) => {
-      clearTimeout(timer);
-      if (l.flows.github !== flow) return;
-      delete l.flows.github;
-      if (exitCode === 0) {
-        const s = this.load(id);
-        delete s.github;
-        this.save(id, s);
-        l.github = { status: 'busy' };
-      } else l.github = { status: 'none', error: lastWords(out) || 'Signing in stopped before it finished' };
-      this.onChange(id);
-      void this.look(id, true);
+    const flow = deviceLogin({
+      cmd: this.gh,
+      args: ['auth', 'login', '--hostname', 'github.com', '--git-protocol', 'https', '--web', '--insecure-storage', '--skip-ssh-key'],
+      cwd: this.home(id),
+      env,
+      timeoutMs: FLOW_MS,
+      find: findGithub,
+      onPending: (pending) => {
+        if (l.flows.github !== flow || l.github.pending?.code) return;
+        l.github = { status: 'busy', pending };
+        this.onChange(id);
+      },
+      onError: (message) => this.flowFailed(id, 'github', flow, `Couldn't start gh: ${message}`),
+      onExit: (exitCode, out) => this.flowExited(id, 'github', flow, exitCode, out),
     });
     l.flows.github = flow;
     l.github = { status: 'busy', pending: {} };
     this.onChange(id);
     return undefined;
+  }
+
+  /** A device-code login the office was running ended: take its login, or say why not. */
+  private flowExited(id: string, which: 'kimi' | 'github', flow: Flow, exitCode: number | null, out: string) {
+    const l = this.get(id);
+    if (l.flows[which] !== flow) return;
+    delete l.flows[which];
+    if (exitCode === 0) {
+      // Signed in with its own login: that's what its workers use from now on.
+      const s = this.load(id);
+      delete s[which];
+      this.save(id, s);
+      l[which] = { status: 'busy' };
+    } else l[which] = { status: 'none', error: lastWords(out) || 'Signing in stopped before it finished' };
+    this.onChange(id);
+    void this.look(id, true);
+  }
+
+  private flowFailed(id: string, which: 'kimi' | 'github', flow: Flow, message: string) {
+    const l = this.get(id);
+    if (l.flows[which] !== flow) return;
+    delete l.flows[which];
+    l[which] = { status: 'none', error: message };
+    this.onChange(id);
   }
 
   private async lookClaude(id: string) {
@@ -511,6 +559,32 @@ export class SignIns {
     // Signed out, `claude auth status` still answers (and exits 1); anything else went wrong.
     l.claude = who ? { status: 'ok', who } : { status: 'none', error: r.out ? undefined : r.last || undefined };
     this.remember(id, 'claude', how === 'office' ? undefined : who);
+  }
+
+  private async lookKimi(id: string) {
+    const l = this.get(id);
+    if (l.flows.kimi) return;
+    const s = this.load(id);
+    const how = this.how(id, s, 'kimi');
+    if (how === 'token') {
+      // A pasted key is taken on trust: whether it works shows when a worker starts.
+      l.kimi = { status: 'ok', who: 'a pasted API key' };
+      this.remember(id, 'kimi', l.kimi.who);
+      return;
+    }
+    if (how === 'office') {
+      l.kimi = kimiSignedIn(defaultKimiHome(this.base())) ? { status: 'ok', who: 'the office’s own' } : { status: 'none' };
+      this.remember(id, 'kimi', undefined);
+      return;
+    }
+    if (!this.kimi) {
+      l.kimi = { status: 'none', error: "Kimi isn't installed on the office's machine" };
+      this.remember(id, 'kimi', undefined);
+      return;
+    }
+    const ok = kimiSignedIn(path.join(this.prepare(id), 'kimi'));
+    l.kimi = ok ? { status: 'ok', who: 'your Kimi account' } : { status: 'none' };
+    this.remember(id, 'kimi', l.kimi.who);
   }
 
   private async lookGithub(id: string) {
@@ -552,109 +626,17 @@ export class SignIns {
   private async logout(id: string, which: SignInKind) {
     if (which === 'claude') {
       if (this.claude) await run(this.claude, ['auth', 'logout'], this.claudeEnv(id));
+    } else if (which === 'kimi') {
+      // Kimi keeps its login as files in its home: deleting them signs it out.
+      rmSync(path.join(this.home(id), 'kimi', 'credentials'), { recursive: true, force: true });
     } else {
       if (this.gh) await run(this.gh, ['auth', 'logout', '--hostname', 'github.com'], this.githubEnv(id));
       rmSync(path.join(this.home(id), 'gh', 'hosts.yml'), { force: true });
     }
   }
 
-  /** Claude's own settings in an account's folder: its first-run questions already answered. */
-  private seed(dir: string, change?: (c: any) => void) {
-    const file = path.join(dir, '.claude.json');
-    let c: any = {};
-    try {
-      c = JSON.parse(readFileSync(file, 'utf8'));
-    } catch {
-      // new
-    }
-    const before = JSON.stringify(c);
-    c.hasCompletedOnboarding = true;
-    change?.(c);
-    if (JSON.stringify(c) === before) return;
-    try {
-      writeFileSync(file, JSON.stringify(c, null, 2), { mode: 0o600 });
-    } catch (err) {
-      console.error(`agent-office: couldn't write ${file}: ${(err as Error).message}`);
-    }
-  }
-
-  /** Folders the office's own Claude trusts, the account's Claude trusts too: they're the same projects. */
-  private trust(configDir: string, dirs: string[]) {
-    let office: any;
-    try {
-      const base = this.base();
-      office = JSON.parse(readFileSync(base.CLAUDE_CONFIG_DIR ? path.join(base.CLAUDE_CONFIG_DIR, '.claude.json') : path.join(os.homedir(), '.claude.json'), 'utf8'));
-    } catch {
-      return;
-    }
-    const trusted = (d: string) => office?.projects?.[d]?.hasTrustDialogAccepted === true;
-    if (!dirs.some(trusted)) return;
-    this.seed(configDir, (c) => {
-      c.projects ??= {};
-      for (const d of dirs) c.projects[d] = { ...c.projects[d], hasTrustDialogAccepted: true };
-    });
-  }
-
-  /**
-   * The account's git config: the office's own (included), with gh as the credentials for GitHub,
-   * so pushes go out as them, and their GitHub name and private email on commits once it's known.
-   */
+  /** The account's git config, refreshed (see signin-flows.ts). */
   private writeGitConfig(id: string, user?: { name: string; email: string }) {
-    const home = this.home(id);
-    const base = this.base();
-    const xdg = base.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
-    const includes = base.GIT_CONFIG_GLOBAL ? [base.GIT_CONFIG_GLOBAL] : [path.join(xdg, 'git', 'config'), path.join(os.homedir(), '.gitconfig')];
-    const lines = ['# Written by Agent Office: git for this account, on top of the office machine’s own settings.', '[include]', ...includes.map((p) => `\tpath = ${quote(p)}`)];
-    if (this.gh) {
-      for (const host of ['https://github.com', 'https://gist.github.com']) {
-        lines.push(`[credential ${quote(host)}]`, '\thelper =', `\thelper = ${quote(`!'${this.gh.replace(/'/g, `'\\''`)}' auth git-credential`)}`);
-      }
-    }
-    if (user) lines.push('[user]', `\tname = ${quote(user.name)}`, `\temail = ${quote(user.email)}`);
-    const text = `${lines.join('\n')}\n`;
-    const file = path.join(home, 'gitconfig');
-    try {
-      if (existsSync(file) && readFileSync(file, 'utf8') === text) return;
-      writeFileSync(file, text, { mode: 0o600 });
-    } catch (err) {
-      console.error(`agent-office: couldn't write ${file}: ${(err as Error).message}`);
-    }
+    writeGitConfig(this.home(id), this.base(), this.gh, user);
   }
-}
-
-/** A value for a git config file, quoted. */
-function quote(v: string): string {
-  return `"${v.replace(/[\p{C}]/gu, '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
-}
-
-/** Terminal output as plain text: no colors, links or cursor moves. */
-function plain(s: string): string {
-  return s
-    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')
-    .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '')
-    .replace(/\x1b[@-_]/g, '')
-    .replace(/\r\n?/g, '\n');
-}
-
-/** The last thing a command said, minus the link and the prompt, for an error line. */
-function lastWords(s: string): string {
-  const lines = plain(s)
-    .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => l && !/https?:\/\/|paste code|opening browser|press enter/i.test(l));
-  return (lines.at(-1) ?? '').slice(0, 300);
-}
-
-/** Runs a command to the end; never rejects. `last` is the last line it said on stderr (or stdout). */
-function run(cmd: string, args: string[], env: Record<string, string>, input?: string): Promise<{ code: number; out: string; last: string }> {
-  return new Promise((resolve) => {
-    const p = execFile(cmd, args, { env, timeout: LOOK_TIMEOUT_MS, maxBuffer: 1024 * 1024, encoding: 'utf8' }, (err, stdout, stderr) => {
-      const e = err as { code?: number | string } | null;
-      const code = !e ? 0 : typeof e.code === 'number' ? e.code : -1;
-      const last = lastWords(stderr || (err && !stdout ? err.message : ''));
-      resolve({ code, out: stdout.trim(), last });
-    });
-    if (input !== undefined) p.stdin?.end(input);
-    else p.stdin?.end();
-  });
 }

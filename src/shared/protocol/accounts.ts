@@ -10,8 +10,8 @@ export interface Me {
   admin: boolean;
 }
 
-/** What someone signs in to for their own workers: Claude Code, and the GitHub CLI. */
-export type SignInKind = 'claude' | 'github';
+/** What someone signs in to for their own workers: Claude Code, Kimi, and the GitHub CLI. */
+export type SignInKind = 'claude' | 'kimi' | 'github';
 
 /** One of your sign-ins, as the office sees it (see server/signins.ts). */
 export interface SignInState {
@@ -32,6 +32,7 @@ export interface SignInState {
  */
 export interface SignInsState {
   claude: SignInState;
+  kimi: SignInState;
   github: SignInState;
   /** You may use the office machine's own sign-ins instead of yours (admins). */
   office: boolean;

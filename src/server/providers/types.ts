@@ -2,6 +2,7 @@
 // worker manager never asks which provider a worker runs. What the windows show about each (names,
 // models, efforts, spend) is the shared table in shared/providers.ts.
 import type { AgentProvider } from '../../shared/providers.js';
+import type { SignInKind } from '../../shared/protocol.js';
 import type { StationKind } from '../../shared/layout.js';
 import type { WorkerHandle } from '../workers/types.js';
 
@@ -85,7 +86,7 @@ export interface ProviderAdapter<S = undefined, P = undefined> {
   /** How it runs: in a terminal (the default), or over ACP with the office drawing its terminal (see dsh.ts). */
   transport?: 'pty' | 'acp';
   /** The sign-in a worker hired by an account needs on that account (see RunAs). */
-  signIn?: 'claude';
+  signIn?: SignInKind;
   /**
    * It says itself when it's up (a SessionStart hook): until then it's 'starting', and still silent
    * 12s in, its desk shows this and needs a human. Without it, it's idle as soon as it runs.
