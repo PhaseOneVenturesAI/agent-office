@@ -43,6 +43,8 @@ export interface AccountInfo {
   id: string;
   name: string;
   role: AccountRole;
+  /** The email Cloudflare Access signs this account in as, when it has one. */
+  email?: string;
   createdAt: number;
   createdBy: string;
   lastSeenAt?: number;

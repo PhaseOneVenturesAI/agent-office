@@ -14,9 +14,11 @@ export interface Account {
   id: string;
   name: string;
   role: AccountRole;
-  /** scrypt(password, salt), hex. */
-  hash: string;
-  salt: string;
+  /** scrypt(password, salt), hex. Missing on accounts Cloudflare Access signs in (no password). */
+  hash?: string;
+  salt?: string;
+  /** The email Cloudflare Access signs this account in as, when it has one. */
+  email?: string;
   createdAt: number;
   createdBy: string;
   lastSeenAt?: number;
@@ -92,6 +94,46 @@ export class Accounts {
     return n ? this.data.accounts.find((a) => sameName(a.name, n)) : undefined;
   }
 
+  /** The account Cloudflare Access signs this email in as. */
+  byEmail(email: string): Account | undefined {
+    this.sync();
+    const e = email.toLowerCase();
+    return this.data.accounts.find((a) => a.email === e);
+  }
+
+  /**
+   * Makes the account Cloudflare Access signs an email in as: its name comes from the address
+   * (deduplicated), and it has no password — Cloudflare is its way in, and `check` never matches it.
+   */
+  provision(email: string, role: AccountRole): Account {
+    this.sync();
+    const e = email.trim().toLowerCase();
+    const existing = this.byEmail(e);
+    if (existing) return existing;
+    const base = cleanName(
+      e
+        .split('@', 1)[0]
+        .split(/[^A-Za-z0-9]+/)
+        .filter(Boolean)
+        .map((w) => w[0].toUpperCase() + w.slice(1))
+        .join(' '),
+    );
+    const stem = base || 'Teammate';
+    let name = stem;
+    for (let n = 2; this.data.accounts.some((a) => sameName(a.name, name)); n++) name = `${stem} ${n}`.slice(0, NAME_MAX);
+    const account: Account = {
+      id: randomBytes(8).toString('hex'),
+      name,
+      role: role === 'admin' ? 'admin' : 'member',
+      email: e,
+      createdAt: Date.now(),
+      createdBy: 'Cloudflare Access',
+    };
+    this.data.accounts.push(account);
+    this.save();
+    return account;
+  }
+
   state(online: Set<string>): AccountsState {
     this.sync();
     this.dropExpired();
@@ -106,8 +148,10 @@ export class Accounts {
   async check(name: string, password: string): Promise<Account | undefined> {
     const a = this.byName(name);
     const pw = password.slice(0, PASSWORD_MAX);
-    const derived = await hash(pw, a ? Buffer.from(a.salt, 'hex') : randomBytes(16));
-    return a && timingSafeEqual(derived, Buffer.from(a.hash, 'hex')) ? a : undefined;
+    // Passwordless accounts (Cloudflare Access) get a random stand-in: they never match a password.
+    const salt = a?.salt ? Buffer.from(a.salt, 'hex') : randomBytes(16);
+    const derived = await hash(pw, salt);
+    return a?.hash && timingSafeEqual(derived, Buffer.from(a.hash, 'hex')) ? a : undefined;
   }
 
   invite(by: string, role: AccountRole, name?: string): AccountInvite | string {
@@ -249,7 +293,7 @@ export class Accounts {
     try {
       const saved = JSON.parse(readFileSync(this.file, 'utf8')) as Partial<Saved>;
       this.data = {
-        accounts: Array.isArray(saved.accounts) ? saved.accounts.filter((a) => a && typeof a.id === 'string' && typeof a.hash === 'string') : [],
+        accounts: Array.isArray(saved.accounts) ? saved.accounts.filter((a) => a && typeof a.id === 'string' && (typeof a.hash === 'string' || typeof a.email === 'string')) : [],
         invites: Array.isArray(saved.invites) ? saved.invites.filter((v) => v && typeof v.token === 'string') : [],
         ...(saved.sharedPassword === false ? { sharedPassword: false } : {}),
       };

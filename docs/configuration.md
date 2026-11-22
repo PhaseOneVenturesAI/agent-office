@@ -36,6 +36,16 @@ agent-office [dir] [options]
       --city <name>       Put the office in a real city: its sun and live weather (open-meteo.com)
       --weather <kind>    Pin the weather: clear, cloudy, rain, storm, snow or fog
       --real-time-sky     Start the sky on the real clock, not a day an hour (env AGENT_OFFICE_SKY_CLOCK=real; ⚙️ Settings can switch it)
+      --cf-access <team>  Cloudflare Access is the sign-in: <team>.cloudflareaccess.com (env AGENT_OFFICE_CF_ACCESS)
+      --cf-access-aud <aud>  The application's AUD tag (env AGENT_OFFICE_CF_ACCESS_AUD)
+      --cf-access-admins <emails>  Comma-separated emails whose accounts are admins (env AGENT_OFFICE_CF_ACCESS_ADMINS)
+
+  With --cf-access set, the login page signs people in with the email Cloudflare's
+  edge has verified (its JWT is checked against the team's published keys, its
+  audience and its expiry): each email gets a passwordless account, made an admin
+  when it's on the admins list or the first one ever. The shared office password
+  can then be switched off (agent-office accounts password off) so Cloudflare's
+  login is the only way in.
 
 agent-office setup [--projects <dir>] [--project <owner/repo>]... [--home <dir>]
 

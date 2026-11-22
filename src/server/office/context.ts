@@ -7,6 +7,7 @@ import type { Auth } from '../auth.js';
 import type { Accounts } from '../accounts.js';
 import type { SignIns, GhAs } from '../signins.js';
 import type { Harness } from '../harness.js';
+import type { CloudflareAccess } from '../cloudflare.js';
 import type { ModelCatalogue } from '../models.js';
 import type { Tailnet } from '../tailnet.js';
 import type { Team } from '../team.js';
@@ -66,6 +67,8 @@ export interface BuildingServices {
   signins: SignIns;
   /** The instruction and skill files every worker runs with (☰ → 🧰 Harness). */
   harness: Harness;
+  /** Cloudflare Access sign-in, when the office runs behind it (see server/cloudflare.ts). */
+  cloudflare?: CloudflareAccess;
   /** The office's own Claude plan limits. */
   limits: PlanLimitsReader;
   /** Each account's own, once it runs on a Claude sign-in of its own. */
