@@ -6,6 +6,7 @@
 
 import type { AccountsClientMsg, AccountsServerMsg, SignInsClientMsg, TeamClientMsg } from './protocol/accounts.js';
 import type { ChangesClientMsg, ChangesServerMsg } from './protocol/changes.js';
+import type { DeploysClientMsg, DeploysServerMsg } from './protocol/deploys.js';
 import type { FloorClientMsg, FloorServerMsg, PlanClientMsg } from './protocol/floors.js';
 import type { GitHubClientMsg, GitHubServerMsg } from './protocol/github.js';
 import type { HarnessClientMsg, HarnessServerMsg } from './protocol/harness.js';
@@ -22,6 +23,7 @@ import type { WorkerClientMsg, WorkerServerMsg } from './protocol/workers.js';
 export * from './protocol/accounts.js';
 export * from './protocol/agents.js';
 export * from './protocol/changes.js';
+export * from './protocol/deploys.js';
 export * from './protocol/floors.js';
 export * from './protocol/github.js';
 export * from './protocol/harness.js';
@@ -46,6 +48,7 @@ export type ClientMsg =
   | FloorClientMsg
   | PlanClientMsg
   | ChangesClientMsg
+  | DeploysClientMsg
   | TeamClientMsg
   | AccountsClientMsg
   | SignInsClientMsg
@@ -70,6 +73,7 @@ export type ServerMsg =
   | MeetingServerMsg
   | FloorServerMsg
   | ChangesServerMsg
+  | DeploysServerMsg
   | AccountsServerMsg
   | HarnessServerMsg
   | SettingsServerMsg

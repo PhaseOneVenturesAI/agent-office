@@ -1,0 +1,114 @@
+/* 🚀 Deploy board */
+.modal.deploys {
+  width: min(600px, 94vw);
+  max-height: 84vh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.modal.deploys .deploy-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modal.deploys .deploy-status {
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+.modal.deploys .grow {
+  flex: 1;
+}
+
+.modal.deploys .deploy-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  min-height: 60px;
+}
+
+.modal.deploys .deploy-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+
+.modal.deploys .deploy-kind {
+  flex: none;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: color-mix(in srgb, #f6821f 20%, transparent);
+  color: #f6821f;
+}
+
+.modal.deploys .deploy-kind.worker {
+  background: color-mix(in srgb, #4f86f7 20%, transparent);
+  color: #4f86f7;
+}
+
+.modal.deploys .deploy-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.modal.deploys .deploy-main strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modal.deploys .deploy-meta {
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.modal.deploys .deploy-link {
+  flex: none;
+  font-size: 13px;
+  color: inherit;
+  text-decoration: none;
+  opacity: 0.8;
+}
+
+.modal.deploys .deploy-link:hover {
+  text-decoration: underline;
+  opacity: 1;
+}
+
+.modal.deploys .btn.small {
+  padding: 4px 10px;
+  font-size: 12px;
+  flex: none;
+}
+
+.modal.deploys .deploy-connect p {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.modal.deploys .deploy-connect pre {
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  font-size: 12px;
+  overflow-x: auto;
+}
+
+.modal.deploys .deploy-connect .dim {
+  opacity: 0.6;
+  font-size: 12px;
+}
