@@ -34,7 +34,7 @@ export function openHarness(net: Net) {
   const ta = h('textarea.prompt-text', { spellcheck: 'false', 'aria-label': 'File', maxlength: '256000' }) as HTMLTextAreaElement;
   const save = h('button.btn.primary', { type: 'button' }, 'Save');
   const undo = h('button.btn', { type: 'button', title: 'Back to what’s saved' }, 'Undo changes');
-  const apply = h('button.btn', { type: 'button', title: 'Copy CLAUDE.md and skills/ into the office’s and every account’s agent home' }, '📣 Push to everyone’s agents');
+  const apply = h('button.btn', { type: 'button', title: 'Copy CLAUDE.md, AGENTS.md and skills/ into the office’s and every account’s Claude, Kimi and Codex homes (skips anyone running their own harness)' }, '📣 Push to everyone’s agents');
   const note = h('span.grow.harness-note');
   const close = h('button.btn.close', { 'aria-label': 'Close' }, '✕');
   const el = h(
@@ -131,7 +131,7 @@ export function openHarness(net: Net) {
     if (!el.isConnected) return;
     if (msg.t === 'harness') {
       state = msg.state;
-      used.textContent = 'The taste lock, workflow and skills every worker runs with. Save edits here, then push them to everyone’s agents.';
+      used.textContent = 'The taste lock, workflow and skills every worker runs with. Save edits here, then push them to everyone’s agents — Claude, Kimi and Codex.';
       paint();
       if (!current && state.files.length) pick(state.files[0].path);
     } else if (msg.t === 'harness.file') {

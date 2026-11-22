@@ -68,10 +68,16 @@ export function createServices(ctx: Ctx): BuildingServices {
   if (!accounts.unreadableFile) signins.prune(new Set(accounts.state(new Set()).accounts.map((a) => a.id)));
 
   // The instructions and skills every worker runs with (☰ → 🧰 Harness): one folder on this
-  // machine, edited from the office and pushed into every account's agent home.
+  // machine, edited from the office and pushed into every account's agent home — CLAUDE.md and
+  // skills/ for Claude, AGENTS.md and skills/ for Kimi and Codex.
   const harness = new Harness(cfg.dataDir, harnessRoot(cfg.dataDir), () => {
     const env = childEnv();
-    return env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude');
+    const home = os.homedir();
+    return {
+      claude: env.CLAUDE_CONFIG_DIR ?? path.join(home, '.claude'),
+      kimi: env.KIMI_CODE_HOME ?? path.join(home, '.kimi-code'),
+      codex: env.CODEX_HOME ?? path.join(home, '.codex'),
+    };
   }, () => ctx.broadcast({ t: 'harness', state: harness.state() }));
 
   // The Claude plan's 5-hour and weekly limits, for the meter under the workers: the office's own

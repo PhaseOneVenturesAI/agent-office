@@ -1,9 +1,11 @@
 // The office's harness: the instruction and skill files every worker runs with — the taste lock,
 // the workflow, the skills. It is one folder on the office's machine (AGENT_OFFICE_HARNESS, or
 // ~/Documents/AgentHarness when that's there, else <data dir>/harness). Admins read and edit its
-// files from the office (☰ → 🧰 Harness), and Apply pushes CLAUDE.md and skills/ into the office's
-// own and every account's Claude home (.agent-office/homes/<id>/claude), so a change reaches
-// everyone's agents without anyone opening a shell.
+// files from the office (☰ → 🧰 Harness), and Apply pushes them into the office's own and every
+// account's agent homes (.agent-office/homes/<id>/): CLAUDE.md and skills/ for Claude, and the
+// instructions as one AGENTS.md plus skills/ for Kimi and Codex, so a change reaches everyone's
+// agents without anyone opening a shell. An account with a .no-harness marker in its home is
+// skipped: that person runs a harness of their own.
 //
 // Everything is jailed to the root: a path with `..`, an absolute path, a file over the size cap
 // or an extension an agent never reads is turned away.
@@ -21,6 +23,14 @@ const MAX_FILE = 256_000;
 const MAX_FILES = 500;
 const MAX_DEPTH = 6;
 const REL_PATH = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[\w .@+\-/]+$/;
+const ACCOUNT_ID = /^[A-Za-z0-9]{6,64}$/;
+
+/** The office machine's own agent homes: what Apply writes to first. */
+export interface AgentHomes {
+  claude: string;
+  kimi: string;
+  codex: string;
+}
 
 interface Applied {
   by: string;
@@ -43,8 +53,8 @@ export class Harness {
     private dataDir: string,
     /** The harness root (see harnessRoot). */
     readonly root: string,
-    /** The office machine's own Claude home: what Apply writes to first. */
-    private officeClaudeDir: () => string,
+    /** The office machine's own agent homes: what Apply writes to first. */
+    private officeHomes: () => AgentHomes,
     private onChange: () => void,
   ) {
     this.storeFile = path.join(dataDir, 'harness.json');
@@ -117,41 +127,101 @@ export class Harness {
     return undefined;
   }
 
+  /** Whether `id` runs a harness of their own: Apply skips their home. */
+  optOut(id: string): boolean {
+    return ACCOUNT_ID.test(id) && existsSync(path.join(this.dataDir, 'homes', id, '.no-harness'));
+  }
+
+  /** Marks `id` as running their own harness (or back on the office's). */
+  setOptOut(id: string, out: boolean): string | undefined {
+    if (!ACCOUNT_ID.test(id)) return 'Not an account';
+    const marker = path.join(this.dataDir, 'homes', id, '.no-harness');
+    try {
+      if (out) {
+        mkdirSync(path.dirname(marker), { recursive: true, mode: 0o700 });
+        writeFileSync(marker, `Harness pushes skip this account. Delete this file to re-join.\n`, { mode: 0o600 });
+      } else {
+        rmSync(marker, { force: true });
+      }
+    } catch (err) {
+      return `Couldn't change that: ${(err as Error).message}`;
+    }
+    return undefined;
+  }
+
   /**
-   * Pushes CLAUDE.md and skills/ into the office's own Claude home and every account's
-   * (.agent-office/homes/<id>/claude), so every worker — whoever hired it — runs with them.
+   * Pushes the harness into the office's own and every account's agent homes: CLAUDE.md and
+   * skills/ for Claude, and the root's instructions as one AGENTS.md plus skills/ for Kimi and
+   * Codex (.agent-office/homes/<id>/{claude,kimi,codex}). Accounts that opted out are skipped.
    * Returns a line for the toast.
    */
   apply(by: string): string {
     const claudeMd = path.join(this.root, 'CLAUDE.md');
     const skills = path.join(this.root, 'skills');
-    const targets = [this.officeClaudeDir()];
-    let homes = 0;
+    const agentsMd = this.instructions();
+    // One entry per home: Claude gets CLAUDE.md, Kimi and Codex get AGENTS.md; all get skills/.
+    const targets: { dir: string; instructions: 'CLAUDE.md' | 'AGENTS.md' }[] = [];
+    const office = this.officeHomes();
+    targets.push({ dir: office.claude, instructions: 'CLAUDE.md' }, { dir: office.kimi, instructions: 'AGENTS.md' }, { dir: office.codex, instructions: 'AGENTS.md' });
+    let accounts = 0;
+    let skipped = 0;
     try {
       for (const entry of readdirSync(path.join(this.dataDir, 'homes'), { withFileTypes: true })) {
-        if (entry.isDirectory()) targets.push(path.join(this.dataDir, 'homes', entry.name, 'claude'));
+        if (!entry.isDirectory() || !ACCOUNT_ID.test(entry.name)) continue;
+        if (this.optOut(entry.name)) {
+          skipped++;
+          continue;
+        }
+        const home = path.join(this.dataDir, 'homes', entry.name);
+        targets.push({ dir: path.join(home, 'claude'), instructions: 'CLAUDE.md' }, { dir: path.join(home, 'kimi'), instructions: 'AGENTS.md' }, { dir: path.join(home, 'codex'), instructions: 'AGENTS.md' });
+        accounts++;
       }
     } catch {
       // no accounts yet: just the office's own
     }
-    for (const target of targets) {
-      mkdirSync(target, { recursive: true, mode: 0o700 });
-      if (existsSync(claudeMd)) cpSync(claudeMd, path.join(target, 'CLAUDE.md'));
+    for (const t of targets) {
+      mkdirSync(t.dir, { recursive: true, mode: 0o700 });
+      if (t.instructions === 'CLAUDE.md') {
+        if (existsSync(claudeMd)) cpSync(claudeMd, path.join(t.dir, 'CLAUDE.md'));
+      } else if (agentsMd) {
+        const file = path.join(t.dir, 'AGENTS.md');
+        if (existsSync(file)) cpSync(file, `${file}.bak`);
+        writeFileSync(file, agentsMd, { mode: 0o600 });
+      }
       if (existsSync(skills)) {
-        const into = path.join(target, 'skills');
+        const into = path.join(t.dir, 'skills');
         rmSync(into, { recursive: true, force: true });
         cpSync(skills, into, { recursive: true });
       }
-      homes++;
     }
-    this.applied = { by, at: Date.now(), homes };
+    this.applied = { by, at: Date.now(), homes: targets.length };
     try {
       writeFileSync(this.storeFile, JSON.stringify(this.applied), { mode: 0o600 });
     } catch (err) {
       console.error(`agent-office: couldn't save the harness record: ${(err as Error).message}`);
     }
     this.onChange();
-    return `pushed CLAUDE.md and skills to ${homes} agent home${homes === 1 ? '' : 's'} — workers pick it up on their next start`;
+    const homes = accounts + 1;
+    const note = skipped ? `, ${skipped} running their own` : '';
+    return `pushed the harness to ${homes} agent home${homes === 1 ? '' : 's'} (Claude, Kimi and Codex${note}) — workers pick it up on their next start`;
+  }
+
+  /** The root's instruction files as one AGENTS.md, for the CLIs that read it (Kimi, Codex). */
+  private instructions(): string | undefined {
+    let names: string[];
+    try {
+      names = readdirSync(this.root)
+        .filter((n) => n.endsWith('.md') && !n.endsWith('.bak') && statSync(path.join(this.root, n)).isFile() && statSync(path.join(this.root, n)).size <= MAX_FILE)
+        .sort((a, b) => (a === 'CLAUDE.md' ? -1 : b === 'CLAUDE.md' ? 1 : a.localeCompare(b)));
+    } catch {
+      return undefined;
+    }
+    const parts: string[] = [];
+    for (const n of names) {
+      const text = readFileSync(path.join(this.root, n), 'utf8').trim();
+      if (text) parts.push(`<!-- Harness: ${n} -->\n\n${text}`);
+    }
+    return parts.length ? `${parts.join('\n\n')}\n` : undefined;
   }
 
   /** `rel` resolved inside the root, or the reason it isn't allowed. */

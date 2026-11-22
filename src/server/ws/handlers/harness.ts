@@ -32,4 +32,16 @@ export const harnessHandlers = {
     if (!admin(ctx, c)) return;
     ctx.toastAll(`🧰 ${ctx.harness.apply(c.peer.name)}`);
   },
+  'harness.optget'(ctx, c) {
+    if (!c.accountId) return;
+    ctx.sendTo(c, { t: 'harness.opt', out: ctx.harness.optOut(c.accountId) });
+  },
+  'harness.opt'(ctx, c, msg) {
+    if (!c.accountId) return ctx.warn(c, 'On the shared office password, everyone runs the office harness');
+    const err = ctx.harness.setOptOut(c.accountId, msg.out === true);
+    if (err) return ctx.warn(c, err);
+    const out = msg.out === true;
+    ctx.sendTo(c, { t: 'harness.opt', out });
+    ctx.sendTo(c, { t: 'toast', text: out ? '🧰 Harness pushes now skip your agents — you run your own' : '🧰 Your agents are back on the office harness', level: 'info' });
+  },
 } satisfies HandlerMap<HarnessClientMsg>;
