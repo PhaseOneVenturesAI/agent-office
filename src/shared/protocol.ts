@@ -12,6 +12,7 @@ import type { HarnessClientMsg, HarnessServerMsg } from './protocol/harness.js';
 import type { MeetingClientMsg, MeetingServerMsg } from './protocol/meetings.js';
 import type { PresenceClientMsg, PresenceServerMsg } from './protocol/presence.js';
 import type { QueueClientMsg, QueueServerMsg } from './protocol/queue.js';
+import type { ReviewsClientMsg, ReviewsServerMsg } from './protocol/reviews.js';
 import type { RooftopClientMsg, RooftopServerMsg } from './protocol/rooftop.js';
 import type { SettingsClientMsg, SettingsServerMsg } from './protocol/settings.js';
 import type { BallClientMsg, CabinetClientMsg, CarClientMsg, DecorClientMsg, DogClientMsg, JukeboxClientMsg, ToysServerMsg, WhiteboardClientMsg } from './protocol/toys.js';
@@ -27,6 +28,7 @@ export * from './protocol/harness.js';
 export * from './protocol/meetings.js';
 export * from './protocol/presence.js';
 export * from './protocol/queue.js';
+export * from './protocol/reviews.js';
 export * from './protocol/rooftop.js';
 export * from './protocol/settings.js';
 export * from './protocol/toys.js';
@@ -39,6 +41,7 @@ export type ClientMsg =
   | WorkerClientMsg
   | GitHubClientMsg
   | QueueClientMsg
+  | ReviewsClientMsg
   | MeetingClientMsg
   | FloorClientMsg
   | PlanClientMsg
@@ -63,6 +66,7 @@ export type ServerMsg =
   | WorkerServerMsg
   | GitHubServerMsg
   | QueueServerMsg
+  | ReviewsServerMsg
   | MeetingServerMsg
   | FloorServerMsg
   | ChangesServerMsg

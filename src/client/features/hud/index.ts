@@ -21,6 +21,7 @@ import { openServices } from '../../ui/services';
 import { openSettings, type SettingsPane } from '../../ui/settings';
 import { needsSigningIn, openSignIns } from '../../ui/signins';
 import { openHarness } from '../../ui/harness';
+import { openReviews } from '../../ui/reviews';
 import { openTeam } from '../../ui/team';
 import { openUpgrade } from '../../ui/upgrade';
 import { openWhiteboard } from '../whiteboard/ui';
@@ -93,6 +94,16 @@ export function installHud(ctx: Ctx, core: CoreState, parts: HudParts) {
       { id: 'accounts', icon: '🔑', label: 'Accounts', section: 'Together', shown: () => store.me.admin, title: () => 'Invite people, see who has an account, revoke them', run: () => openAccounts(net) },
       { id: 'signins', icon: '🔐', label: 'Your sign-ins', section: 'Together', shown: () => !!store.me.account, tone: () => (needsSigningIn() ? 'danger' : undefined), status: needsSigningIn, chip: () => 'Sign in to Claude', title: () => 'The Claude plan and GitHub account your workers run on: your own', run: () => openSignIns(net) },
       { id: 'harness', icon: '🧰', label: 'Harness', section: 'Office', shown: () => store.me.admin, title: () => 'The instructions and skills every worker runs with: view, edit and push them', run: () => openHarness(net) },
+      {
+        id: 'reviews',
+        icon: '🎬',
+        label: 'Review room',
+        section: 'Open',
+        count: () => store.reviews.pending,
+        tone: () => (store.reviews.pending > 0 ? 'primary' : undefined),
+        title: () => 'Staged deliverables waiting for your verdict: accept or reject, and the reason goes into the harness so the next take learns from it',
+        run: () => openReviews(net),
+      },
       { id: 'settings', icon: '⚙️', label: 'Settings', section: 'Office', run: showSettings },
       { id: 'help', icon: '❓', label: 'Controls', section: 'Office', key: 'H', run: openHelp },
       { id: 'lite', icon: '📱', label: '2D view', section: 'Office', title: () => 'The workers, their terminals and the boards without the 3D: for a phone or a slow computer', run: () => location.assign('/lite') },

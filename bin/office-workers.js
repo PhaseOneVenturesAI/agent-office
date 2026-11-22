@@ -31,6 +31,9 @@ const USAGE = `Usage:
                                                 desk, from the worker's own branch, or by a Claude
                                                 Code worker running gh pr create
   office-workers pr --none [--worker <name|id>] take that pull request off the worker again
+  office-workers review <url> --title "…"  stage your one deliverable link in the Review Room for
+                        [--note "…"] [--gate passed|failed]
+                                                a person's verdict; it comes back to your terminal
   office-workers mcp                            serve these as MCP tools on stdio`;
 
 /** A mistake in how the command was called: the usage is shown with it. */
@@ -42,9 +45,9 @@ export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 /** How long the office may take to come back when it's restarting (a dev reload, an upgrade). */
 const RETRY_MS = 6000;
 /** Sending several workers home waits on git for each; hiring may fetch from GitHub first. */
-const TIMEOUT_MS = { list: 15_000, tell: 15_000, pr: 45_000, hire: 90_000, home: 300_000 };
+const TIMEOUT_MS = { list: 15_000, tell: 15_000, pr: 45_000, hire: 90_000, home: 300_000, review: 15_000 };
 /** Where each call goes, under /office/workers. */
-const PATHS = { list: '', hire: '', home: '/home', tell: '/tell', pr: '/pr' };
+const PATHS = { list: '', hire: '', home: '/home', tell: '/tell', pr: '/pr', review: '/review' };
 
 /**
  * Reads `--flag value` and `--flag=value` options, and the words that aren't options.
@@ -116,6 +119,21 @@ export function parseArgs(argv) {
     if (none ? words.length : words.length !== 1) throw new UsageError('pr takes one pull request, its number or URL, or --none to take it off (with --worker <name|id> when the worker isn\'t you)');
     return { cmd: 'pr', ...(none ? { unlink: true } : { pr: words[0] }), ...(opts['--worker'] !== undefined ? { worker: String(opts['--worker']).trim() } : {}), json: opts['--json'] === true };
   }
+  if (cmd === 'review' || cmd === 'stage-review') {
+    const { opts, words } = options(rest, ['--title', '--note', '--gate'], ['--json']);
+    if (words.length !== 1) throw new UsageError('review takes one link, the staged deliverable\'s URL, with --title "…"');
+    if (opts['--title'] === undefined || !String(opts['--title']).trim()) throw new UsageError('review needs --title "…" — what it is, short');
+    const gate = opts['--gate'];
+    if (gate !== undefined && !['passed', 'failed'].includes(String(gate))) throw new UsageError('--gate is passed or failed');
+    return {
+      cmd: 'review',
+      url: words[0],
+      title: String(opts['--title']).trim(),
+      ...(opts['--note'] !== undefined ? { note: String(opts['--note']) } : {}),
+      ...(gate !== undefined ? { gate } : {}),
+      json: opts['--json'] === true,
+    };
+  }
   if (cmd === 'hire') {
     const { opts, words } = options(rest, ['--prompt', '--provider', '--model', '--effort', '--desk', '--issue'], ['--no-worktree', '--json']);
     if (words.length) throw new UsageError(`Unexpected argument: ${words[0]} (give the task on stdin or with --prompt)`);
@@ -157,7 +175,7 @@ export function officeEnv(env) {
 
 /**
  * The HTTP request for one of the office's worker calls.
- * @param {'list' | 'hire' | 'home' | 'tell' | 'pr'} what
+ * @param {'list' | 'hire' | 'home' | 'tell' | 'pr' | 'review'} what
  * @param {{ url: string, worker: string, token: string }} office
  * @param {Record<string, unknown>} [body]
  * @returns {{ method: string, url: string, headers: Record<string, string>, body?: string, timeout: number }}
@@ -206,7 +224,7 @@ async function send(req, fetchImpl) {
 
 /**
  * Makes one call to the office; resolves to what it answered, or throws with why it said no.
- * @param {'list' | 'hire' | 'home' | 'tell' | 'pr'} what
+ * @param {'list' | 'hire' | 'home' | 'tell' | 'pr' | 'review'} what
  * @param {Record<string, unknown> | undefined} body
  * @param {{ env: Record<string, string | undefined>, fetch: typeof fetch }} io
  */
@@ -358,6 +376,27 @@ export const TOOLS = [
     },
     annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
+  {
+    name: 'stage_review',
+    title: 'Stage a deliverable for review',
+    description:
+      "Stages your one deliverable link in the office's Review Room, where a person accepts or rejects it with a reason. " +
+      'Use it when a task asks for creative work (a page, a design, a video, copy) that a human must approve before it counts as done: ' +
+      'deploy or stage it, run whatever brand-gate the task names, then call this with the link. The verdict comes back to your terminal — ' +
+      'on a rejection, take the reason to heart and stage the next take. Stage one link per take, not a list.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'The one staged link to look at (http or https).' },
+        title: { type: 'string', description: 'What it is, short: "Homepage hero v3".' },
+        note: { type: 'string', description: 'Anything the reviewer should know.' },
+        gate: { type: 'string', enum: ['passed', 'failed'], description: 'What the brand-gate said when you ran it before staging.' },
+      },
+      required: ['url', 'title'],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, openWorldHint: false },
+  },
 ];
 
 const INSTRUCTIONS =
@@ -365,7 +404,8 @@ const INSTRUCTIONS =
   'the other agents: whenever you are asked about the agents or workers (who is working on what, whose pull request merged, hiring one, sending them home), use them, ' +
   "rather than looking for the agents with git, ps or HTTP calls. list_workers says where each one's pull request stands (merged: true means it merged), hire_worker " +
   'puts a new agent to work, send_home sends agents home and deletes their worktrees and branches, tell_worker gives one a prompt, and link_pr says which pull request is a ' +
-  "worker's when list_workers does not show it. Everyone in the office sees who did what. " +
+  "worker's when list_workers does not show it, and stage_review puts your one deliverable link in the Review Room for a person's verdict. " +
+  'Everyone in the office sees who did what. ' +
   'The office-workers command on your PATH does the same from a shell.';
 
 /** Runs a tool; resolves to its text, and whether nothing it was asked came off, or throws with why it failed. */
@@ -387,6 +427,11 @@ async function runTool(name, args, io) {
     return { text: `Told ${answer.worker?.name ?? a.worker}.` };
   }
   if (name === 'link_pr') return { text: formatLinked(await call('pr', a, io)) };
+  if (name === 'stage_review') {
+    const answer = await call('review', a, io);
+    const r = answer.review ?? {};
+    return { text: `Staged “${r.title}” for review (${r.id}). The verdict comes back to your terminal when someone accepts or rejects it.` };
+  }
   throw new Error(`Unknown tool: ${name}`);
 }
 
@@ -516,6 +561,13 @@ export async function main(argv, io = {}) {
       const { cmd: _c, json: asJson, ...ask } = cmd;
       const answer = await call('pr', ask, ctx);
       out(asJson ? JSON.stringify(answer.worker, null, 2) : formatLinked(answer));
+      return 0;
+    }
+    if (cmd.cmd === 'review') {
+      const { cmd: _c, json: asJson, ...ask } = cmd;
+      const answer = await call('review', ask, ctx);
+      const r = answer.review ?? {};
+      out(asJson ? JSON.stringify(r, null, 2) : `Staged “${r.title}” for review (${r.id}). The verdict comes back here when someone accepts or rejects it.`);
       return 0;
     }
     const { cmd: _, json, ...body } = cmd;
