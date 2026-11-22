@@ -172,8 +172,8 @@ export interface Gates {
   withFreshBase(c: Client, floor: Floor | Floor[], go: () => void): void;
   /** Runs `go` with how the office acts on GitHub for `c`: as them, or as itself (no account, or an admin's choice). */
   withGitHub(c: Client, go: (as: GhAs | undefined) => void, refused?: (why: string) => void): void;
-  /** Needs a Claude sign-in of its own when the worker it starts runs Claude. */
-  claudeFor(provider: string | undefined): SignInKind | undefined;
+  /** The sign-in a worker on `provider` needs from whoever starts it (Claude, Kimi), when it needs one. */
+  signInFor(provider: string | undefined): SignInKind | undefined;
 }
 
 export type Ctx = Core & BuildingServices & FloorsOpen & LateServices & Messaging & FloorHelpers & People & Navigation & Gates;

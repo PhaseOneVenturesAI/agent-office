@@ -20,7 +20,7 @@ export const queueHandlers = {
     const model = msg.model === undefined ? undefined : str(msg.model, OPEN_CODE_MODEL_MAX + 1);
     const effort = isAgentEffort(msg.effort) ? msg.effort : undefined;
     // Its worker runs on the sign-ins of whoever queued it, whenever it gets a desk.
-    ctx.withSignIn(c, ctx.claudeFor(msg.provider ?? floor.workers.officeDefault.provider), () => {
+    ctx.withSignIn(c, ctx.signInFor(msg.provider ?? floor.workers.officeDefault.provider), () => {
       const err = floor.queue.add(str(msg.prompt, 20000), who, str(msg.title, 200), issue, msg.provider, model, effort, c.accountId);
       if (err) ctx.warn(c, err);
       else ctx.toastFloor(floor, `📋 ${who} queued ${issue !== undefined ? `issue #${issue}` : 'a task'}`);

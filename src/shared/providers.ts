@@ -4,7 +4,7 @@
 //
 // Browser-safe: no node imports, the hire dialog reads this too.
 
-export const AGENT_PROVIDERS = ['claude', 'opencode', 'codex', 'grok', 'muse', 'dsh', 'pi', 'cursor', 'custom'] as const;
+export const AGENT_PROVIDERS = ['claude', 'kimi', 'opencode', 'codex', 'grok', 'muse', 'dsh', 'pi', 'cursor', 'custom'] as const;
 
 export type AgentProvider = (typeof AGENT_PROVIDERS)[number];
 
@@ -68,6 +68,9 @@ export const CODEX_MODEL_MAX = 128;
  */
 export const DSH_MODEL_MAX = 256;
 
+/** Kimi model ids come from its ACP catalog (`kimi-code/kimi-for-coding`): bounded like DSH's. */
+export const KIMI_MODEL_MAX = 256;
+
 /** OpenCode model ids are argv values, so reject anything that could be ambiguous or unsafe. */
 export function isValidOpenCodeModel(value: unknown): value is string {
   if (typeof value !== 'string' || value.length === 0 || value.length > OPEN_CODE_MODEL_MAX) return false;
@@ -120,6 +123,12 @@ export function isValidCursorModel(value: unknown): value is string {
 export function isValidDshModel(value: unknown): value is string {
   if (typeof value !== 'string' || value.length === 0 || value.length > DSH_MODEL_MAX) return false;
   return !/[\p{Cc}\p{Cf}]/u.test(value);
+}
+
+/** Kimi catalog ids are `kimi-code/<model>`; like DSH's, they resolve over ACP, so only bounded here. */
+export function isValidKimiModel(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > KIMI_MODEL_MAX) return false;
+  return !/[\s\p{Cc}\p{Cf}]/u.test(value);
 }
 
 /** One model a provider offers, for the hire dialog: a fixed one, or one its own CLI lists (see server/models.ts). */
@@ -198,6 +207,23 @@ export const PROVIDER_META: Record<AgentProvider, ProviderMeta> = {
     },
     takesEffort: true,
     usage: { tracked: true, note: 'Office usage and budget track Claude Code.' },
+  },
+  kimi: {
+    label: 'Kimi',
+    name: 'Kimi',
+    bin: 'kimi',
+    validModel: isValidKimiModel,
+    invalidModel: 'Invalid Kimi model (expected a catalog id such as kimi-code/kimi-for-coding, up to 256 characters)',
+    models: {
+      pick: 'typed',
+      unset: 'Default (Kimi settings)',
+      max: KIMI_MODEL_MAX,
+      hint: 'Optional model id from Kimi\u2019s catalog (for example kimi-code/kimi-for-coding or kimi-code/k3.1-pro), and thinking effort; leave empty for your account\u2019s default.',
+      invalid: 'Use a Kimi catalog model id without whitespace or control characters (up to 256 characters).',
+    },
+    takesEffort: true,
+    effortLabel: 'Thinking',
+    usage: { reports: true, waiting: 'waiting for first report', note: 'Kimi reports context usage over ACP after its first turn; cost may be unavailable. Workers run on the sign-in of whoever hired them.' },
   },
   opencode: {
     label: 'OpenCode',

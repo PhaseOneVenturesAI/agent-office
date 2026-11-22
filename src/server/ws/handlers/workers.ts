@@ -45,7 +45,7 @@ export const workerHandlers = {
     };
     // Every project it gets a worktree of starts from what's on GitHub.
     const fresh = [floor, ...repos.map((x) => ctx.floors.get(x.floor)!)];
-    ctx.withSignIn(c, kind === 'agent' ? ctx.claudeFor(msg.provider ?? floor.workers.officeDefault.provider) : undefined, () => (msg.worktree === true ? ctx.withFreshBase(c, fresh, hire) : hire()));
+    ctx.withSignIn(c, kind === 'agent' ? ctx.signInFor(msg.provider ?? floor.workers.officeDefault.provider) : undefined, () => (msg.worktree === true ? ctx.withFreshBase(c, fresh, hire) : hire()));
   },
   'worker.resume'(ctx, c, msg) {
     const w = workerOf(ctx, msg.workerId);
@@ -131,7 +131,7 @@ export const workerHandlers = {
     const deskId = str(msg.deskId, 32);
     // Nobody there yet: whoever asks first hires it, on their own sign-ins.
     const hires = !floor.workers.deskOccupied(deskId);
-    ctx.withSignIn(c, hires ? ctx.claudeFor(floor.workers.officeDefault.provider) : undefined, () => {
+    ctx.withSignIn(c, hires ? ctx.signInFor(floor.workers.officeDefault.provider) : undefined, () => {
       const r = floor.workers.station(deskId, who, str(msg.prompt, 20000), c.accountId);
       if (typeof r === 'string') ctx.warn(c, r);
       else if (r.hired) ctx.toastFloor(floor, `${who} asked the ${r.info.name} something`);

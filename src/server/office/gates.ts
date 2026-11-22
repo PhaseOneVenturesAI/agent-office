@@ -1,6 +1,7 @@
 import { WebSocket } from 'ws';
 import type { GhAs } from '../signins.js';
 import type { Floor } from '../floor.js';
+import { providerAdapter } from '../providers/index.js';
 import type { SignInKind } from '../../shared/protocol.js';
 import type { Ctx, Gates } from './context.js';
 import type { Client } from './client.js';
@@ -27,7 +28,7 @@ export function gates(ctx: Ctx): Gates {
   const withSignIn = (c: Client, which: SignInKind | undefined, go: () => void, refused?: (why: string) => void) => {
     const { signins } = ctx;
     const id = c.accountId;
-    const ready = (a: string) => (which === 'claude' ? signins.claudeReady(a) : signins.githubReady(a));
+    const ready = (a: string) => signins.ready(a, which ?? 'claude');
     if (!which || !id || ready(id)) return go();
     void signins.look(id, true).then(() => {
       if (c.out || c.ws.readyState !== WebSocket.OPEN) return;
@@ -65,8 +66,8 @@ export function gates(ctx: Ctx): Gates {
       },
       refused,
     );
-  /** Needs a Claude sign-in of its own when the worker it starts runs Claude. */
-  const claudeFor = (provider: string | undefined): SignInKind | undefined => (provider === 'claude' ? 'claude' : undefined);
+  /** The sign-in a worker on `provider` needs from whoever starts it (Claude, Kimi), when it needs one. */
+  const signInFor = (provider: string | undefined): SignInKind | undefined => providerAdapter(provider)?.signIn;
 
-  return { takeIssue, withSignIn, withFreshBase, withGitHub, claudeFor };
+  return { takeIssue, withSignIn, withFreshBase, withGitHub, signInFor };
 }

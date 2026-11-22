@@ -154,7 +154,7 @@ export function permissionChoice(line: string, options: DshPermissionOption[]): 
 }
 
 /** A one-line notice from the office itself, rather than from the model. */
-function notice(kind: 'info' | 'warn' | 'bad' | 'quiet', text: string): string {
+export function notice(kind: 'info' | 'warn' | 'bad' | 'quiet', text: string): string {
   const glyph = kind === 'bad' ? '✖' : kind === 'warn' ? '▲' : kind === 'quiet' ? '·' : '◆';
   const paint = kind === 'bad' ? V.bad : kind === 'warn' ? V.warn : kind === 'quiet' ? V.muted : V.brand;
   const body = kind === 'quiet' ? V.muted : paint;
@@ -191,7 +191,7 @@ export function renderPermission(params: unknown, options: DshPermissionOption[]
  * The choice the harness's Enter key means: allow once, and only that. A request with no one-shot
  * allow (only "always", say) needs a number typed, so a stray Enter never grants more than one call.
  */
-function allowOption(options: DshPermissionOption[]): DshPermissionOption | undefined {
+export function allowOption(options: DshPermissionOption[]): DshPermissionOption | undefined {
   return options.find((option) => option.once && /allow|approve|accept/.test(option.kind));
 }
 
@@ -199,7 +199,7 @@ function allowOption(options: DshPermissionOption[]): DshPermissionOption | unde
 const DETAIL_KEYS = ['command', 'path', 'file_path', 'query', 'pattern', 'url', 'description'];
 
 /** The choice its Escape key means: reject, if the tool offers one. */
-function rejectOption(options: DshPermissionOption[]): DshPermissionOption | undefined {
+export function rejectOption(options: DshPermissionOption[]): DshPermissionOption | undefined {
   return options.find((option) => /reject|cancel|deny/.test(option.kind));
 }
 
