@@ -63,6 +63,8 @@ export interface Config {
   realTimeSky: boolean;
   /** Cloudflare Access signs people in (see server/cloudflare.ts): the office password can be off. */
   cfAccess?: { team: string; aud: string; admins: string[] };
+  /** The Deploy board's read-only view of the account's Pages and Workers projects (see server/deploys.ts). */
+  cfDeploys?: { accountId: string; apiToken: string };
 }
 
 export interface RTCIceServerLike {
@@ -168,6 +170,11 @@ Options:
                           Needs --cf-access-aud. The verified email gets an account
                           (no office password); --cf-access-admins lists the emails
                           that become admins (env ..._AUD, ..._ADMINS, comma-separated)
+      --cf-account-id <id>
+                          The Deploy board lists this Cloudflare account's Pages
+                          and Workers projects (env AGENT_OFFICE_CF_ACCOUNT_ID).
+                          Needs --cf-api-token (env AGENT_OFFICE_CF_API_TOKEN): a
+                          read-only token stays on the server.
   -h, --help              Show this help
 
 Started in a terminal, the office opens in your browser already signed in, with
@@ -251,6 +258,8 @@ export function loadConfig(argv: string[]): Config {
   let cfAccess = process.env.AGENT_OFFICE_CF_ACCESS || '';
   let cfAccessAud = process.env.AGENT_OFFICE_CF_ACCESS_AUD || '';
   let cfAccessAdmins = process.env.AGENT_OFFICE_CF_ACCESS_ADMINS || '';
+  let cfAccountId = process.env.AGENT_OFFICE_CF_ACCOUNT_ID || '';
+  let cfApiToken = process.env.AGENT_OFFICE_CF_API_TOKEN || '';
   const iceServers: RTCIceServerLike[] = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
   // A container can't take --turn (deploy/container/compose.yaml), so the TURN servers come from the environment too.
   for (const url of (process.env.AGENT_OFFICE_TURN ?? '').split(/\s+/).filter(Boolean)) iceServers.push(parseTurn(url));
@@ -345,6 +354,12 @@ export function loadConfig(argv: string[]): Config {
       case '--cf-access-admins':
         cfAccessAdmins = takeValue(argv, i++, a);
         break;
+      case '--cf-account-id':
+        cfAccountId = takeValue(argv, i++, a);
+        break;
+      case '--cf-api-token':
+        cfApiToken = takeValue(argv, i++, a);
+        break;
       default:
         if (a.startsWith('-')) {
           console.error(`agent-office: unknown option ${a}\n`);
@@ -394,6 +409,14 @@ export function loadConfig(argv: string[]): Config {
   const cf = cfAccess
     ? { team: cfAccess, aud: cfAccessAud.trim(), admins: cfAccessAdmins.split(/[,\s]+/).filter(Boolean).map((e) => e.toLowerCase()) }
     : undefined;
+  const cfDeploys =
+    cfAccountId.trim() && cfApiToken.trim()
+      ? { accountId: cfAccountId.trim(), apiToken: cfApiToken.trim() }
+      : undefined;
+  if ((cfAccountId.trim() || cfApiToken.trim()) && !cfDeploys) {
+    console.error('agent-office: --cf-account-id and --cf-api-token go together (the Deploy board is off without both)');
+    process.exit(2);
+  }
 
   const dataDir = path.join(dir, '.agent-office');
   mkdirSync(dataDir, { recursive: true, mode: 0o700 });
@@ -492,6 +515,7 @@ export function loadConfig(argv: string[]): Config {
     weather: (weather as Weather) || undefined,
     realTimeSky,
     cfAccess: cf,
+    cfDeploys,
   };
 }
 

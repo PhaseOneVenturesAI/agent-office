@@ -4,6 +4,7 @@ import { childEnv, resolveCommand } from '../workers.js';
 import { SignIns } from '../signins.js';
 import { Harness, harnessRoot } from '../harness.js';
 import { Reviews } from '../reviews.js';
+import { Deploys } from '../deploys.js';
 import { CloudflareAccess } from '../cloudflare.js';
 import { agentProviders, configuredProvider } from '../agents.js';
 import { Tailnet } from '../tailnet.js';
@@ -87,6 +88,11 @@ export function createServices(ctx: Ctx): BuildingServices {
   // provider starts from what the verdicts taught (see reviews.ts).
   const reviews = new Reviews(cfg.dataDir, harness.root, () => ctx.broadcast({ t: 'reviews', state: reviews.state() }));
 
+  // The Deploy board: the office's Cloudflare Pages and Workers projects (☰ → 🚀 Deploy board),
+  // any of which can be staged in the Review Room in one click. Without credentials the board
+  // explains how to connect them; the token never leaves the server (see deploys.ts).
+  const deploys = new Deploys(cfg.cfDeploys, () => ctx.broadcast({ t: 'deploys', state: deploys.state() }));
+
   // Behind Cloudflare Access, its edge login is the front door (see cloudflare.ts): no office
   // password is needed, and each verified email gets an account of its own.
   const cloudflare = cfg.cfAccess ? new CloudflareAccess(cfg.cfAccess.team, cfg.cfAccess.aud, new Set(cfg.cfAccess.admins)) : undefined;
@@ -153,7 +159,7 @@ export function createServices(ctx: Ctx): BuildingServices {
     });
   };
 
-  return { sky, themes, maps, prompts, leaveOnMerge, ledger, signins, harness, reviews, cloudflare, limits, accountLimits, webhook, machine, limitsOf, pumpQueues };
+  return { sky, themes, maps, prompts, leaveOnMerge, ledger, signins, harness, reviews, deploys, cloudflare, limits, accountLimits, webhook, machine, limitsOf, pumpQueues };
 }
 
 /** What's made once the floors are open: the SSH team, the tailnet, workers' web servers, pictures and upgrades. */

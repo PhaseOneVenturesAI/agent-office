@@ -100,6 +100,7 @@ export function onConnection(ctx: Ctx, ws: WebSocket, url: URL, session: Session
     void signins.look(account.id);
   }
   sendTo(client, { t: 'reviews', state: reviews.state() });
+  sendTo(client, { t: 'deploys', state: ctx.deploys.state() });
 
   ws.on('message', (raw) => {
     let msg: ClientMsg;

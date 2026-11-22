@@ -39,6 +39,8 @@ agent-office [dir] [options]
       --cf-access <team>  Cloudflare Access is the sign-in: <team>.cloudflareaccess.com (env AGENT_OFFICE_CF_ACCESS)
       --cf-access-aud <aud>  The application's AUD tag (env AGENT_OFFICE_CF_ACCESS_AUD)
       --cf-access-admins <emails>  Comma-separated emails whose accounts are admins (env AGENT_OFFICE_CF_ACCESS_ADMINS)
+      --cf-account-id <id>  The Deploy board's Cloudflare account (env AGENT_OFFICE_CF_ACCOUNT_ID)
+      --cf-api-token <token>  A read-only API token for it; never leaves the server (env AGENT_OFFICE_CF_API_TOKEN)
 
   With --cf-access set, the login page signs people in with the email Cloudflare's
   edge has verified (its JWT is checked against the team's published keys, its

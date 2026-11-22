@@ -8,6 +8,7 @@ import type { Accounts } from '../accounts.js';
 import type { SignIns, GhAs } from '../signins.js';
 import type { Harness } from '../harness.js';
 import type { Reviews } from '../reviews.js';
+import type { Deploys } from '../deploys.js';
 import type { CloudflareAccess } from '../cloudflare.js';
 import type { ModelCatalogue } from '../models.js';
 import type { Tailnet } from '../tailnet.js';
@@ -70,6 +71,8 @@ export interface BuildingServices {
   harness: Harness;
   /** Staged deliverables waiting for a human verdict (☰ → 🎬 Review room). */
   reviews: Reviews;
+  /** The office's Cloudflare deployments (☰ → 🚀 Deploy board). */
+  deploys: Deploys;
   /** Cloudflare Access sign-in, when the office runs behind it (see server/cloudflare.ts). */
   cloudflare?: CloudflareAccess;
   /** The office's own Claude plan limits. */

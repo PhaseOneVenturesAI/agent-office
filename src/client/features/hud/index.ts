@@ -13,6 +13,7 @@ import { saveSettings, store } from '../../state';
 import { openAccounts } from '../../ui/accounts';
 import { openBoard } from '../../ui/boards';
 import { openCharacter } from '../../ui/character';
+import { openDeploys } from '../../ui/deploys';
 import { $ } from '../../ui/dom';
 import { toggleFloorMenu } from '../../ui/floormenu';
 import { openHelp } from '../../ui/hud';
@@ -95,6 +96,7 @@ export function installHud(ctx: Ctx, core: CoreState, parts: HudParts) {
       { id: 'accounts', icon: '🔑', label: 'Accounts', section: 'Together', shown: () => store.me.admin, title: () => 'Invite people, see who has an account, revoke them', run: () => openAccounts(net) },
       { id: 'signins', icon: '🔐', label: 'Your sign-ins', section: 'Together', shown: () => !!store.me.account, tone: () => (needsSigningIn() ? 'danger' : undefined), status: needsSigningIn, chip: () => 'Sign in to Claude', title: () => 'The Claude plan and GitHub account your workers run on: your own', run: () => openSignIns(net) },
       { id: 'harness', icon: '🧰', label: 'Harness', section: 'Office', shown: () => store.me.admin, title: () => 'The instructions and skills every worker runs with: view, edit and push them', run: () => openHarness(net) },
+      { id: 'deploys', icon: '🚀', label: 'Deploy board', section: 'Office', title: () => 'The Cloudflare Pages and Workers projects, each one click from staging it for review', run: () => openDeploys(net) },
       {
         id: 'inbox',
         icon: '📥',

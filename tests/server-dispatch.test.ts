@@ -333,6 +333,7 @@ test('the toys on a floor, and letting go of them on leaving the floor or the of
   await b.take('welcome');
   await a.take('peer.join');
   await b.take('reviews');
+  await b.take('deploys');
 
   a.send({ t: 'jukebox.skip' });
   assert.equal((await b.take('jukebox')).state.on, true);
