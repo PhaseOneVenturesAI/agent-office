@@ -18,7 +18,7 @@ interface Certs {
 }
 
 /** The JSON body's text, or nothing. Answers are small; anything bigger isn't Cloudflare's. */
-async function fetchJson(url: string): Promise<unknown> {
+async function defaultFetchJson(url: string): Promise<unknown> {
   const r = await fetch(url, { signal: AbortSignal.timeout(5000) });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
@@ -35,7 +35,7 @@ export class CloudflareAccess {
     /** Emails whose accounts are admins (cased any way). */
     admins: Set<string>,
     /** Overridable for tests. */
-    private fetchJson: (url: string) => Promise<unknown> = fetchJson,
+    private fetchJson: (url: string) => Promise<unknown> = defaultFetchJson,
   ) {
     this.admins = new Set([...admins].map((e) => e.toLowerCase()));
   }
