@@ -21,6 +21,7 @@ import { openServices } from '../../ui/services';
 import { openSettings, type SettingsPane } from '../../ui/settings';
 import { needsSigningIn, openSignIns } from '../../ui/signins';
 import { openHarness } from '../../ui/harness';
+import { openInbox } from '../../ui/inbox';
 import { openReviews } from '../../ui/reviews';
 import { openTeam } from '../../ui/team';
 import { openUpgrade } from '../../ui/upgrade';
@@ -94,6 +95,21 @@ export function installHud(ctx: Ctx, core: CoreState, parts: HudParts) {
       { id: 'accounts', icon: '🔑', label: 'Accounts', section: 'Together', shown: () => store.me.admin, title: () => 'Invite people, see who has an account, revoke them', run: () => openAccounts(net) },
       { id: 'signins', icon: '🔐', label: 'Your sign-ins', section: 'Together', shown: () => !!store.me.account, tone: () => (needsSigningIn() ? 'danger' : undefined), status: needsSigningIn, chip: () => 'Sign in to Claude', title: () => 'The Claude plan and GitHub account your workers run on: your own', run: () => openSignIns(net) },
       { id: 'harness', icon: '🧰', label: 'Harness', section: 'Office', shown: () => store.me.admin, title: () => 'The instructions and skills every worker runs with: view, edit and push them', run: () => openHarness(net) },
+      {
+        id: 'inbox',
+        icon: '📥',
+        label: 'Needs me',
+        section: 'Open',
+        count: () => waitingNow().filter((w) => w.status === 'needs_input').length + store.reviews.pending,
+        tone: () => (waitingNow().some((w) => w.status === 'needs_input') || store.reviews.pending > 0 ? 'danger' : undefined),
+        title: () => 'Everything waiting on you, each card one click from the thing itself: workers with a question, finished takes, staged reviews',
+        run: () =>
+          openInbox({
+            answerWorker: waiting.answerWorker,
+            ride: (f) => travel.ride(f),
+            openReviews: () => openReviews(net),
+          }),
+      },
       {
         id: 'reviews',
         icon: '🎬',
