@@ -1,0 +1,2 @@
+/* The office's harness (☰ → 🧰 Harness): the prompts layout, with a root note in the footer. */
+.harness-note { font-size: 12px; font-weight: 600; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -1,6 +1,8 @@
 import path from 'node:path';
+import os from 'node:os';
 import { childEnv, resolveCommand } from '../workers.js';
 import { SignIns } from '../signins.js';
+import { Harness, harnessRoot } from '../harness.js';
 import { agentProviders, configuredProvider } from '../agents.js';
 import { Tailnet } from '../tailnet.js';
 import { Team } from '../team.js';
@@ -64,6 +66,13 @@ export function createServices(ctx: Ctx): BuildingServices {
   // Accounts revoked from the terminal while the office was closed leave their sign-ins behind.
   if (!accounts.unreadableFile) signins.prune(new Set(accounts.state(new Set()).accounts.map((a) => a.id)));
 
+  // The instructions and skills every worker runs with (☰ → 🧰 Harness): one folder on this
+  // machine, edited from the office and pushed into every account's agent home.
+  const harness = new Harness(cfg.dataDir, harnessRoot(cfg.dataDir), () => {
+    const env = childEnv();
+    return env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude');
+  }, () => ctx.broadcast({ t: 'harness', state: harness.state() }));
+
   // The Claude plan's 5-hour and weekly limits, for the meter under the workers: the office's own
   // plan, and each account's own once it runs on a Claude sign-in of its own.
   const limits = new PlanLimitsReader(
@@ -126,7 +135,7 @@ export function createServices(ctx: Ctx): BuildingServices {
     });
   };
 
-  return { sky, themes, maps, prompts, leaveOnMerge, ledger, signins, limits, accountLimits, webhook, machine, limitsOf, pumpQueues };
+  return { sky, themes, maps, prompts, leaveOnMerge, ledger, signins, harness, limits, accountLimits, webhook, machine, limitsOf, pumpQueues };
 }
 
 /** What's made once the floors are open: the SSH team, the tailnet, workers' web servers, pictures and upgrades. */
