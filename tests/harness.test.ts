@@ -6,11 +6,11 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Harness, harnessRoot } from '../src/server/harness.js';
 
-function setup(): { dataDir: string; root: string; office: string; harness: Harness; cleanup: () => void } {
+function setup(): { dataDir: string; root: string; office: { claude: string; kimi: string; codex: string }; harness: Harness; cleanup: () => void } {
   const base = mkdtempSync(path.join(tmpdir(), 'agent-office-harness-'));
   const dataDir = path.join(base, 'data');
   const root = path.join(base, 'harness');
-  const office = path.join(base, 'office-claude');
+  const office = { claude: path.join(base, 'office-claude'), kimi: path.join(base, 'office-kimi'), codex: path.join(base, 'office-codex') };
   mkdirSync(root, { recursive: true });
   mkdirSync(path.join(dataDir, 'homes', 'acct01', 'claude'), { recursive: true });
   const harness = new Harness(dataDir, root, () => office, () => {});
@@ -60,24 +60,71 @@ test('writes keep a .bak, refuse escapes, and the backup stays out of the list',
   }
 });
 
-test('apply pushes CLAUDE.md and skills into the office and every account home', () => {
+test('apply pushes CLAUDE.md, AGENTS.md and skills into the office and every account home', () => {
   const { dataDir, root, office, harness, cleanup } = setup();
   try {
     writeFileSync(path.join(root, 'CLAUDE.md'), '# taste\n');
+    writeFileSync(path.join(root, 'WORKFLOW.md'), '# workflow\n');
     mkdirSync(path.join(root, 'skills', 'brand-gate'), { recursive: true });
     writeFileSync(path.join(root, 'skills', 'brand-gate', 'SKILL.md'), 'gate\n');
     const line = harness.apply('Jonathan');
-    assert.match(line, /2 agent homes/);
-    for (const dir of [office, path.join(dataDir, 'homes', 'acct01', 'claude')]) {
+    assert.match(line, /2 agent homes.*Claude, Kimi and Codex/);
+    // Claude homes get CLAUDE.md and the skills.
+    for (const dir of [office.claude, path.join(dataDir, 'homes', 'acct01', 'claude')]) {
       assert.equal(readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8'), '# taste\n');
+      assert.equal(readFileSync(path.join(dir, 'skills', 'brand-gate', 'SKILL.md'), 'utf8'), 'gate\n');
+    }
+    // Kimi and Codex homes get the same instructions as one AGENTS.md, and the skills.
+    for (const dir of [office.kimi, office.codex, path.join(dataDir, 'homes', 'acct01', 'kimi'), path.join(dataDir, 'homes', 'acct01', 'codex')]) {
+      const agents = readFileSync(path.join(dir, 'AGENTS.md'), 'utf8');
+      assert.match(agents, /<!-- Harness: CLAUDE\.md -->\n\n# taste/);
+      assert.match(agents, /<!-- Harness: WORKFLOW\.md -->\n\n# workflow/);
       assert.equal(readFileSync(path.join(dir, 'skills', 'brand-gate', 'SKILL.md'), 'utf8'), 'gate\n');
     }
     const state = harness.state();
     assert.equal(state.applied?.by, 'Jonathan');
-    assert.equal(state.applied?.homes, 2);
+    // Six dirs: the office's three plus the account's three.
+    assert.equal(state.applied?.homes, 6);
     // And the record survives a restart of the office.
     const again = new Harness(dataDir, root, () => office, () => {});
-    assert.equal(again.state().applied?.homes, 2);
+    assert.equal(again.state().applied?.homes, 6);
+  } finally {
+    cleanup();
+  }
+});
+
+test('an account that runs its own harness is skipped by apply, and rejoins when back', () => {
+  const { dataDir, root, office, harness, cleanup } = setup();
+  try {
+    writeFileSync(path.join(root, 'CLAUDE.md'), '# taste\n');
+    assert.equal(harness.optOut('acct01'), false);
+    assert.equal(harness.setOptOut('acct01', true), undefined);
+    assert.equal(harness.optOut('acct01'), true);
+    const line = harness.apply('Jonathan');
+    assert.match(line, /1 agent home.*1 running their own/);
+    const home = path.join(dataDir, 'homes', 'acct01');
+    assert.equal(existsSync(path.join(home, 'claude', 'CLAUDE.md')), false);
+    assert.equal(existsSync(path.join(home, 'codex', 'AGENTS.md')), false);
+    assert.equal(readFileSync(path.join(office.claude, 'CLAUDE.md'), 'utf8'), '# taste\n');
+    assert.equal(harness.setOptOut('acct01', false), undefined);
+    assert.equal(harness.optOut('acct01'), false);
+    harness.apply('Jonathan');
+    assert.equal(readFileSync(path.join(home, 'claude', 'CLAUDE.md'), 'utf8'), '# taste\n');
+  } finally {
+    cleanup();
+  }
+});
+
+test('a pushed AGENTS.md keeps what it replaced as .bak', () => {
+  const { dataDir, root, harness, cleanup } = setup();
+  try {
+    writeFileSync(path.join(root, 'CLAUDE.md'), '# v1\n');
+    harness.apply('Jonathan');
+    writeFileSync(path.join(root, 'CLAUDE.md'), '# v2\n');
+    harness.apply('Jonathan');
+    const agents = path.join(dataDir, 'homes', 'acct01', 'codex', 'AGENTS.md');
+    assert.match(readFileSync(`${agents}.bak`, 'utf8'), /# v1/);
+    assert.match(readFileSync(agents, 'utf8'), /# v2/);
   } finally {
     cleanup();
   }

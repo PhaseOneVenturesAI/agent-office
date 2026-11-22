@@ -1,5 +1,5 @@
 import './signins.css';
-import type { SignInKind, SignInState } from '../../shared/protocol';
+import type { ServerMsg, SignInKind, SignInState } from '../../shared/protocol';
 import type { Net } from '../net';
 import { store } from '../state';
 import { h, openModal, type Modal } from './dom';
@@ -22,6 +22,19 @@ export function openSignIns(net: Net, why?: string) {
   const close = h('button.btn.close', { 'aria-label': 'Close' }, '✕');
   const banner = h('p.team-status', { hidden: true });
   const cards = h('div.signins');
+  // The office harness row: pushed into your agent homes unless you run your own.
+  let harnessOut = false;
+  const harnessToggle = h('button.btn', { type: 'button' }, '…');
+  const harnessRow = h('p.note.harness-row', { hidden: true }, h('span.grow'));
+  harnessToggle.addEventListener('click', () => net.send({ t: 'harness.opt', out: !harnessOut }));
+  const paintHarness = () => {
+    harnessRow.hidden = !store.me.account;
+    harnessRow.firstChild!.textContent = harnessOut
+      ? '🧰 Office harness: skipped for your agents — you run your own. '
+      : '🧰 Office harness: pushed to your Claude, Kimi and Codex. ';
+    harnessToggle.textContent = harnessOut ? 'Use the office’s' : 'Run my own instead';
+  };
+  harnessRow.append(harnessToggle);
   const el = h(
     'div.modal',
     { role: 'dialog', 'aria-label': 'Your sign-ins', style: 'width:min(640px,100%)' },
@@ -33,6 +46,7 @@ export function openSignIns(net: Net, why?: string) {
       banner,
       cards,
       h('p.note', {}, 'Or open a 🐚 shell at any desk: it runs as you, so ', h('code', {}, 'claude auth login'), ', ', h('code', {}, 'kimi login'), ', ', h('code', {}, 'codex login'), ' and ', h('code', {}, 'gh auth login'), ' typed there sign you in too.'),
+      harnessRow,
     ),
   );
 
@@ -162,6 +176,14 @@ export function openSignIns(net: Net, why?: string) {
   };
 
   const unsub = store.on('signins', render);
+  const onMsg = (msg: ServerMsg) => {
+    if (!el.isConnected) return;
+    if (msg.t === 'harness.opt') {
+      harnessOut = msg.out;
+      paintHarness();
+    }
+  };
+  net.onMessage(onMsg);
   const modal = openModal(el, {
     onClose: () => {
       unsub();
@@ -172,7 +194,9 @@ export function openSignIns(net: Net, why?: string) {
   open = { modal, say };
   say(why);
   render();
+  paintHarness();
   net.send({ t: 'signins.get' });
+  net.send({ t: 'harness.optget' });
 }
 
 /** Whether the panel should greet someone who just came in: their Claude sign-in still to do. */

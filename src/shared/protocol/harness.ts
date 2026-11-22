@@ -26,11 +26,17 @@ export type HarnessClientMsg =
   | { t: 'harness.read'; path: string }
   /** Replace one file's text (admins only; the old text is kept as <file>.bak). */
   | { t: 'harness.write'; path: string; text: string }
-  /** Push CLAUDE.md and skills/ into the office's and every account's agent homes (admins only). */
-  | { t: 'harness.apply' };
+  /** Push the harness into the office's and every account's agent homes (admins only). */
+  | { t: 'harness.apply' }
+  /** Whether pushes skip you: you run a harness of your own (accounts only). */
+  | { t: 'harness.optget' }
+  /** Run your own harness (true) or come back to the office's (false). */
+  | { t: 'harness.opt'; out: boolean };
 
 export type HarnessServerMsg =
   /** The list of files, whenever it changes and when asked. */
   | { t: 'harness'; state: HarnessState }
   /** One file's text, as asked. */
-  | { t: 'harness.file'; path: string; text?: string; error?: string };
+  | { t: 'harness.file'; path: string; text?: string; error?: string }
+  /** Whether harness pushes skip you, when asked and whenever you change it. */
+  | { t: 'harness.opt'; out: boolean };
