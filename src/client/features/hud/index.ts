@@ -22,6 +22,7 @@ import { openServices } from '../../ui/services';
 import { openSettings, type SettingsPane } from '../../ui/settings';
 import { needsSigningIn, openSignIns } from '../../ui/signins';
 import { openHarness } from '../../ui/harness';
+import { openHygiene } from '../../ui/hygiene';
 import { openInbox } from '../../ui/inbox';
 import { openReviews } from '../../ui/reviews';
 import { openTeam } from '../../ui/team';
@@ -97,6 +98,16 @@ export function installHud(ctx: Ctx, core: CoreState, parts: HudParts) {
       { id: 'signins', icon: '🔐', label: 'Your sign-ins', section: 'Together', shown: () => !!store.me.account, tone: () => (needsSigningIn() ? 'danger' : undefined), status: needsSigningIn, chip: () => 'Sign in to Claude', title: () => 'The Claude plan and GitHub account your workers run on: your own', run: () => openSignIns(net) },
       { id: 'harness', icon: '🧰', label: 'Harness', section: 'Office', shown: () => store.me.admin, title: () => 'The instructions and skills every worker runs with: view, edit and push them', run: () => openHarness(net) },
       { id: 'deploys', icon: '🚀', label: 'Deploy board', section: 'Office', title: () => 'The Cloudflare Pages and Workers projects, each one click from staging it for review', run: () => openDeploys(net) },
+      {
+        id: 'hygiene',
+        icon: '🧹',
+        label: 'Hygiene',
+        section: 'Office',
+        count: () => store.hygiene.findings,
+        tone: () => (store.hygiene.floors.some((f) => f.unpushed.length) ? 'danger' : undefined),
+        title: () => 'Work at risk and clutter: commits no remote has, stale worktrees, merged workers still at desks — with one-click cleanup',
+        run: () => openHygiene(net),
+      },
       {
         id: 'inbox',
         icon: '📥',

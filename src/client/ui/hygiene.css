@@ -1,0 +1,100 @@
+/* 🧹 Hygiene */
+.modal.hygiene {
+  width: min(620px, 94vw);
+  max-height: 84vh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.modal.hygiene .hyg-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modal.hygiene .hyg-status {
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+.modal.hygiene .grow {
+  flex: 1;
+}
+
+.modal.hygiene .hyg-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+.modal.hygiene .hyg-floor {
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.modal.hygiene .hyg-floor h3 {
+  margin: 0;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modal.hygiene .hyg-count {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #e5534b 22%, transparent);
+  color: #e5534b;
+}
+
+.modal.hygiene .hyg-clean {
+  font-size: 12px;
+  color: #2fbf71;
+  font-weight: 500;
+}
+
+.modal.hygiene .hyg-floor h4 {
+  margin: 6px 0 0;
+  font-size: 12px;
+  opacity: 0.8;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modal.hygiene .hyg-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  padding: 3px 0 3px 4px;
+}
+
+.modal.hygiene .hyg-what {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modal.hygiene .hyg-warn {
+  margin: 0;
+  font-size: 12px;
+  color: #e5a54b;
+}
+
+.modal.hygiene .btn.small {
+  padding: 4px 10px;
+  font-size: 12px;
+  flex: none;
+}
+
+.modal.hygiene .btn.small:disabled {
+  opacity: 0.4;
+}

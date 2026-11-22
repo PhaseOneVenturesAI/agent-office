@@ -9,6 +9,7 @@ import type { SignIns, GhAs } from '../signins.js';
 import type { Harness } from '../harness.js';
 import type { Reviews } from '../reviews.js';
 import type { Deploys } from '../deploys.js';
+import type { Hygiene } from '../hygiene.js';
 import type { CloudflareAccess } from '../cloudflare.js';
 import type { ModelCatalogue } from '../models.js';
 import type { Tailnet } from '../tailnet.js';
@@ -73,6 +74,8 @@ export interface BuildingServices {
   reviews: Reviews;
   /** The office's Cloudflare deployments (☰ → 🚀 Deploy board). */
   deploys: Deploys;
+  /** The watchdog for unpushed work, stale worktrees and idle workers (☰ → 🧹 Hygiene). */
+  hygiene: Hygiene;
   /** Cloudflare Access sign-in, when the office runs behind it (see server/cloudflare.ts). */
   cloudflare?: CloudflareAccess;
   /** The office's own Claude plan limits. */

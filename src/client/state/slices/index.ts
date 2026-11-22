@@ -17,6 +17,7 @@ import { decor } from './decor';
 import { deploys } from './deploys';
 import { dog } from './dog';
 import { floorPlan } from './floor-plan';
+import { hygiene } from './hygiene';
 import { jail } from './jail';
 import { jukebox } from './jukebox';
 import { leaveOnMerge } from './leave-on-merge';
@@ -65,4 +66,5 @@ export const SLICES: readonly Slice[] = [
   signins,
   reviews,
   deploys,
+  hygiene,
 ];
