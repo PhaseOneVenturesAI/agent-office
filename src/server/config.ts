@@ -61,6 +61,8 @@ export interface Config {
   weather?: Weather;
   /** The sky keeps real time (a day a day), instead of a whole day and night every hour. */
   realTimeSky: boolean;
+  /** Cloudflare Access signs people in (see server/cloudflare.ts): the office password can be off. */
+  cfAccess?: { team: string; aud: string; admins: string[] };
 }
 
 export interface RTCIceServerLike {
@@ -161,6 +163,11 @@ Options:
                           it's night there, instead of a day and night every hour
                           (⚙️ Settings can switch it)
                           (env AGENT_OFFICE_SKY_CLOCK=real)
+      --cf-access <team>  Cloudflare Access signs people in: the team subdomain
+                          (<team>.cloudflareaccess.com, env AGENT_OFFICE_CF_ACCESS).
+                          Needs --cf-access-aud. The verified email gets an account
+                          (no office password); --cf-access-admins lists the emails
+                          that become admins (env ..._AUD, ..._ADMINS, comma-separated)
   -h, --help              Show this help
 
 Started in a terminal, the office opens in your browser already signed in, with
@@ -241,6 +248,9 @@ export function loadConfig(argv: string[]): Config {
   let city = process.env.AGENT_OFFICE_CITY || '';
   let weather = process.env.AGENT_OFFICE_WEATHER || '';
   let realTimeSky = process.env.AGENT_OFFICE_SKY_CLOCK === 'real';
+  let cfAccess = process.env.AGENT_OFFICE_CF_ACCESS || '';
+  let cfAccessAud = process.env.AGENT_OFFICE_CF_ACCESS_AUD || '';
+  let cfAccessAdmins = process.env.AGENT_OFFICE_CF_ACCESS_ADMINS || '';
   const iceServers: RTCIceServerLike[] = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
   // A container can't take --turn (deploy/container/compose.yaml), so the TURN servers come from the environment too.
   for (const url of (process.env.AGENT_OFFICE_TURN ?? '').split(/\s+/).filter(Boolean)) iceServers.push(parseTurn(url));
@@ -326,6 +336,15 @@ export function loadConfig(argv: string[]): Config {
       case '--real-time-sky':
         realTimeSky = true;
         break;
+      case '--cf-access':
+        cfAccess = takeValue(argv, i++, a);
+        break;
+      case '--cf-access-aud':
+        cfAccessAud = takeValue(argv, i++, a);
+        break;
+      case '--cf-access-admins':
+        cfAccessAdmins = takeValue(argv, i++, a);
+        break;
       default:
         if (a.startsWith('-')) {
           console.error(`agent-office: unknown option ${a}\n`);
@@ -366,6 +385,15 @@ export function loadConfig(argv: string[]): Config {
     console.error(`agent-office: --weather is one of ${WEATHERS.join(', ')}`);
     process.exit(2);
   }
+  // --cf-access phaseoneventures (or the whole team domain / URL), with the application's AUD tag.
+  cfAccess = cfAccess.trim().replace(/^https?:\/\//, '').replace(/\.cloudflareaccess\.com\/?.*$/, '');
+  if (cfAccess && !cfAccessAud.trim()) {
+    console.error("agent-office: --cf-access needs --cf-access-aud (the application's AUD tag, from its Access config)");
+    process.exit(2);
+  }
+  const cf = cfAccess
+    ? { team: cfAccess, aud: cfAccessAud.trim(), admins: cfAccessAdmins.split(/[,\s]+/).filter(Boolean).map((e) => e.toLowerCase()) }
+    : undefined;
 
   const dataDir = path.join(dir, '.agent-office');
   mkdirSync(dataDir, { recursive: true, mode: 0o700 });
@@ -463,6 +491,7 @@ export function loadConfig(argv: string[]): Config {
     city: city.trim() || undefined,
     weather: (weather as Weather) || undefined,
     realTimeSky,
+    cfAccess: cf,
   };
 }
 

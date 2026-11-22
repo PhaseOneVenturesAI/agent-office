@@ -3,6 +3,7 @@ import os from 'node:os';
 import { childEnv, resolveCommand } from '../workers.js';
 import { SignIns } from '../signins.js';
 import { Harness, harnessRoot } from '../harness.js';
+import { CloudflareAccess } from '../cloudflare.js';
 import { agentProviders, configuredProvider } from '../agents.js';
 import { Tailnet } from '../tailnet.js';
 import { Team } from '../team.js';
@@ -80,6 +81,10 @@ export function createServices(ctx: Ctx): BuildingServices {
     };
   }, () => ctx.broadcast({ t: 'harness', state: harness.state() }));
 
+  // Behind Cloudflare Access, its edge login is the front door (see cloudflare.ts): no office
+  // password is needed, and each verified email gets an account of its own.
+  const cloudflare = cfg.cfAccess ? new CloudflareAccess(cfg.cfAccess.team, cfg.cfAccess.aud, new Set(cfg.cfAccess.admins)) : undefined;
+
   // The Claude plan's 5-hour and weekly limits, for the meter under the workers: the office's own
   // plan, and each account's own once it runs on a Claude sign-in of its own.
   const limits = new PlanLimitsReader(
@@ -142,7 +147,7 @@ export function createServices(ctx: Ctx): BuildingServices {
     });
   };
 
-  return { sky, themes, maps, prompts, leaveOnMerge, ledger, signins, harness, limits, accountLimits, webhook, machine, limitsOf, pumpQueues };
+  return { sky, themes, maps, prompts, leaveOnMerge, ledger, signins, harness, cloudflare, limits, accountLimits, webhook, machine, limitsOf, pumpQueues };
 }
 
 /** What's made once the floors are open: the SSH team, the tailnet, workers' web servers, pictures and upgrades. */

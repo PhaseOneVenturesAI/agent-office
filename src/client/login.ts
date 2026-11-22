@@ -29,7 +29,18 @@ if (linkKey) {
 // Ask for a name once people have accounts; it's optional while the shared password still works.
 void fetch('/api/login', { cache: 'no-store' })
   .then((r) => r.json())
-  .then(({ accounts, shared }: { accounts: boolean; shared: boolean }) => {
+  .then(({ accounts, shared, cloudflare }: { accounts: boolean; shared: boolean; cloudflare?: boolean }) => {
+    // Behind Cloudflare Access, its login is the only one needed: trade the edge's session for the
+    // office's and go straight in (the password form stays as the way back when it fails).
+    if (cloudflare) {
+      sub.textContent = 'Signing you in with Cloudflare…';
+      void fetch('/api/cf-login', { method: 'POST' })
+        .then(async (res) => {
+          if (res.ok) return location.replace(NEXT);
+          sub.textContent = 'Knock knock. Who is it?';
+        })
+        .catch(() => void (sub.textContent = 'Knock knock. Who is it?'));
+    }
     if (!accounts && shared) return;
     nameRow.hidden = false;
     nameInput.required = !shared;

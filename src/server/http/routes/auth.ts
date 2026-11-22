@@ -47,7 +47,30 @@ export async function login(ctx: Ctx, req: http.IncomingMessage, res: http.Serve
   return send(res, 200, { ok: true }, signedIn(ctx, req));
 }
 /** Which fields the sign-in forms ask for. */
-export const loginOptions = (ctx: Ctx) => ({ accounts: ctx.accounts.any, shared: ctx.accounts.sharedPassword });
+export const loginOptions = (ctx: Ctx) => ({ accounts: ctx.accounts.any, shared: ctx.accounts.sharedPassword, ...(ctx.cloudflare ? { cloudflare: true } : {}) });
+
+/**
+ * Cloudflare Access signs someone in (POST /api/cf-login): the edge's JWT names their email, and
+ * their account is found or made for them. The first account ever, and every email on the admins
+ * list, comes in as an admin.
+ */
+export async function cfLogin(ctx: Ctx, req: http.IncomingMessage, res: http.ServerResponse) {
+  const { cloudflare, accounts, auth } = ctx;
+  if (!cloudflare) return send(res, 404, { error: 'This office does not sign in with Cloudflare' });
+  const ip = clientIp(req, ctx.cfg.trustProxy);
+  if (!auth.allowAttempt(ip)) return send(res, 429, { error: TOO_MANY_ATTEMPTS });
+  const email = await cloudflare.emailOf(req);
+  if (!email) return send(res, 401, { error: 'Cloudflare Access has not signed you in here — open the office through its Cloudflare login' });
+  let account = accounts.byEmail(email);
+  if (!account) {
+    const role = cloudflare.isAdmin(email) || !accounts.any ? 'admin' : 'member';
+    account = accounts.provision(email, role);
+    console.log(`  ${account.name} joined the office through Cloudflare Access (${email})`);
+    ctx.accountsChanged();
+  }
+  auth.recordSuccess(ip);
+  return send(res, 200, { ok: true, name: account.name }, signedIn(ctx, req, account.id));
+}
 
 /**
  * An invite link: `peek` says who it's for; otherwise it makes the account and signs it in.
@@ -75,6 +98,7 @@ const claimable = ({ cfg }: Ctx) => !!cfg.claimToken && !cfg.claimed && !!cfg.pa
 export const authRoutes = {
   login: { method: 'POST', path: '/api/login', auth: 'public', handle: (ctx, { req, res }) => login(ctx, req, res) },
   loginOptions: { method: 'GET', path: '/api/login', auth: 'public', handle: (ctx, { res }) => send(res, 200, loginOptions(ctx)) },
+  cfLogin: { method: 'POST', path: '/api/cf-login', auth: 'public', handle: (ctx, { req, res }) => cfLogin(ctx, req, res) },
   join: { method: 'POST', path: '/api/join', auth: 'public', handle: (ctx, { req, res }) => join(ctx, req, res) },
   claimable: { method: 'GET', path: '/api/claim', auth: 'public', handle: (ctx, { res }) => send(res, 200, { claimable: claimable(ctx) }) },
   claim: {
