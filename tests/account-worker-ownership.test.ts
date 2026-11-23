@@ -184,3 +184,15 @@ test('account-owned task labels never send prompts or tool snippets to the host 
   worker.owner=undefined; tasks.notePrompt(worker,'New shared office task with existing behavior');
   assert.equal(requests,1);
 });
+
+test('worker discovery does not expose a private CEO prompt to another account agent',async()=>{
+ const f=fixture('bob','alice');f.info.prompt='PRIVATE CEO OBJECTIVE';f.info.activity='PRIVATE CEO ACTIVITY';
+ Object.assign(f.floor,{isRoleWorker:(id:string)=>id==='worker'?{role:'CEO',name:'CEO'}:undefined,ceo:{get:()=>({workerId:'worker',owner:'alice@example.com'})},plan:{wing:undefined},project:{agentProviders:['kimi']},def:{name:'Project'}});
+ Object.assign(f.ctx.accounts,{any:true,get:(id:string)=>({name:id,email:`${id}@example.com`})});
+ Object.assign(f.ctx,{leaveOnMerge:{on:false},ledger:{}});
+ Object.assign(f.floor.workers,{deskOccupied:()=>false});
+ const req=Readable.from([]) as http.IncomingMessage;req.method='GET';req.headers={authorization:'Bearer synthetic'};
+ let body='';const res={writeHead(){return this;},end(s:string){body=s;}} as unknown as http.ServerResponse;
+ await officeWorkers(f.ctx,req,res,new URL('http://local/office/workers?worker=caller'));
+ assert.ok(!body.includes('PRIVATE CEO'));assert.equal(JSON.parse(body).workers[0].name,'Pixel');
+});

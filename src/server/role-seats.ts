@@ -23,16 +23,12 @@ export function isRoleWorkerOn(floor: RoleSeatFloor, workerId: string): { role: 
   return undefined;
 }
 
-/**
- * After a landed swap: the durable record moves FIRST, transactionally; only when it has landed do
- * the manager and CEO identities and the roster follow. A failed migration leaves the source
- * identity and its history exactly as they were.
- */
-export function relinkRoleSeat(ctx: FloorContext, floor: Floor, fromId: string, toId: string): void {
-  if (!floor.roleChat.migrate(fromId, toId)) {
-    ctx.toast(floor, `Couldn't move ${floor.workers.get(fromId)?.name ?? 'their'} conversation record to the replacement — the swap keeps its old seat; try again.`, 'warn');
-    return;
-  }
-  floor.departments.relinkWorker(fromId, toId);
-  floor.ceo.relinkWorker(fromId, toId);
+/** Copy history before moving the authoritative seat. Keep the source record for recovery. */
+export function relinkRoleSeat(_ctx: FloorContext, floor: Floor, fromId: string, toId: string): string | undefined {
+  const ceo = floor.ceo.get()?.workerId === fromId;
+  const manager = floor.departments.leadDeptOfWorker(fromId);
+  if (!ceo && !manager) return; // Ordinary personal-worker swaps have no role history to migrate.
+  if (!floor.roleChat.migrate(fromId, toId, true)) return 'Could not copy the role conversation. The original seat is unchanged; retry the pending swap.';
+  const error = ceo ? floor.ceo.relinkWorker(fromId, toId) : floor.departments.relinkWorker(fromId, toId);
+  return error ? `Could not save the replacement role: ${error}. The source history is retained; retry the pending swap.` : undefined;
 }

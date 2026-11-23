@@ -17,6 +17,7 @@ export interface StaffQaFloor {
   dir: string;
   dataDir: string;
   runAs?: RunAs;
+  accountsEnabled?: () => boolean;
   departments: { get(id: string): Department | undefined };
   roleChat: { append(workerId: string, message: import('./role-chat.js').ChatMessage): void };
 }
@@ -27,6 +28,7 @@ export interface StaffQaFloor {
  * enforces it; without accounts the office's own login is the custodian.
  */
 export async function floorStaffQA(floor: StaffQaFloor, deptId: string, question: string, by: string, custodianId?: string, launchOverride?: { file: string; args: string[] }): Promise<QaOutcome> {
+  if (floor.accountsEnabled?.() !== false && !custodianId) return { ok: false, why: 'An authorized billing custodian is required for staff Q&A.' };
   const dept = floor.departments.get(deptId);
   if (!dept) return { ok: false, why: 'That department is gone' };
   const clean = question.replace(/\r\n?/g, '\n').trim().slice(0, 4000);

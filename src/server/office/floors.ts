@@ -132,6 +132,7 @@ export async function openFloors(ctx: Ctx, hookPort: number): Promise<FloorsOpen
     lent: (floor) => [...floors.values()].some((f) => f !== floor && worksIn(f, floor)),
     locksUp: () => !!ctx.maps.plan().sendHome?.keeps,
     runAs: ctx.signins,
+    accountsEnabled: () => ctx.accounts.any,
     ghAs: (owner) => (owner ? ctx.signins.ghAs(owner) : undefined),
   };
   /** Whether a worker on `from` works in `on`'s project too (see WorkerInfo.repos). */

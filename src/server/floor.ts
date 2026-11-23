@@ -55,6 +55,7 @@ export interface FloorContext {
   prompts: PromptSource;
   /** Workers hired by an account run on its own sign-ins (see signins.ts). */
   runAs?: RunAs;
+  accountsEnabled?: () => boolean;
   /** How to run gh as an account: its own sign-in, the office's (undefined), or why it can't. */
   ghAs(owner: string | undefined): GhAs | undefined | string;
   /** To everyone on this floor. */
@@ -437,12 +438,12 @@ export class Floor {
   /** A staff read-only question about a department (see dept-staff-qa.ts): a separate, tool-free
    * session on the department's engine under the authorized custodian's sign-in. */
   staffQA(deptId: string, question: string, by: string, custodianId?: string): Promise<QaOutcome> {
-    return floorStaffQA(this, deptId, question, by, custodianId);
+    return floorStaffQA({ dir: this.dir, dataDir: this.dataDir, departments: this.departments, roleChat: this.roleChat, runAs: this.ctx.runAs, accountsEnabled: this.ctx.accountsEnabled }, deptId, question, by, custodianId);
   }
 
   /** After a landed swap: the durable record moves first, transactionally, then the identities. */
-  relinkEverywhere(fromId: string, toId: string): void {
-    relinkRoleSeat(this.ctx, this, fromId, toId);
+  relinkEverywhere(fromId: string, toId: string): string | undefined {
+    return relinkRoleSeat(this.ctx, this, fromId, toId);
   }
 
   /** A worker speaking for a role (the CEO or a department manager): protected from send-home. */

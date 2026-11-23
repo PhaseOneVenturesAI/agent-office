@@ -1,3 +1,4 @@
+import { publicRoleWorker, roleAccess } from '../role-access.js';
 import { canUseWorker, OWN_WORKER } from '../worker-ownership.js';
 import type http from 'node:http';
 import { notLeaving } from '../leave-on-merge.js';
@@ -48,9 +49,10 @@ export async function officeWorkers(ctx: Ctx, req: http.IncomingMessage, res: ht
   if (!floor || !me) return send(res, 401, { error: 'Send your own AGENT_OFFICE_WORKER_ID as ?worker= and AGENT_OFFICE_HOOK_TOKEN as the bearer token' });
   const who = me.name;
   const view: PullsView = { pulls: floor.github.pulls.items, tasks: floor.queue.state().tasks, pullsOf: (id) => ctx.floors.get(id)?.github.pulls.items };
+  const visible = (w: import('../../shared/protocol.js').WorkerInfo) => floor.isRoleWorker?.(w.id) ? publicRoleWorker(w, roleAccess(ctx, floor, w.id, me.owner).kind) : w;
   const row = (id: string) => {
     const w = floor.workers.get(id);
-    return w && workerRow(w, view, me.id);
+    return w && workerRow(visible(w), view, me.id);
   };
   const action = url.pathname.slice('/office/workers'.length);
   if (req.method === 'GET' && !action) {
@@ -64,7 +66,7 @@ export async function officeWorkers(ctx: Ctx, req: http.IncomingMessage, res: ht
       defaultProvider: floor.workers.officeDefault.provider,
       freeDesk: free?.id ?? null,
       ...(ctx.ledger.hiringPaused ? { hiringPaused: ctx.ledger.hiringPaused } : {}),
-      workers: list.map((w) => workerRow(w, view, me.id)),
+      workers: list.map((w) => workerRow(visible(w), view, me.id)),
     });
   }
   if (req.method !== 'POST' || !['', '/home', '/tell', '/pr', '/review', '/delegate', '/assign'].includes(action)) return send(res, 405, { error: 'GET /office/workers, or POST to /office/workers, /office/workers/home, /office/workers/tell, /office/workers/pr, /office/workers/review, /office/workers/delegate or /office/workers/assign' });

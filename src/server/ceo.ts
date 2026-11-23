@@ -106,9 +106,9 @@ export class FloorCeo {
   }
 
   /** After a swap lands, the identity follows the replacement worker; routing keeps working. */
-  relinkWorker(fromId: string, toId: string): void {
+  relinkWorker(fromId: string, toId: string): string | undefined {
     if (this.ceo?.workerId !== fromId) return;
-    this.commit({ ...this.ceo, workerId: toId });
+    return this.commit({ ...this.ceo, workerId: toId });
   }
 
   /** Persists `next` and only then makes it the state; a failed save changes nothing. */

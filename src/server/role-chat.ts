@@ -46,10 +46,10 @@ export class RoleChat {
    * temp file, which replaces the target only after the whole merge is on disk; a failure leaves
    * both originals intact. Resolves true when the record now lives at `toId`.
    */
-  migrate(fromId: string, toId: string): boolean {
+  migrate(fromId: string, toId: string, preserveSource = false): boolean {
     const from = this.file(fromId), to = this.file(toId);
     if (from === to) return true;
-    if (!existsSync(from)) return existsSync(to);
+    if (!existsSync(from)) return true;
     const temp = `${to}.${randomBytes(4).toString('hex')}.tmp`;
     try {
       const parse = (file: string) =>
@@ -64,10 +64,10 @@ export class RoleChat {
             }
           })
           .filter((m): m is ChatMessage => !!m && (m.role === 'user' || m.role === 'assistant') && typeof m.text === 'string' && Number.isFinite(m.at));
-      const merged = [...parse(from), ...(existsSync(to) ? parse(to) : [])].sort((a, b) => a.at - b.at);
+      const merged = [...new Map([...parse(from), ...(existsSync(to) ? parse(to) : [])].map((m) => [m.id, m])).values()].sort((a, b) => a.at - b.at);
       writeFileSync(temp, merged.map((m) => JSON.stringify(m)).join('\n') + '\n', { mode: 0o600 });
       renameSync(temp, to);
-      rmSync(from);
+      if (!preserveSource) rmSync(from);
       return true;
     } catch {
       rmSync(temp, { force: true });

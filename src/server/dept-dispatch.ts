@@ -56,7 +56,11 @@ export class LeadDispatch {
     this.persist = {
       load: () => {
         try {
-          const parsed = JSON.parse(readFileSync(file, 'utf8')) as [string, { parent: string; text: string }][];
+          const saved = JSON.parse(readFileSync(file, 'utf8'));
+          const parsed: [string, { parent: string; text: string }][] = Array.isArray(saved) ? saved : saved?.held;
+          if (!Array.isArray(saved) && Array.isArray(saved?.last)) for (const entry of saved.last) {
+            if (Array.isArray(entry) && typeof entry[0] === 'string' && typeof entry[1] === 'string') this.last.set(entry[0], entry[1]);
+          }
           return Array.isArray(parsed) ? parsed.filter((e) => e && typeof e[0] === 'string' && e[1] && typeof e[1].parent === 'string' && typeof e[1].text === 'string') : [];
         } catch {
           return [];
@@ -64,7 +68,7 @@ export class LeadDispatch {
       },
       save: (entries) => {
         try {
-          writeFileSync(file, JSON.stringify(entries), { mode: 0o600 });
+          writeFileSync(file, JSON.stringify({ held: entries, last: [...this.last.entries()] }), { mode: 0o600 });
         } catch {
           // A full disk must not take the office down.
         }
@@ -83,6 +87,7 @@ export class LeadDispatch {
     this.last.delete(workerId);
     this.held.delete(workerId);
     for (const [key, held] of this.held) if (held.parent === workerId) this.held.delete(key);
+    this.saveHeld();
   }
 
   /** Called with every worker update the floor sees; forwards transitions up the chain. */
@@ -93,8 +98,9 @@ export class LeadDispatch {
     // manager's own finished turn also reports upward, so its reviewed answer has a route to the CEO.
     const isManager = this.deps.departments().some((d) => d.lead?.workerId === info.id);
     const isCeo = this.deps.ceo?.()?.workerId === info.id;
+    if ((isManager || isCeo) && previous !== info.status) this.saveHeld();
     if ((isManager || isCeo) && IDLE.has(info.status)) this.flush(info.id);
-    if (isManager && info.status === 'done') this.selfRollup(info);
+    if (isManager && info.status === 'done' && previous !== 'done') this.selfRollup(info);
     if (previous === info.status || !NOTIFY.has(info.status)) return;
     const parent = this.parentOf(info.id);
     if (!parent || parent === info.id) return;
