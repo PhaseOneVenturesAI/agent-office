@@ -26,7 +26,7 @@ elevator stop.
 
 The north wall's only clean, board-free span at door height is the gap between the queue and PR boards,
 and the **PR board's kiosk** (`station-pulls`) stood dead-center in it. To form a usable entrance the
-kiosk moved **1.2 m east, from x 0 to x 2.3** — still on the north wall, now in front of the PR board's
+kiosk moved **2.3 m east, from x 0 to x 2.3** — still on the north wall, now in front of the PR board's
 west end, still facing the room. Its board agent's pairing, label and prompts are unchanged, and the
 Issues and Queue kiosks did not move. Nothing else in the office moved: every desk and pod, the lounge,
 the elevator, the gong, the boards and the plants are exactly where they were.
