@@ -1,7 +1,6 @@
 // The Review Room (see server/reviews.ts): where staged deliverables wait for a human verdict.
 // A worker finishing a creative task stages its one link; anyone in the office accepts or rejects
-// it with a reason, and every verdict goes into the harness's review ratchet so the next worker
-// starts from what was learned.
+// it with a reason. Verdicts remain review evidence; they never become global instructions.
 
 /** What the brand-gate said when the worker ran it before staging. */
 export type ReviewGate = 'passed' | 'failed';
@@ -38,7 +37,7 @@ export type ReviewsClientMsg =
   | { t: 'reviews.get' }
   /** Stage a link for review yourself. */
   | { t: 'reviews.submit'; title: string; url: string; note?: string; gate?: ReviewGate }
-  /** Accept (ok) or reject it, with the reason the ratchet should remember. */
+  /** Accept (ok) or reject it, with a reason about this deliverable. */
   | { t: 'reviews.resolve'; id: string; ok: boolean; reason: string };
 
 export type ReviewsServerMsg = { t: 'reviews'; state: ReviewsState };

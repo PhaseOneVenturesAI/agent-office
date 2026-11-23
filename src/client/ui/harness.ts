@@ -14,10 +14,10 @@ const norm = (text: string) => text.replace(/\r\n?/g, '\n').trim();
 const fmtSize = (size: number) => (size >= 1024 ? `${(size / 1024).toFixed(1)} KB` : `${size} B`);
 
 /**
- * 🧰 Harness: the instruction and skill files every worker runs with — the taste lock, the
- * workflow, the skills — living in one folder on the office's machine. A list down the side, the
- * file picked on the right; admins edit, and **Push to everyone's agents** copies CLAUDE.md and
- * skills/ into the office's and every account's agent home (see server/harness.ts).
+ * 🧰 Harness: the instruction and skill files every worker runs with — shared defaults and
+ * skills — living in one folder on the office's machine. A list down the side, the
+ * file picked on the right; admins edit, and **Push to everyone's agents** copies the shared defaults and
+ * skill files into the office's and every account's agent home (see server/harness.ts).
  */
 export function openHarness(net: Net) {
   let state: HarnessState | undefined;
@@ -131,7 +131,7 @@ export function openHarness(net: Net) {
     if (!el.isConnected) return;
     if (msg.t === 'harness') {
       state = msg.state;
-      used.textContent = 'The taste lock, workflow and skills every worker runs with. Save edits here, then push them to everyone’s agents — Claude, Kimi and Codex.';
+      used.textContent = 'Push uses only CLAUDE.md and WORKFLOW.md as shared defaults, plus skill files. Project taste and review history stay separate. Changed destination files are backed up; unrelated files remain.';
       paint();
       if (!current && state.files.length) pick(state.files[0].path);
     } else if (msg.t === 'harness.file') {
