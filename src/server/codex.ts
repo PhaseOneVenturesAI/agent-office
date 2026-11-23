@@ -1,3 +1,4 @@
+import { writeApprovalHelper } from './approvals/helper.js';
 import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { AgentEffort } from '../shared/providers.js';
@@ -94,7 +95,7 @@ export function codexHookArgs(hookPath: string): string[] {
   const args: string[] = [];
   for (const event of CODEX_HOOK_EVENTS) {
     const command = [process.execPath, hookPath, event].map(shellQuote).join(' ');
-    const config = `hooks.${event}=[{hooks=[{type="command",command=${JSON.stringify(command)},timeout=3}]}]`;
+    const config = `hooks.${event}=[{hooks=[{type="command",command=${JSON.stringify(command)},timeout=${event === 'PermissionRequest' ? 305 : 3}}]}]`;
     args.push('-c', config);
   }
   return args;
@@ -121,7 +122,7 @@ export function codexModelArgs(args: string[], model?: string, effort?: AgentEff
 export function writeCodexHook(dataDir: string): string {
   mkdirSync(dataDir, { recursive: true, mode: 0o700 });
   const file = path.join(dataDir, 'agent-office-codex-hook.cjs');
-  writeFileSync(file, CODEX_HOOK_SOURCE, { mode: 0o600 });
+  writeFileSync(file, `const nativeApproval = require(${JSON.stringify(writeApprovalHelper(dataDir))});\n${CODEX_HOOK_SOURCE}`,  { mode: 0o600 });
   chmodSync(file, 0o600);
   return file;
 }
@@ -152,6 +153,10 @@ process.stdin.on('end', async () => {
   try { input = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { return finish(false); }
   if (!input || typeof input !== 'object' || Array.isArray(input)) return finish(false);
   if (hasText(input.agent_id) || hasText(input.agent_type)) return finish(false);
+  if (event === 'PermissionRequest' && typeof nativeApproval !== 'undefined') {
+    process.stdout.write(JSON.stringify(await nativeApproval.run('codex', input)));
+    return;
+  }
   const session = allowed(input.session_id, MAX_ID);
   if (!session) return finish(false);
   const body = { session_id: session, hook_event_name: event };

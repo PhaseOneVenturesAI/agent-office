@@ -92,3 +92,30 @@ test('Esc with no reject option cancels all pending approvals before cancelling 
   assert.ok(f.answers().every((a) => a.result.outcome.outcome === 'cancelled'));
   assert.doesNotMatch(f.output(), /second command/);
 });
+
+test('Kimi conversation choices preserve the actual RPC id and never answer an overlapping request with a stale click', async (t) => {
+  const f = await fixture(t);
+  const first = f.session.approvals();
+  assert.equal(first.queued, 2); assert.equal(first.request?.nativeRequestId, 'first');
+  assert.deepEqual(first.request?.options.map((o) => o.id), ['first-allow', 'first-reject']);
+  assert.match(f.session.answerApproval(first.request!.id, 'second-allow') ?? '', /not offered/);
+  assert.equal(f.session.answerApproval(first.request!.id, 'first-allow'), undefined);
+  await until(() => f.answers().length === 1);
+  assert.equal(f.answers()[0].id, 'first'); assert.equal(f.answers()[0].result.outcome.optionId, 'first-allow');
+  const second = f.session.approvals(); assert.equal(second.request?.nativeRequestId, 'second');
+  assert.match(f.session.answerApproval(first.request!.id, 'first-allow') ?? '', /no longer current/);
+  assert.equal(f.answers().length, 1);
+  assert.equal(f.session.answerApproval(second.request!.id, 'second-reject'), undefined);
+  await until(() => f.answers().length === 2);
+  assert.equal(f.answers()[1].id, 'second'); assert.equal(f.session.approvals().queued, 0);
+});
+
+test('Kimi terminal answers and cancellation invalidate displayed conversation choices', async (t) => {
+  const f = await fixture(t), first = f.session.approvals().request!;
+  f.session.writeInput('\r'); await until(() => f.answers().length === 1);
+  assert.match(f.session.answerApproval(first.id, 'first-allow') ?? '', /no longer current/);
+  const second = f.session.approvals().request!;
+  await f.session.close();
+  assert.match(f.session.answerApproval(second.id, 'second-allow') ?? '', /no longer current/);
+  assert.ok(f.answers().filter((a) => a.id === 'second').every((a) => a.result.outcome.outcome === 'cancelled'));
+});

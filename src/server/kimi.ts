@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import type { ApprovalRequest, ApprovalState } from '../shared/protocol/approvals.js';
 import { stopAcpChild } from './acp-shutdown.js';
 import { AssistantTurn } from './assistant-text.js';
 // Kimi as a provider, over ACP: the same wire DeepSeek Harness speaks (see dsh.ts and
@@ -70,7 +72,7 @@ export class KimiSession {
   private sessionId?: string;
   private buffer = '';
   private line = '';
-  private permissions: { id: unknown; options: DshPermissionOption[]; card: string }[] = [];
+  private permissions: { id: unknown; options: DshPermissionOption[]; card: string; approval?: ApprovalRequest }[] = [];
   private get permission() { return this.permissions[0]; }
   private configOptions: Rec[] = [];
   private renderer = new DshRenderer();
@@ -88,6 +90,19 @@ export class KimiSession {
 
   get id(): string | undefined {
     return this.sessionId;
+  }
+
+  /** Only the real FIFO head is answerable; no terminal text is parsed for this view. */
+  approvals(): ApprovalState {
+    return { request: this.permission?.approval ? structuredClone(this.permission.approval) : undefined, queued: this.permissions.length,
+      fallback: this.permission && !this.permission.approval ? 'This ACP request cannot be shown safely here; use Terminal.' : undefined };
+  }
+
+  answerApproval(requestId: string, optionId: string): string | undefined {
+    const pending = this.permission;
+    if (this.closing || this.finished || !this.child?.stdin.writable || pending?.approval?.id !== requestId) return 'This approval is no longer current; refresh the conversation';
+    if (!pending.approval.options.some((o) => o.id === optionId)) return 'That choice is not offered for this request';
+    this.answerPermission(optionId);
   }
 
   get running(): boolean {
@@ -380,7 +395,14 @@ export class KimiSession {
     const options = permissionOptions(params);
     const toolCall = isRec(params) && isRec(params.toolCall) ? params.toolCall : undefined;
     const card = renderPermission(params, options, this.renderer.toolDetail(toolCall ? str(toolCall.toolCallId) : undefined));
-    this.permissions.push({ id, options, card });
+    const detail = JSON.stringify(toolCall ?? {}, null, 2);
+    const choices = options.filter((o) => ['allow_once', 'allow_always', 'reject_once', 'reject_always'].includes(o.kind));
+    const approval: ApprovalRequest | undefined = this.sessionId && (typeof id === 'string' || typeof id === 'number') && detail.length <= 20000 && choices.length
+      ? { id: randomUUID(), nativeRequestId: id, source: 'acp', provider: 'kimi', sessionId: this.sessionId,
+          title: str(toolCall?.title) ?? 'Kimi requests permission', detail,
+          options: choices.map((o) => ({ id: o.optionId, label: o.name, kind: o.kind as ApprovalRequest['options'][number]['kind'] })) }
+      : undefined;
+    this.permissions.push({ id, options, card, approval });
     if (this.permissions.length === 1) this.showPermission();
   }
 

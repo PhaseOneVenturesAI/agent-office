@@ -4,6 +4,7 @@
 // file puts them back together, so everything is still imported from here, and makes the two
 // unions every frame is one of.
 
+import type { ApprovalClientMsg, ApprovalServerMsg } from './protocol/approvals.js';
 import type { DeliveryClientMsg, DeliveryServerMsg } from './protocol/delivery.js';
 import type { ConversationClientMsg, ConversationServerMsg } from './protocol/conversations.js';
 import type { HandoffClientMsg, HandoffServerMsg } from './protocol/handoffs.js';
@@ -30,6 +31,7 @@ import type { BallClientMsg, CabinetClientMsg, CarClientMsg, DecorClientMsg, Dog
 import type { UsageClientMsg, UsageServerMsg } from './protocol/usage.js';
 import type { WorkerClientMsg, WorkerServerMsg } from './protocol/workers.js';
 
+export * from './protocol/approvals.js';
 export * from './protocol/conversations.js';
 export * from './protocol/delivery.js';
 export * from './protocol/handoffs.js';
@@ -58,6 +60,7 @@ export * from './protocol/usage.js';
 export * from './protocol/workers.js';
 
 export type ClientMsg =
+  | ApprovalClientMsg
   | DeliveryClientMsg
   | ConversationClientMsg
   | HandoffClientMsg
@@ -94,6 +97,7 @@ export type ClientMsg =
   | DogClientMsg;
 
 export type ServerMsg =
+  | ApprovalServerMsg
   | DeliveryServerMsg
   | ConversationServerMsg
   | HandoffServerMsg

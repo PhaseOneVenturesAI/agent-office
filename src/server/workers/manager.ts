@@ -1,3 +1,4 @@
+import { WorkerApprovals } from '../approvals/service.js';
 import { personalProviderError } from '../worker-ownership.js';
 import { WorkerRemovals } from './removal.js';
 import { AcpClosures } from '../acp-shutdown.js';
@@ -50,6 +51,7 @@ const RESTORED_NOTE = '\x1b[2m──── the office restarted · earlier outpu
 
 export class WorkerManager {
   private workers = new Map<string, Worker>();
+  readonly approvals = new WorkerApprovals(this.workers);
   private statePath: string;
   private trees: Worktrees;
   private agentPath: string | null = null;
@@ -595,7 +597,9 @@ export class WorkerManager {
     const w = this.workers.get(workerId);
     const own = w && providerAdapter(w.info.provider);
     if (!hook || !w || !w.pty || w.info.kind !== 'agent' || !own || (own.hooksAs ?? own.id) !== route || !safeEq(token, w.hookToken)) return false;
-    return hook.handle(this.handleOf(w), event, payload);
+    const accepted = hook.handle(this.handleOf(w), event, payload);
+    if (accepted) this.approvals.observe(workerId, event);
+    return accepted;
   }
 
   /**
@@ -605,6 +609,7 @@ export class WorkerManager {
   shutdown(keep = false): Promise<void> {
     if (this.shutdownDone) return this.shutdownDone;
     this.closing = true;
+    this.approvals.close();
     this.stopping = !keep;
     clearInterval(this.screenTimer);
     clearInterval(this.usageTimer);
