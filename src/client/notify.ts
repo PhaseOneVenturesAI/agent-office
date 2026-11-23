@@ -1,7 +1,7 @@
 // Getting your attention when the office isn't the tab you're looking at: desktop notifications
 // for workers that need input or finish (the tab title counts them too, see main.ts).
 
-import type { WorkerInfo } from '../shared/protocol';
+import type { Me, WorkerInfo } from '../shared/protocol';
 import { alertDetail } from '../shared/status';
 
 export type NotifyPermission = NotificationPermission | 'unsupported';
@@ -26,6 +26,18 @@ export async function askNotifyPermission(): Promise<NotifyPermission> {
 /** Waiting on a person: needs input, or finished its turn and nobody has looked yet. */
 export function waitingOnSomeone(w: WorkerInfo): w is WorkerInfo & { status: 'needs_input' | 'done' } {
   return w.status === 'needs_input' || (w.status === 'done' && !w.acked);
+}
+
+/**
+ * Whether this browser should be alerted about worker `w` starting to wait: only its hirer
+ * (WorkerInfo.owner, the account that started it). Workers with no owner on file — hired on the
+ * shared password, or restored from before accounts ('?') — go to the admins, so they don't wait
+ * unseen. With no accounts at all (the shared office password only), everyone hears everything,
+ * as it has always been.
+ */
+export function alertsForMe(w: WorkerInfo, me: Me): boolean {
+  if (!me.account) return true;
+  return w.owner ? w.owner === me.account.id : me.admin;
 }
 
 export class DesktopNotifier {

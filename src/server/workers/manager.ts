@@ -299,6 +299,7 @@ export class WorkerManager {
       status: 'starting',
       acked: true,
       createdBy: by,
+      ...(owner ? { owner } : {}),
       createdAt: Date.now(),
       ...(via ? { via } : {}),
       prompt: kind === 'shell' ? undefined : prompt?.trim() || undefined,

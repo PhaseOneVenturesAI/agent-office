@@ -3,7 +3,7 @@
 import type { ChatLine, PresenceClientMsg } from '../../../shared/protocol.js';
 import { seatHereOn } from '../../../shared/maps/index.js';
 import { sanitizeLook } from '../../../shared/avatar.js';
-import { isEmote } from '../../../shared/emotes.js';
+import { EMOTE_BY_ID, isEmote } from '../../../shared/emotes.js';
 import { ROOF, isDrink } from '../../../shared/rooftop.js';
 import { isBarGame } from '../../../shared/bargames.js';
 import { throttle } from '../../office/client.js';
@@ -18,6 +18,8 @@ export const presenceHandlers = {
     p.z = num(msg.z);
     p.rotY = num(msg.rotY);
     p.moving = !!msg.moving;
+    // Moving cancels an emote: everyone watching sees it stop (their character cancels it too), and whoever arrives later must not find a stale one.
+    if (p.moving && p.emote) delete p.emote;
     ctx.toNeighbors(c, { t: 'peer.move', id: c.id, x: p.x, y: p.y, z: p.z, rotY: p.rotY, moving: p.moving }, true);
   },
   act(ctx, c, msg) {
@@ -58,7 +60,13 @@ export const presenceHandlers = {
     ctx.toNeighbors(c, { t: 'peer.act', id: c.id }, true);
   },
   emote(ctx, c, msg) {
-    if (isEmote(msg.emote) && c.emotes.take(Date.now())) ctx.toNeighbors(c, { t: 'peer.emote', id: c.id, emote: msg.emote }, true);
+    if (!isEmote(msg.emote) || !c.emotes.take(Date.now())) return;
+    const at = Date.now();
+    // Kept on the peer so someone arriving mid-emote sees it too; one-shots expire, loops run until a move clears them.
+    c.peer.emote = { id: msg.emote, at };
+    const e = EMOTE_BY_ID.get(msg.emote)!;
+    if (!e.loop) setTimeout(() => void (c.peer.emote?.at === at && delete c.peer.emote), e.seconds * 1000 + 1000);
+    ctx.toNeighbors(c, { t: 'peer.emote', id: c.id, emote: msg.emote, at }, true);
   },
   sit(ctx, c, msg) {
     // Everyone sees them sit down (or get up), and anyone who comes in later finds them sitting.

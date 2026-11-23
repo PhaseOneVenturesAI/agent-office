@@ -9,7 +9,7 @@ import type { Ctx } from '../../core/context';
 import type { CoreState } from '../../core/ctx';
 import type { Parts } from '../../core/parts';
 import { NextUp, waitingInOrder, waitingLabel } from '../../nextup';
-import { waitingOnSomeone } from '../../notify';
+import { alertsForMe, waitingOnSomeone } from '../../notify';
 import { store } from '../../state';
 import { openChanges } from '../../ui/changes';
 import { Compass, type Bearing } from '../../ui/compass';
@@ -75,7 +75,9 @@ export function installWaiting(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'wo
   }
 
   function renderWaiting() {
-    const waiting = waitingInOrder(store.workers.values());
+    // An alert — "need you" — so it counts only the workers you hired (see alertsForMe). N and the
+    // compass still know about everyone's; the pill just doesn't claim they need you.
+    const waiting = waitingInOrder(store.workers.values()).filter((w) => alertsForMe(w, store.me));
     const el = $('waiting');
     el.classList.toggle('hidden', !waiting.length);
     el.classList.toggle('all-done', waiting.every((w) => w.status === 'done'));

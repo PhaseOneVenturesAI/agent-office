@@ -25,7 +25,7 @@ const MAX_FILE = 256_000;
 /** Bounds on the walk, so a harness with a stray checkout in it still answers promptly. */
 const MAX_FILES = 500;
 const MAX_DEPTH = 6;
-const ACCOUNT_ID = /^[A-Za-z0-9]{6,64}$/;
+export const ACCOUNT_ID = /^[A-Za-z0-9]{6,64}$/;
 /** Only these files are global defaults. Other Markdown remains available to edit, not inject. */
 const SHARED_INSTRUCTIONS = ['CLAUDE.md', 'WORKFLOW.md'];
 
@@ -80,33 +80,7 @@ export class Harness {
 
   /** The files someone may open, POSIX-pathed, sorted. */
   list(): HarnessFile[] {
-    const out: HarnessFile[] = [];
-    if (!existsSync(this.root)) return [];
-    const sources = this.sources();
-    const walk = (dir: string, rel: string, depth: number) => {
-      if (depth > MAX_DEPTH || out.length >= MAX_FILES) return;
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        if (out.length >= MAX_FILES) return;
-        if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
-        const full = path.join(dir, entry.name);
-        const relPath = rel ? `${rel}/${entry.name}` : entry.name;
-        if (entry.isDirectory()) {
-          walk(full, relPath, depth + 1);
-          continue;
-        }
-        if (!entry.isFile() || !EXTENSIONS.has(path.extname(entry.name)) || !allowedHarnessSource(relPath)) continue;
-        try {
-          const st = lstatSync(harnessSourcePath(sources.root, relPath));
-          if (st.size <= MAX_FILE) out.push({ path: relPath, size: st.size, mtime: st.mtimeMs, status: 'present' });
-        } catch { /* Unsafe/aliased sources are not exposed. */ }
-      }
-    };
-    walk(sources.root, '', 0);
-    for (const rel of sources.historicalPaths()) if (!out.some((file) => file.path === rel)) {
-      const current = sources.read(rel);
-      out.push({ path: rel, size: current.text === null ? 0 : Buffer.byteLength(current.text), mtime: 0, status: current.status });
-    }
-    return out.sort((a, b) => a.path.localeCompare(b.path));
+    return existsSync(this.root) ? listHarnessFiles(this.sources()) : [];
   }
 
   sources(): HarnessSources { return new HarnessSources(this.root, this.dataDir); }
@@ -226,7 +200,7 @@ export class Harness {
 }
 
 /** Never follow a destination symlink when updating instructions or skills. */
-function pushDirectory(dir: string): boolean {
+export function pushDirectory(dir: string): boolean {
   try {
     const stat = lstatSync(dir);
     return stat.isDirectory() && !stat.isSymbolicLink();
@@ -238,7 +212,7 @@ function pushDirectory(dir: string): boolean {
 }
 
 /** Back up each changed destination once per push, including personal instructions/skill files. */
-function pushFile(file: string, contents: Buffer, backup: string, mode = 0o600): boolean {
+export function pushFile(file: string, contents: Buffer, backup: string, mode = 0o600): boolean {
   try {
     const stat = lstatSync(file);
     if (stat.isSymbolicLink() || !stat.isFile()) return false;
@@ -252,7 +226,7 @@ function pushFile(file: string, contents: Buffer, backup: string, mode = 0o600):
 }
 
 /** Overlay regular skill files only. Removed source files and unrelated destination files stay. */
-function pushSkills(source: string, into: string, backup: string): number {
+export function pushSkills(source: string, into: string, backup: string): number {
   if (lstatSync(source).isSymbolicLink() || !pushDirectory(into)) return 1;
   let skipped = 0;
   for (const entry of readdirSync(source, { withFileTypes: true })) {
@@ -263,4 +237,33 @@ function pushSkills(source: string, into: string, backup: string): number {
     else if (!entry.isFile() || !pushFile(file, readFileSync(from), backup, statSync(from).mode)) skipped++;
   }
   return skipped;
+}
+
+/** The editable sources under a Harness root (jailed, bounded), plus paths only history still knows. */
+export function listHarnessFiles(sources: HarnessSources): HarnessFile[] {
+  const out: HarnessFile[] = [];
+  const walk = (dir: string, rel: string, depth: number) => {
+    if (depth > MAX_DEPTH || out.length >= MAX_FILES) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (out.length >= MAX_FILES) return;
+      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+      const full = path.join(dir, entry.name);
+      const relPath = rel ? `${rel}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        walk(full, relPath, depth + 1);
+        continue;
+      }
+      if (!entry.isFile() || !EXTENSIONS.has(path.extname(entry.name)) || !allowedHarnessSource(relPath)) continue;
+      try {
+        const st = lstatSync(harnessSourcePath(sources.root, relPath));
+        if (st.size <= MAX_FILE) out.push({ path: relPath, size: st.size, mtime: st.mtimeMs, status: 'present' });
+      } catch { /* Unsafe/aliased sources are not exposed. */ }
+    }
+  };
+  walk(sources.root, '', 0);
+  for (const rel of sources.historicalPaths()) if (!out.some((file) => file.path === rel)) {
+    const current = sources.read(rel);
+    out.push({ path: rel, size: current.text === null ? 0 : Buffer.byteLength(current.text), mtime: 0, status: current.status });
+  }
+  return out.sort((a, b) => a.path.localeCompare(b.path));
 }

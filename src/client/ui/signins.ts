@@ -32,8 +32,8 @@ export function openSignIns(net: Net, why?: string) {
   const paintHarness = () => {
     harnessRow.hidden = !store.me.account;
     harnessRow.firstChild!.textContent = harnessOut
-      ? '🧰 Office harness: skipped for your agents — you run your own. '
-      : '🧰 Office harness: pushed to your Claude, Kimi and Codex. ';
+      ? '🧰 Office harness: skipped for your agents — you run your own (edit it in ☰ → 🧰 Harness). '
+      : '🧰 Office harness: pushed to your Claude, Kimi and Codex (or keep your own in ☰ → 🧰 Harness). ';
     harnessToggle.textContent = harnessOut ? 'Use the office’s' : 'Run my own instead';
   };
   harnessRow.append(harnessToggle);

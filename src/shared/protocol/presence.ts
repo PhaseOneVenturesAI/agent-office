@@ -51,6 +51,8 @@ export interface PeerInfo {
   reading?: boolean;
   /** On the 2D view (/lite: a phone, say, or a slow computer): in the office, but not standing anywhere in it. */
   lite?: boolean;
+  /** An emote in progress, for whoever arrives mid-emote: its id and when it started. One-shots expire after their seconds; a loop (a dance) runs until they move or pick another. */
+  emote?: { id: EmoteId; at: number };
 }
 
 export interface ChatLine {
@@ -95,7 +97,7 @@ export type PresenceClientMsg =
   | { t: 'sit'; seat?: string }
   /** You picked an issue card up off the board (or put it down again, no issue): everyone sees it in your hands. */
   | { t: 'carry'; issue?: number; title?: string }
-  /** An emote (hold G, or 1–6): everyone else on your floor sees your character do it. Rate limited, see EmoteBucket. */
+  /** An emote (hold G for the wheel, or its number): everyone else on your floor sees your character do it. Rate limited, see EmoteBucket. */
   | { t: 'emote'; emote: EmoteId }
   | { t: 'profile'; name: string; color: string; look: Look }
   /** What you have open now (see PeerInfo.doing and PeerInfo.reading); none when you're back in the office. */
@@ -141,7 +143,8 @@ export type PresenceServerMsg =
   | { t: 'peer.move'; id: string; x: number; y: number; z: number; rotY: number; moving: boolean }
   | { t: 'peer.leave'; id: string }
   | { t: 'peer.act'; id: string; smoke?: boolean; golf?: boolean; drink?: DrinkId | null; throwing?: BarGame | null }
-  | { t: 'peer.emote'; id: string; emote: EmoteId }
+  /** `at` is when it started (the office's clock): the same value the peer state carries, so a later peer.update doesn't replay it. */
+  | { t: 'peer.emote'; id: string; emote: EmoteId; at: number }
   | { t: 'rtc'; from: string; data: unknown }
   | ({ t: 'chat' } & ChatLine)
   | { t: 'toast'; text: string; level: 'info' | 'warn' | 'error' }

@@ -5,15 +5,18 @@ import { h } from '../../ui/dom';
 /** How far (px) the mouse has to go from the middle of the wheel before it points at an emote. */
 const DEAD_ZONE = 26;
 /** From the middle of the wheel to the middle of each emote, px. */
-const RADIUS = 104;
+const RADIUS = 112;
 /** Letting go of G sooner than this (ms) leaves the wheel open to click; holding it picks on release. */
 const TAP_MS = 250;
 /** The emotes go round clockwise from the top, a slice each. */
 const SLICE = (Math.PI * 2) / EMOTES.length;
+/** The quick-pick key on each emote's badge: 1–9, then 0 and –. */
+const KEY_OF = EMOTES.map((_, i) => (i < 9 ? String(i + 1) : i === 9 ? '0' : '–'));
 
 /**
  * The emote wheel: hold G, point the mouse at an emote and let go (or click it). A quick tap on G
- * leaves it open until you pick one, press G or Esc, or click outside it.
+ * leaves it open — the mouse comes back as a cursor — until you pick one, press G or Esc, or click
+ * ✕ or outside the ring.
  */
 export class EmoteWheel {
   readonly el: HTMLElement;
@@ -31,18 +34,26 @@ export class EmoteWheel {
     private onPick: (id: EmoteId) => void,
     /** The wheel opened or closed: while it's open, the mouse is for picking, not for looking around. */
     private onToggle: (open: boolean) => void,
+    /** A quick tap left the wheel open and the pointer is free: a real cursor picks from here. */
+    private onStayOpen: () => void,
   ) {
     this.items = EMOTES.map((e, i) => {
       const a = i * SLICE - Math.PI / 2;
       return h(
         'button.emote',
-        { type: 'button', title: `${e.label} (${i + 1})`, 'aria-label': e.label, style: `--x:${Math.cos(a) * RADIUS}px;--y:${Math.sin(a) * RADIUS}px`, onpointermove: () => this.point(i) },
+        { type: 'button', title: `${e.label} (${KEY_OF[i]})`, 'aria-label': e.label, style: `--x:${Math.cos(a) * RADIUS}px;--y:${Math.sin(a) * RADIUS}px`, onpointermove: () => this.point(i) },
         e.emoji,
-        h('span.num', {}, i + 1),
+        h('span.num', {}, KEY_OF[i]),
       );
     });
     this.caption = h('div.middle');
-    this.el = h('div.emote-wheel.hidden', { role: 'menu', 'aria-label': 'Emotes' }, h('div.ring', {}, ...this.items, this.caption));
+    const close = h('button.emote-close', { type: 'button', 'aria-label': 'Close emotes', title: 'Close (Esc)' }, '✕');
+    close.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      this.close();
+    });
+    this.el = h('div.emote-wheel.hidden', { role: 'menu', 'aria-label': 'Emotes' }, close, h('div.ring', {}, ...this.items, this.caption));
     this.el.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       const i = this.items.findIndex((b) => b.contains(e.target as Node));
@@ -87,6 +98,7 @@ export class EmoteWheel {
     else if (performance.now() - this.heldAt < TAP_MS) {
       this.heldAt = 0;
       this.render();
+      this.onStayOpen();
     } else this.close();
   }
 
@@ -125,7 +137,7 @@ export class EmoteWheel {
   private render() {
     this.items.forEach((b, i) => b.classList.toggle('on', i === this.at));
     const e = EMOTES[this.at];
-    const how = !e ? 'Point at one, or 1–6' : this.heldAt ? 'Let go of G' : 'Click';
+    const how = !e ? `Point at one, or press ${KEY_OF[0]}–${KEY_OF.at(-1)!}` : this.heldAt ? 'Let go of G' : 'Click';
     this.caption.replaceChildren(h('b', {}, e?.label ?? 'Emote'), h('small', {}, how));
   }
 }

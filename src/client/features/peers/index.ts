@@ -37,6 +37,8 @@ export interface RemotePeer {
   stepT: number;
   /** How fast they're going (m/s), evened out: at a run, their feet say so. */
   speed: number;
+  /** The emote last applied to them (by message or peer state), so a peer.update doesn't replay it. */
+  emoteSeen?: { id: string; at: number };
   /** On the ladder or a pole, going by where they are. */
   grip: Grip | null;
 }
@@ -84,6 +86,12 @@ export function installPeers(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'puff
       r.person.read(!!peer.reading);
       r.person.sit(store.carOf(id) ? SEAT_HIPS : peer.seat ? (seatOn(plan(), peer.seat)?.hips ?? null) : null);
       r.person.setDoing(whereabouts(peer, store.carOf(id), plan()));
+      // An emote in progress: someone arriving now (or a peer.update carrying it) plays it, unless it's
+      // the one already playing — the live message below started it and recorded emoteSeen.
+      if (peer.emote && (r.emoteSeen?.id !== peer.emote.id || r.emoteSeen?.at !== peer.emote.at)) {
+        r.emoteSeen = { ...peer.emote };
+        r.person.emote(peer.emote.id);
+      }
     }
     for (const [id, r] of remotes) {
       const peer = store.peers.get(id);
@@ -206,6 +214,13 @@ export function installPeers(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'puff
     const p = store.peers.get(msg.id);
     if (p) p.smoking = msg.smoke;
     r?.person.setSmoking(msg.smoke);
+  });
+
+  ctx.messages.on('peer.emote', (msg) => {
+    const r = remotes.get(msg.id);
+    if (!r) return;
+    r.emoteSeen = { id: msg.emote, at: msg.at };
+    r.person.emote(msg.emote);
   });
 
   function sayBubble(from: string, text: string) {

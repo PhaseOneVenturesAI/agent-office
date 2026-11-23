@@ -3,6 +3,7 @@ import os from 'node:os';
 import { childEnv, resolveCommand } from '../workers.js';
 import { SignIns } from '../signins.js';
 import { Harness, harnessRoot } from '../harness.js';
+import { PersonalHarness } from '../personal-harness.js';
 import { Reviews } from '../reviews.js';
 import { Deploys } from '../deploys.js';
 import { Hygiene } from '../hygiene.js';
@@ -86,6 +87,8 @@ export function createServices(ctx: Ctx): BuildingServices {
       codex: env.CODEX_HOME ?? path.join(home, '.codex'),
     };
   }, () => ctx.broadcast({ t: 'harness', state: harness.state() }));
+  // Each account's own harness, for someone who runs theirs instead of the office's.
+  const personalHarness = new PersonalHarness(cfg.dataDir, harness);
 
   // The Review Room: staged deliverables wait here for a person's verdict (☰ → 🎬 Review room),
   // retained as evidence about the staged deliverable, without changing the shared harness.
@@ -180,7 +183,7 @@ export function createServices(ctx: Ctx): BuildingServices {
     });
   };
 
-  return { sky, themes, maps, prompts, leaveOnMerge, ledger, signins, harness, reviews, deploys, hygiene, costwall, nodes, deliveries, cloudflare, limits, accountLimits, webhook, machine, limitsOf, pumpQueues };
+  return { sky, themes, maps, prompts, leaveOnMerge, ledger, signins, harness, personalHarness, reviews, deploys, hygiene, costwall, nodes, deliveries, cloudflare, limits, accountLimits, webhook, machine, limitsOf, pumpQueues };
 }
 
 /** What's made once the floors are open: the SSH team, the tailnet, workers' web servers, pictures and upgrades. */

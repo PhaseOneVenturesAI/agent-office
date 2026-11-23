@@ -7,6 +7,10 @@ export interface HarnessHistoryOptions {
   host: string;
   path: string;
   canEdit: () => boolean;
+  /** Which harness this is ("Shared Harness" when left out). */
+  label?: string;
+  /** Who may restore, told to someone who can't. */
+  restoreHint?: string;
   loadPage: (before?: string) => Promise<HarnessHistoryPage>;
   loadSnapshot: (revision: string) => Promise<HarnessSnapshot>;
   loadCurrent: () => Promise<HarnessSource>;
@@ -32,7 +36,7 @@ export function openHarnessHistory(options: HarnessHistoryOptions): Modal {
   const el = h('div.modal.harness-history', { role: 'dialog', 'aria-label': 'Harness source history' },
     h('header', {}, heading),
     h('div.harness-history-scope', {}, h('strong', {}, options.path),
-      h('p', {}, `Shared Harness · ${options.host}`), h('p.harness-history-meta', {}, `Source: ${options.root}/${options.path}`),
+      h('p', {}, `${options.label ?? 'Shared Harness'} · ${options.host}`), h('p.harness-history-meta', {}, `Source: ${options.root}/${options.path}`),
       h('details', {}, h('summary', {}, 'Scope and history limits'),
         h('p', {}, 'These are retained source revisions on this Office server. They do not show what is loaded in a running worker.'),
         h('p', {}, 'Restoring changes this source only. Apply remains a separate manual push for the next worker start. Project context and provider-home backups are separate.'),
@@ -80,7 +84,7 @@ export function openHarnessHistory(options: HarnessHistoryOptions): Modal {
       restore.onclick = () => { if (confirm.checked) void restoreSelected(); };
       detail.append(h('label.harness-history-confirm', {}, confirm, h('span', {}, 'Replace the current source with this retained text. Its current text will also be kept in history.')),
         h('div.harness-history-actions', {}, restore));
-    } else if (!options.canEdit()) detail.append(h('p', {}, 'An Office admin can restore source revisions.'));
+    } else if (!options.canEdit()) detail.append(h('p', {}, options.restoreHint ?? 'An Office admin can restore source revisions.'));
     detail.append(h('button.btn', { type: 'button', disabled: busy, onclick: () => void inspect(entry) }, 'Reload current source'));
     if (busy) detail.append(h('p', { role: 'status' }, 'Reading or saving…'));
   };
@@ -116,7 +120,7 @@ export function openHarnessHistory(options: HarnessHistoryOptions): Modal {
       const result = await options.restore({ path: options.path, action: 'restore', revision: entry.id, base: source.revision });
       if (!alive || token !== serial) return;
       selected.source = validSource(result.file);
-      say(result.warning ?? 'Restored the shared source. Prior text is retained. Nothing was Applied or sent to a worker.');
+      say(result.warning ?? 'Restored the source. Prior text is retained. Nothing was Applied or sent to a worker.');
       // Mutation acknowledgment stands independently of this optional history refresh.
       try {
         const refreshed = await options.loadPage();

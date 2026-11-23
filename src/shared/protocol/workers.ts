@@ -45,6 +45,8 @@ export interface WorkerInfo {
   /** When it last went to done or needs_input (ms), so N goes to whoever has waited longest first. */
   waitingSince?: number;
   createdBy: string;
+  /** Who hired it, as an account id, when an account did: what alertsForMe matches against (client/notify.ts). Missing for workers from before accounts, or hired on the shared password. */
+  owner?: string;
   createdAt: number;
   prompt?: string;
   /** Latest explicit task handoff; independent of the credential account. */

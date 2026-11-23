@@ -89,6 +89,7 @@ export function restoreWorkers(file: string, workers: Map<string, Worker>, defau
         status: 'offline',
         acked: true,
         createdBy: s.createdBy ?? '?',
+        owner: typeof s.owner === 'string' && s.owner ? s.owner : undefined,
         createdAt: s.createdAt ?? Date.now(),
         prompt: s.prompt,
         handoff: savedHandoff(s.handoff),
