@@ -391,6 +391,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
     // them, E stays the terminal.
     const leadDept = w.kind === 'agent' ? store.departments.departments.find((d) => d.lead?.workerId === w.id) : undefined;
     const isCeo = w.kind === 'agent' && !!store.ceo.ceo && store.ceo.ceo.workerId === w.id;
+    const role = isCeo || !!leadDept;
     const talkName = isCeo ? store.ceo.ceo!.name : leadDept?.lead?.name;
     return {
       k: w.status + w.id + (leadDept?.id ?? '') + (isCeo ? 'ceo' : '') + (w.pr?.number ?? '') + (w.repos?.map((r) => r.pr?.number ?? '-').join() ?? '') + (w.prOpening ? '!' : '') + doing + spent + (sign ?? ''),

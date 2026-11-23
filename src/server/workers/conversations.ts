@@ -3,21 +3,42 @@ import type { ConversationMessage } from '../../shared/protocol.js';
 import { safeAssistantText } from '../../shared/assistant-text.js';
 import type { Worker } from './types.js';
 import type { AssistantReply } from '../assistant-text.js';
+import { RoleChat, type ChatMessage } from '../role-chat.js';
 
 export const conversationSupported = (provider: unknown) => ['claude', 'kimi', 'codex'].includes(String(provider));
 type Listener = (message: ConversationMessage) => void;
-interface Feed { session?: string; messages: ConversationMessage[]; listeners: Set<Listener> }
+interface Feed { session?: string; messages: ConversationMessage[]; listeners: Set<Listener>; }
 
-/** A bounded, ephemeral view of this worker's new turns. The provider remains the source of history. */
+/**
+ * A bounded, ephemeral view of this worker's new turns — plus, for role characters (the CEO and
+ * department managers), a durable scoped history (see role-chat.ts) that survives restarts and
+ * engine swaps. The provider session remains the source of execution context; the durable file is
+ * the record, paged in on demand.
+ */
 export class WorkerConversations {
   private feeds = new Map<string, Feed>();
+  private history?: RoleChat;
+  private durable?: (id: string) => boolean;
+  private hydrated = new Set<string>();
   constructor(private workers: Map<string, Worker>, private prompt: (id: string, text: string, by: string) => string | undefined,
     private interrupt: (id: string, by: string) => void, private status: (w: Worker, status: 'working' | 'idle' | 'done') => void) {}
+
+  /** Binds the durable store; `durable` says which workers keep a record (role characters). */
+  attachHistory(history: RoleChat, durable: (id: string) => boolean): void {
+    this.history = history;
+    this.durable = durable;
+  }
+
   private feed(id: string): Feed {
     let f = this.feeds.get(id);
     if (!f) { f = { messages: [], listeners: new Set() }; this.feeds.set(id, f); }
     const session = this.workers.get(id)?.info.sessionId;
-    if (session && f.session !== session) { f.messages = []; f.session = session; }
+    if (session && f.session !== session) { f.messages = []; f.session = session; this.hydrated.delete(id); }
+    if (this.history && this.durable?.(id) && !this.hydrated.has(id)) {
+      // Hydrate the live window from the durable record once; paging reaches further back.
+      this.hydrated.add(id);
+      f.messages = this.history.tail(id, 30).reverse();
+    }
     return f;
   }
   snapshot(id: string) { return [...this.feed(id).messages]; }
@@ -27,7 +48,13 @@ export class WorkerConversations {
     if (f.messages.some((m) => m.id === message.id)) return;
     f.messages.push(message);
     while (f.messages.length > 30 || f.messages.reduce((n, m) => n + m.text.length, 0) > 100000) f.messages.shift();
+    if (this.history && this.durable?.(id)) this.history.append(id, message as ChatMessage);
     for (const listener of f.listeners) listener(message);
+  }
+  /** Older messages from the durable record (role characters); empty for ordinary workers. */
+  page(id: string, before: number): ChatMessage[] {
+    if (!this.history || !this.durable?.(id)) return [];
+    return this.history.tail(id, 30, before);
   }
   assistant(id: string, reply: AssistantReply) {
     const w = this.workers.get(id), text = safeAssistantText(reply.text);
@@ -44,12 +71,12 @@ export class WorkerConversations {
     this.status(w, 'working');
     const error = this.prompt(id, text, by);
     if (error) { this.status(w, previous); return error; }
-    this.append(id, { id: randomUUID(), role: 'user', text, at: Date.now() });
+    this.append(id, { id: randomUUID(), role: 'user', text, at: Date.now(), by });
   }
   stop(id: string, by: string): string | undefined {
     const w = this.workers.get(id);
     if (!w || w.stopping || w.info.status !== 'working') return 'Only a running turn can be interrupted here. Answer permissions in the terminal.';
     this.interrupt(id, by);
   }
-  forget(id: string) { this.feeds.delete(id); }
+  forget(id: string) { this.feeds.delete(id); this.hydrated.delete(id); }
 }

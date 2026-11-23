@@ -24,6 +24,12 @@ export const conversationHandlers = {
     const w = ownedWorker(ctx, c, msg.workerId);
     if (w) ctx.warn(c, w.floor.workers.conversations.send(w.wid, msg.text, c.peer.name));
   },
+  'conversation.page'(ctx, c, msg) {
+    const w = ownedWorker(ctx, c, msg.workerId);
+    if (!w) return;
+    const messages = w.floor.workers.conversations.page(w.wid, typeof msg.before === 'number' ? msg.before : Date.now());
+    ctx.sendTo(c, { t: 'conversation.history', workerId: w.wid, messages, end: messages.length < 30 });
+  },
   'conversation.interrupt'(ctx, c, msg) {
     const w = ownedWorker(ctx, c, msg.workerId);
     if (w) ctx.warn(c, w.floor.workers.conversations.stop(w.wid, c.peer.name));

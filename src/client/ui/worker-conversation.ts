@@ -9,16 +9,34 @@ import './worker-conversation.css';
 
 let current: Modal | undefined;
 
+/** Message text with URLs made clickable (artifact links, PRs, staged takes). */
+function richText(text: string): (string | HTMLElement)[] {
+  const parts: (string | HTMLElement)[] = [];
+  let rest = text;
+  for (;;) {
+    const m = /https?:\/\/[^\s<>"')\]]+/.exec(rest);
+    if (!m) break;
+    if (m.index > 0) parts.push(rest.slice(0, m.index));
+    const url = m[0].replace(/[.,;:!?]+$/, '');
+    parts.push(h('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, url));
+    rest = rest.slice(m.index + url.length);
+  }
+  if (rest) parts.push(rest);
+  return parts;
+}
+
 export function openWorkerConversation(net: Net, workerId: string, terminal: () => void) {
   current?.close();
   const worker = store.workers.get(workerId);
   if (!worker) return;
   const floor = store.floor, speaker = agentSpeaker();
-  let supported = false, listening = false, alive = true;
+  let supported = false, listening = false, alive = true, historyEnd = false, loadingEarlier = false;
   const close = h('button.btn.close', { 'aria-label': 'Close conversation' }, '✕');
   const terminalButton = h('button.btn', { type: 'button' }, 'Terminal / approvals');
   const handoff = h('button.btn', { type: 'button' }, 'Handoff');
   const note = h('p.note', {}, 'Loading this existing agent…');
+  const pending = h('div.conversation-pending');
+  const earlier = h('button.btn.small', { type: 'button' }, 'Load earlier messages');
   const transcript = h('div.conversation-transcript', { role: 'log', 'aria-label': 'Conversation transcript', 'aria-live': 'polite' });
   const draft = h('textarea', { rows: 3, maxlength: 20000, 'aria-label': 'Message draft', placeholder: 'Type or dictate, review the draft, then Send.' });
   const send = h('button.btn.primary', { type: 'submit', disabled: true }, 'Send');
@@ -30,17 +48,18 @@ export function openWorkerConversation(net: Net, workerId: string, terminal: () 
   const form = h('form', {}, draft, mic.live, h('div.conversation-actions', {}, mic.button, send));
   const el = h('div.modal.worker-conversation', { role: 'dialog', 'aria-label': `${worker.name} conversation` },
     h('header', {}, h('h2', {}, `${worker.name} · Conversation`), close), h('div.body', {},
-      h('div.conversation-actions', {}, terminalButton, handoff), note,
-      h('p.note', {}, 'New complete replies appear here; earlier history remains in the terminal. The selected agent keeps its existing session and model. Tool approvals stay in the terminal.'),
-      transcript, form,
+      h('div.conversation-actions', {}, terminalButton, handoff), note, pending,
+      h('p.note', {}, 'This is the ongoing conversation: replies appear here, links open the artifact, and history pages in below. The character keeps its session and model. Tool approvals are answered in the terminal — never guessed here.'),
+      earlier, transcript, form,
       h('div.conversation-actions', {}, h('label', {}, voice, ' Speak new replies'), stop, interrupt),
-      h('p.note', {}, speaker.available ? 'Speech uses your browser/OS voice. Known credential patterns are suppressed; review sensitive work in text. Closing or disconnecting stops audio.' : 'Speech playback is unavailable in this browser. Typed messages still work.')));
+      h('p.note', {}, speaker.available ? 'Dictation and read-aloud use your browser/OS speech; review sensitive work in text. Closing or disconnecting stops audio.' : 'Speech is unavailable in this browser; typed messages still work.')));
   const renderMessage = (m: ConversationMessage, fresh: boolean) => {
     if (transcript.querySelector(`[data-id="${CSS.escape(m.id)}"]`)) return;
-    transcript.append(h('article', { 'data-id': m.id }, h('strong', {}, m.role === 'assistant' ? worker.name : 'You'), h('p', {}, m.text)));
-    while (transcript.children.length > 30) transcript.firstElementChild?.remove();
+    const who = m.role === 'assistant' ? worker.name : m.by ? `You (${m.by})` : 'You';
+    transcript.append(h('article', { 'data-id': m.id, 'data-at': String(m.at), class: m.scope === 'staff' ? 'staff' : '' }, h('strong', {}, who), h('p', {}, ...richText(m.text))));
+    while (transcript.children.length > 200) transcript.firstElementChild?.remove();
     transcript.scrollTop = transcript.scrollHeight;
-    if (fresh && m.role === 'assistant' && !listening) speaker.say(m.text);
+    if (fresh && m.role === 'assistant' && !listening) speaker.say(m.text.replace(/https?:\/\/\S+/g, 'link'));
     if (fresh && m.role === 'user') draft.value = '';
   };
   const paint = () => {
@@ -49,13 +68,47 @@ export function openWorkerConversation(net: Net, workerId: string, terminal: () 
     draft.disabled = !net.up || !supported || !!w.lost;
     send.disabled = draft.disabled || !['idle', 'done'].includes(w.status);
     interrupt.disabled = !net.up || w.status !== 'working';
-    note.textContent = !net.up ? 'Disconnected. Draft kept; reconnect to continue.' : !supported ? 'Structured replies are unavailable for this provider; use its terminal.' : w.status === 'needs_input' ? 'This agent needs a human answer. Open Terminal / approvals.' : `${w.provider ?? 'Agent'} · ${w.status} · selected model ${w.model ?? 'provider default'} · last reported ${w.usage?.model ?? 'unknown'}`;
+    const statusLine = w.status === 'done' ? 'turn ended — not yet reviewed' : w.status === 'needs_input' ? 'waiting on a human decision' : w.status === 'exited' ? 'stopped — not completed' : w.status;
+    note.textContent = !net.up
+      ? 'Disconnected. Draft kept; reconnect to continue.'
+      : !supported
+        ? 'Structured replies are unavailable for this provider; use its terminal.'
+        : `${w.provider ?? 'Agent'} · ${statusLine} · selected model ${w.model ?? 'provider default'} · last reported ${w.usage?.model ?? 'unknown'} · quota unknown here`;
+    // A pending approval/question is a real decision: show it, and answer it where it lives.
+    pending.replaceChildren();
+    if (w.status === 'needs_input') {
+      pending.append(
+        h('div.conversation-pending-card', {},
+          h('strong', {}, '⏸ Waiting on a decision'),
+          h('p', {}, w.activity ?? 'This agent is stopped on a question or approval.'),
+          h('p.note', {}, 'Approvals and permission prompts are answered in the terminal, with the exact request — this chat never guesses them.'),
+          h('button.btn.small', { type: 'button', onclick: () => { modal.close(); terminal(); } }, 'Open Terminal / approvals')),
+      );
+    }
   };
   const offMessage = net.onMessage((msg) => {
     if (!alive) return;
-    if (msg.t === 'conversation.state' && msg.workerId === workerId) { supported = msg.supported; transcript.replaceChildren(); for (const m of msg.messages) renderMessage(m, false); paint(); }
+    if (msg.t === 'conversation.state' && msg.workerId === workerId) { supported = msg.supported; transcript.replaceChildren(); historyEnd = false; for (const m of msg.messages) renderMessage(m, false); paint(); }
     if (msg.t === 'conversation.message' && msg.workerId === workerId) renderMessage(msg.message, true);
+    if (msg.t === 'conversation.history' && msg.workerId === workerId) {
+      loadingEarlier = false;
+      historyEnd = msg.end;
+      earlier.classList.toggle('hidden', historyEnd);
+      for (const m of [...msg.messages].reverse()) {
+        if (transcript.querySelector(`[data-id="${CSS.escape(m.id)}"]`)) continue;
+        const first = transcript.firstElementChild;
+        const article = h('article', { 'data-id': m.id, 'data-at': String(m.at), class: m.scope === 'staff' ? 'staff' : '' }, h('strong', {}, m.role === 'assistant' ? worker.name : m.by ? `You (${m.by})` : 'You'), h('p', {}, ...richText(m.text)));
+        if (first) transcript.insertBefore(article, first); else transcript.append(article);
+      }
+    }
   });
+  earlier.onclick = () => {
+    if (loadingEarlier || historyEnd) return;
+    const oldest = transcript.querySelector('article');
+    const at = oldest?.getAttribute('data-at');
+    loadingEarlier = true;
+    net.send({ t: 'conversation.page', workerId, before: at ? Number(at) : Date.now() });
+  };
   const offStatus = net.onStatus((up) => { speaker.stop(); mic.stop(); if (up) net.send({ t: 'conversation.open', workerId }); paint(); });
   const offWorkers = store.on('workers', paint);
   const modal = openModal(el, { onClose: () => {

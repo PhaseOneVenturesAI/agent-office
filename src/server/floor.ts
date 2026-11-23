@@ -18,6 +18,7 @@ import { FloorPlanStore } from './floorplan.js';
 import { Departments, MAX_WRITERS } from './departments.js';
 import { FloorCeo } from './ceo.js';
 import { LeadDispatch } from './dept-dispatch.js';
+import { RoleChat } from './role-chat.js';
 import { Docs } from './docs.js';
 import { Dog } from './dog.js';
 import { Court } from './court.js';
@@ -279,6 +280,8 @@ export class Floor {
       departments: () => this.departments.state().departments,
       ceo: () => this.ceo.get(),
     });
+    // Role characters keep a durable, paged conversation record (see role-chat.ts).
+    this.workers.conversations.attachHistory(new RoleChat(dataDir), (id) => !!this.isRoleWorker(id));
 
     // Meetings seat their own workers round the meeting room's table and run them round by round.
     const workers = this.workers;
