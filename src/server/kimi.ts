@@ -70,7 +70,8 @@ export class KimiSession {
   private sessionId?: string;
   private buffer = '';
   private line = '';
-  private permission?: { id: unknown; options: DshPermissionOption[] };
+  private permissions: { id: unknown; options: DshPermissionOption[]; card: string }[] = [];
+  private get permission() { return this.permissions[0]; }
   private configOptions: Rec[] = [];
   private renderer = new DshRenderer();
   private assistantTurn = new AssistantTurn();
@@ -188,8 +189,13 @@ export class KimiSession {
     if (this.finished) return;
     if (this.permission) {
       const reject = rejectOption(this.permission.options);
-      this.answerPermission(reject?.optionId, !reject);
-      if (!reject) this.notify('session/cancel', { sessionId: this.sessionId });
+      if (reject) this.answerPermission(reject.optionId);
+      else {
+        this.cancelPermissions();
+        this.events.output(notice('quiet', 'permissions cancelled'));
+        this.events.status(this.prompting ? 'working' : 'idle');
+        this.notify('session/cancel', { sessionId: this.sessionId });
+      }
       return;
     }
     if (this.prompting) {
@@ -206,6 +212,7 @@ export class KimiSession {
     if (this.closeDone) return this.closeDone;
     if (this.finished) return Promise.resolve();
     this.closing = true;
+    this.cancelPermissions();
     return this.closeDone = stopAcpChild(this.child, () => {
       if (this.sessionId) this.send({ jsonrpc: '2.0', id: ++this.nextId, method: 'session/close', params: { sessionId: this.sessionId } });
     });
@@ -303,6 +310,7 @@ export class KimiSession {
     this.request('session/prompt', { sessionId: this.sessionId, prompt: [{ type: 'text', text: clean }] }, 0)
       .then((result) => {
         this.prompting = false;
+        this.cancelPermissions();
         const stop = isRec(result) ? str(result.stopReason) : undefined;
         const reply = this.assistantTurn.finish();
         if (stop === 'end_turn' && reply) this.events.assistant?.(reply);
@@ -313,6 +321,7 @@ export class KimiSession {
       })
       .catch((err) => {
         this.prompting = false;
+        this.cancelPermissions();
         this.events.output(this.renderer.endTurn('Failed'));
         this.events.output(notice('bad', `prompt failed: ${oneLine(reason(err), 300)}`));
         this.events.action(undefined);
@@ -351,22 +360,43 @@ export class KimiSession {
   private answerPermission(optionId: string | undefined, cancelled = false): void {
     const permission = this.permission;
     if (!permission) return;
-    this.permission = undefined;
+    this.permissions.shift();
+    this.line = '';
     const outcome = cancelled || !optionId ? { outcome: 'cancelled' } : { outcome: 'selected', optionId };
     this.send({ jsonrpc: '2.0', id: permission.id, result: { outcome } });
     const label = cancelled || !optionId ? 'permission cancelled' : `permission answered: ${oneLine(optionId, 80)}`;
     this.events.output(notice('quiet', label));
     // Answering a prompt's question puts the turn back to work; answering autonomous work leaves the
     // session ready for the next prompt.
-    this.events.status(this.prompting ? 'working' : 'idle');
+    if (this.permission) this.showPermission();
+    else this.events.status(this.prompting ? 'working' : 'idle');
   }
 
   private onPermission(id: unknown, params: unknown): void {
+    if (this.closing) {
+      this.send({ jsonrpc: '2.0', id, result: { outcome: { outcome: 'cancelled' } } });
+      return;
+    }
     const options = permissionOptions(params);
-    this.permission = { id, options };
     const toolCall = isRec(params) && isRec(params.toolCall) ? params.toolCall : undefined;
-    this.events.output(renderPermission(params, options, this.renderer.toolDetail(toolCall ? str(toolCall.toolCallId) : undefined)));
+    const card = renderPermission(params, options, this.renderer.toolDetail(toolCall ? str(toolCall.toolCallId) : undefined));
+    this.permissions.push({ id, options, card });
+    if (this.permissions.length === 1) this.showPermission();
+  }
+
+  /** Only the oldest request is displayed, so the person's choice matches the visible tool. */
+  private showPermission(): void {
+    this.events.output(this.permission!.card);
     this.events.status('needs_input');
+  }
+
+  /** Ending a turn or session must settle every request, never silently approve it. */
+  private cancelPermissions(): void {
+    for (const permission of this.permissions) {
+      this.send({ jsonrpc: '2.0', id: permission.id, result: { outcome: { outcome: 'cancelled' } } });
+    }
+    this.permissions = [];
+    this.line = '';
   }
 
   private onUpdate(params: unknown): void {
@@ -468,6 +498,8 @@ export class KimiSession {
 
   private finish(code: number | null, error?: string): void {
     if (this.finished) return;
+    this.permissions = [];
+    this.line = '';
     this.finished = true;
     const quiet = this.closing;
     for (const waiter of this.pending.values()) waiter.reject(new Error('the Kimi process ended'));

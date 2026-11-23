@@ -77,6 +77,8 @@ DeepSeek Harness metrics come from ACP `usage_update`: tokens in context and the
 
 Kimi metrics come from the same ACP `usage_update`: tokens in context and the window's size per worker, plus a session cost only when Kimi reports one. The daily budget and historical ledger remain Claude-only.
 
+Kimi can ask for approval for several tools at once. Office keeps those requests in arrival order and shows one card at a time. Answering a card shows the next; the worker stays *needs input* until none remain. **Esc** rejects the displayed request when it offers rejection; otherwise it cancels the turn and outstanding requests. Closing a session or ending its turn cancels unanswered requests, never approves them. This fixes new sessions after an Office update; a request already lost by an older running Office cannot be recovered by typing another approval.
+
 ## Kimi sign-in
 
 In **☰ → 🔐 Your sign-ins → Kimi**, open the verification link shown by the office and confirm the matching one-time code on Kimi's page. The link already carries `user_code`; do not navigate to the bare authorization page or look for a separate code-entry field. The office preserves the complete HTTPS URL printed by `kimi login` and waits for a matching code before showing it. If no complete link appears, cancel and restart the flow. Sign-in remains scoped to the account's own `KIMI_CODE_HOME`.
