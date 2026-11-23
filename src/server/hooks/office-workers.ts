@@ -1,3 +1,4 @@
+import { canUseWorker, OWN_WORKER } from '../worker-ownership.js';
 import type http from 'node:http';
 import { notLeaving } from '../leave-on-merge.js';
 import { findWorker, readHireRequest, readHomeRequest, readPrRequest, workerRow, type PullsView } from '../office-workers.js';
@@ -99,6 +100,7 @@ export async function officeWorkers(ctx: Ctx, req: http.IncomingMessage, res: ht
     }
     // One at a time: git takes a lock on the repository's refs to delete a branch.
     for (const { w, why } of going) {
+      if (!canUseWorker(ctx, floor.workers.ownerOf(me.id), floor.workers.ownerOf(w.id), w.provider)) { results.push({ worker: w.name, id: w.id, error: OWN_WORKER }); continue; }
       if (floor.workers.get(w.id) !== w) {
         results.push({ worker: w.name, id: w.id, skipped: 'it had already gone' });
         continue;
@@ -116,6 +118,7 @@ export async function officeWorkers(ctx: Ctx, req: http.IncomingMessage, res: ht
     const b = (body ?? {}) as { worker?: unknown; prompt?: unknown };
     const w = findWorker(floor.workers.list(), str(b.worker, 64));
     if (typeof w === 'string') return send(res, 404, { error: w });
+    if (!canUseWorker(ctx, floor.workers.ownerOf(me.id), floor.workers.ownerOf(w.id), w.provider)) return send(res, 403, { error: OWN_WORKER });
     if (w.id === me.id) return send(res, 400, { error: "That's you" });
     // A shell would run it as a command, in someone's terminal.
     if (w.kind !== 'agent') return send(res, 400, { error: `${w.name} is a shell, not an agent` });
@@ -133,6 +136,7 @@ export async function officeWorkers(ctx: Ctx, req: http.IncomingMessage, res: ht
     if (typeof ask === 'string') return send(res, 400, { error: ask });
     const w = ask.worker ? findWorker(floor.workers.list(), ask.worker) : me;
     if (typeof w === 'string') return send(res, 404, { error: w });
+    if (!canUseWorker(ctx, floor.workers.ownerOf(me.id), floor.workers.ownerOf(w.id), w.provider)) return send(res, 403, { error: OWN_WORKER });
     if (w.kind !== 'agent') return send(res, 400, { error: `${w.name} is a shell, not an agent` });
     const pr = ask.pr === undefined ? undefined : await pullOf(floor, ask.pr, ask.repo);
     if (typeof pr === 'string') return send(res, 400, { error: pr });

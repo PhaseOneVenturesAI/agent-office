@@ -1,3 +1,4 @@
+import { personalProviderError } from './worker-ownership.js';
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -94,6 +95,8 @@ export class TaskQueue {
   add(prompt: string, by: string, title?: string, issue?: number, provider?: AgentProvider, model?: string, effort?: AgentEffort, owner?: string, dept?: string, parentId?: string): string | undefined {
     if (provider === undefined) ({ provider, model, effort } = this.workers.officeDefault ?? { provider: this.workers.defaultProvider });
     if (!isAgentProvider(provider) || (provider === 'custom' && this.workers.defaultProvider !== 'custom')) return 'Unknown agent provider';
+    const unsupported = personalProviderError(owner, 'agent', provider);
+    if (unsupported) return unsupported;
     const modelError = validateWorkerModel('agent', provider, model);
     if (modelError) return modelError;
     const effortError = validateWorkerEffort('agent', provider, effort);

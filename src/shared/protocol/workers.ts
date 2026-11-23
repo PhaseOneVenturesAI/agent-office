@@ -47,6 +47,8 @@ export interface WorkerInfo {
   createdBy: string;
   /** Who hired it, as an account id, when an account did: what alertsForMe matches against (client/notify.ts). Missing for workers from before accounts, or hired on the shared password. */
   owner?: string;
+  /** Public account display name; no credential details. */
+  ownerName?: string;
   createdAt: number;
   prompt?: string;
   /** Latest explicit task handoff; independent of the credential account. */

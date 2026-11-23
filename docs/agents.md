@@ -114,3 +114,29 @@ SIGTERM keeps hosted PTY sessions running in their separate terminal host so the
 The existing worker/session metadata and worktrees are retained for restart/resume. Hosted PTY keep/detach behavior is unchanged. Sending an ACP worker home also awaits its child’s exit before workspace cleanup; its record and desk remain reserved during that wait, and a failed stop preserves both. Queue recycling waits for successful removal before seating the next worker. Worktree recovery cannot resume a replacement process before the old ACP child exits. ACP closes already in progress are included in Office shutdown.
 
 Removing a floor leaves it registered until shutdown succeeds; failed shutdown leaves its floor and worker records in place and reports the error. Clearing a meeting keeps its current ownership until all seated workers stop. A failed stop leaves the meeting, notes and shared worktree available for inspection and retry; it does not free the table for a replacement meeting. Pending stop/recovery blocks new prompts, resume and handoffs for that worker.
+
+
+## Credential ownership
+
+With accounts, new Claude, Kimi and Codex workers, queue tasks, meetings and shells receive the starting account's provider configuration and GitHub sign-in. Missing supported-provider credentials prompt for that account's sign-in. Providers without personal sign-in support (Cursor, Grok, Muse, OpenCode, DeepSeek Harness, Pi and custom commands) are denied for account-based agent hires instead of silently using the host account. Offices used only through the shared password keep their existing behavior.
+
+Account-owned task labels are derived locally from the latest meaningful prompt. Office does not send those prompts or tool snippets to a hidden host-Claude naming call. Shared-password workers keep their existing naming behavior.
+
+A worker keeps its credential owner. Its owner's account can prompt, resume, type into, attach to, rebuild or remove it; being another admin does not bypass ownership. The same rule applies to MCP/CLI worker controls, worktree mutations and queue retry/removal. A board agent already occupied by another account gives a clear denial: queue the task under your own account or use your own desk agent. It is not silently reassigned or restarted. Review verdicts can still be recorded by teammates, but only the worker's owner can trigger its follow-up turn. Meetings keep their starting account and cannot be stopped by another account. Public task/status and account display names stay visible; private terminal snapshots, live screen data, search results and conversation replies are restricted.
+
+### Explicit office credential grants
+
+Office credentials are disabled for accounts by default, including newly promoted admins. On the host, the credential owner can create `<office-data-dir>/office-credential-grants.json` (normally `.agent-office/office-credential-grants.json`) with the exact account IDs from **Accounts** or `accounts.json` and the specific providers allowed:
+
+```json
+{
+  "OWNER_ACCOUNT_ID": ["claude", "kimi", "codex", "github"],
+  "APPROVED_ADMIN_ACCOUNT_ID": ["kimi"]
+}
+```
+
+This is host configuration, not a browser-admin self-service grant. Keep it readable only by the service/host owner (`chmod 600`). An account must also retain its admin role. Grant only the provider whose credential owner approved sharing. The recipient then deliberately chooses **Use the office's** in **Your sign-ins**; a grant alone does not change personal defaults. Existing `use: office` choices require the new explicit grant too: before upgrading, the host owner should list their own approved account if they intend to retain that choice. No account is inferred to own credentials merely because it is first or an admin.
+
+Remove an account/provider entry to revoke the grant. Missing or malformed files deny office use. New starts and subsequent controls/transcript access check the current grant. A running process already has credentials in its environment: revocation does not erase those or interrupt an active turn. The host owner must stop affected work and restart its session with personal credentials if immediate process-level revocation is required. Saved conversations and worktrees are not deleted.
+
+These are application routing and access controls, not OS tenant isolation. Agents and shells still execute as the Office service user and may access that user's filesystem. Do not treat this as a sandbox for hostile coworkers or untrusted shell code; use separate OS users/containers or hosts when that isolation is needed. Public project task descriptions, branches, reviews and code remain collaboration surfaces.

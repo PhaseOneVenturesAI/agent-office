@@ -1,3 +1,4 @@
+import { personalProviderError } from '../worker-ownership.js';
 import { WorkerRemovals } from './removal.js';
 import { AcpClosures } from '../acp-shutdown.js';
 import { WorkerConversations } from './conversations.js';
@@ -263,6 +264,8 @@ export class WorkerManager {
       const paused = this.ledger.hiringPaused;
       if (paused) return paused;
     }
+    const unsupported = personalProviderError(owner, kind, selectedProvider);
+    if (unsupported) return unsupported;
     const signIn = providerAdapter(selectedProvider)?.signIn;
     if (owner && signIn && this.runAs && !this.runAs.ready(owner, signIn)) return this.runAs.why(signIn);
     const full = this.capacity?.full();
@@ -365,6 +368,7 @@ export class WorkerManager {
       const info = this.spawn(deskId, by, clean, false, 'agent', undefined, undefined, undefined, undefined, owner);
       return typeof info === 'string' ? info : { info, hired: true };
     }
+    if (w.owner !== owner) return 'This board agent belongs to another account. Use your own agent or queue the task under your account.';
     // Typed into the question it's asking, the prompt would answer it.
     if (w.info.status === 'needs_input') return `The ${w.info.name} is waiting on an answer in its terminal`;
     const running = !!(w.pty || w.dsh);
@@ -689,6 +693,8 @@ export class WorkerManager {
     // A workspace isn't a repository, but it's inside this floor's checkout: git run in it must not
     // find that checkout (and switch its branch, say) instead of saying it's no repository.
     if (info.repos?.length) env.GIT_CEILING_DIRECTORIES = [path.dirname(cwd), env.GIT_CEILING_DIRECTORIES].filter(Boolean).join(path.delimiter);
+    const unsupported = personalProviderError(w.owner, info.kind, info.provider ?? this.defaultProvider);
+    if (unsupported) return this.startFailed(w, unsupported);
     if (w.owner && this.runAs) {
       if (adapter?.signIn && !this.runAs.ready(w.owner, adapter.signIn)) {
         this.startFailed(w, `whoever hired ${info.name} (${info.createdBy}) isn't signed in to ${providerMeta(info.provider)?.name ?? 'its agent'} — they can sign in under ☰ → 🔐 Your sign-ins, then press R here`);

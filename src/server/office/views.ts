@@ -1,3 +1,4 @@
+import { canViewTerminal } from '../worker-ownership.js';
 import type { Floor } from '../floor.js';
 import { ROOF } from '../../shared/rooftop.js';
 import type { FloorView } from '../../shared/protocol.js';
@@ -14,5 +15,5 @@ export const floorView = (ctx: Ctx, floor: Floor | undefined): FloorView => {
 /** The rooftop bar: nobody works up there, so it has none of a floor's things. */
 export const roofView = (ctx: Ctx): FloorView => ({ ...floorView(ctx, undefined), floor: ROOF });
 export const screensOf = (ctx: Ctx, c: Client, floor: Floor | undefined) => {
-  for (const { workerId, frame } of floor?.workers.fullScreens() ?? []) ctx.sendTo(c, { t: 'screen', workerId, ...frame, full: true });
+  for (const { workerId, frame } of floor?.workers.fullScreens() ?? []) if (canViewTerminal(ctx, c.accountId, workerId)) ctx.sendTo(c, { t: 'screen', workerId, ...frame, full: true });
 };

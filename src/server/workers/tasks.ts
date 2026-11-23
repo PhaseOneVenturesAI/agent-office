@@ -30,7 +30,7 @@ export class WorkerTasks {
   ) {
     this.namer = new TaskNamer(claude, env, () => officePrompt(ctx.prompts, 'office.namer'), (id, task, named) => {
       const w = ctx.workers.get(id);
-      if (!w || w.taskEpoch !== named.epoch) return;
+      if (!w || w.owner || w.taskEpoch !== named.epoch) return;
       w.info.task = task;
       ctx.emit(w);
       ctx.persist();
@@ -45,15 +45,16 @@ export class WorkerTasks {
     if (!clean || /^\/\S+$/.test(clean) || w.prompts.at(-1) === clean || clean === CARRY_ON_PROMPT) return;
     w.prompts = [...w.prompts, clean].slice(-TASK_PROMPTS);
     const hadTask = !!w.info.task;
-    if (!hadTask) w.info.task = fallbackTask(clean);
-    if (!providerAdapter(w.info.provider)?.namesTasks) return;
+    if (!hadTask || (w.owner && clean.length >= 16)) w.info.task = fallbackTask(clean);
+    if (w.owner) return; // No hidden host-Claude call with another account's context.
+    if (w.owner || !providerAdapter(w.info.provider)?.namesTasks) return;
     // "yes", "go ahead", "2": a reply within the same task, not worth a new name.
     if (hadTask && clean.length < 16) return;
     this.name(w);
   }
 
   noteTool(w: Worker, tool: string) {
-    if (!providerAdapter(w.info.provider)?.namesTasks) return;
+    if (w.owner || !providerAdapter(w.info.provider)?.namesTasks) return;
     w.tools = [...w.tools, tool].slice(-TASK_TOOLS);
     w.toolsSinceNamed++;
     if (w.info.task && w.toolsSinceNamed >= TASK_REFRESH_TOOLS && Date.now() - w.namedAt > TASK_REFRESH_MS) this.name(w);
@@ -78,7 +79,7 @@ export class WorkerTasks {
   }
 
   private name(w: Worker) {
-    if (!providerAdapter(w.info.provider)?.namesTasks) return;
+    if (w.owner || !providerAdapter(w.info.provider)?.namesTasks) return;
     w.toolsSinceNamed = 0;
     w.namedAt = Date.now();
     const previous = w.info.task && w.prompts.length > 1 ? w.info.task : undefined;
