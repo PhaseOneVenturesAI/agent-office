@@ -291,6 +291,7 @@ export class QueueBoardTexture {
     const name = (t: QueueTask) => (t.issue !== undefined ? `#${t.issue}  ${t.title.replace(new RegExp(`^#${t.issue}\\s*`), '')}` : t.title);
     const running = state.tasks.filter((t) => t.status === 'running');
     const queued = state.tasks.filter((t) => t.status === 'queued');
+    const planned = state.tasks.filter((t) => t.status === 'planned');
     const done = state.tasks.filter((t) => t.status === 'done').slice(-3).reverse();
     const rows = [
       ...running.map((t) => {
@@ -298,6 +299,7 @@ export class QueueBoardTexture {
         const st = { starting: 'starting', idle: 'ready', working: 'working', needs_input: 'needs input ✋', done: 'done', exited: 'stopped', offline: 'asleep' }[w?.status ?? 'working'];
         return { icon: '🤖', text: name(t), side: `${t.workerName ?? 'a worker'} · ${st}`, color: '#1e8f4e' };
       }),
+      ...planned.map((t) => ({ icon: '📌', text: name(t), side: t.linear?.assigneeName ?? 'unassigned', color: '#2b2d42' })),
       ...queued.map((t, i) => ({ icon: '⏳', text: name(t), side: i === 0 ? 'up next' : `${i + 1}${['th', 'st', 'nd', 'rd'][i + 1 <= 3 ? i + 1 : 0]} in line`, color: '#2b2d42' })),
       ...done.map((t) => ({
         icon: t.outcome === 'done' ? '✅' : '⚠️',
@@ -306,7 +308,7 @@ export class QueueBoardTexture {
         color: '#8a8f98',
       })),
     ];
-    const summary = state.maxWorkers === 0 ? 'paused' : `${running.length} working · ${queued.length} waiting · up to ${state.maxWorkers} at once`;
+    const summary = state.maxWorkers === 0 ? 'paused' : `${running.length} agents · ${planned.length} tasks · ${queued.length} waiting · up to ${state.maxWorkers} at once`;
     const key = JSON.stringify([rows, summary]);
     if (key === this.drawn) return;
     this.drawn = key;

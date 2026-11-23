@@ -109,7 +109,7 @@ export class TaskQueue {
     // department asked. The check and the claim are one synchronous step, so two delegations can't
     // both pass. Deliberately exact-title only — reworded duplicates are not detected.
     if (this.tasks.some((t) => t.status !== 'done' && normTitle(t.title) === normTitle(cleanTitle))) return `“${cleanTitle}” is already assigned on this project`;
-    if (this.tasks.filter((t) => t.status !== 'done').length >= MAX_TASKS) return `The queue is full (${MAX_TASKS} tasks)`;
+    if (this.tasks.filter((t) => t.status === 'queued' || t.status === 'running').length >= MAX_TASKS) return `The queue is full (${MAX_TASKS} tasks)`;
     const task: QueueTask = {
       id: randomBytes(6).toString('hex'),
       provider,
@@ -132,9 +132,44 @@ export class TaskQueue {
     return undefined;
   }
 
+  /** Syncing business tasks never pumps the execution queue. */
+  upsertLinear(id: string, title: string, prompt: string, linear: NonNullable<QueueTask['linear']>) {
+    let task = this.tasks.find((t) => t.id === id);
+    if (!task) {
+      task = { id, title, prompt, addedBy: 'Linear', addedAt: Date.now(), status: 'planned' };
+      this.tasks.push(task);
+    }
+    // Reassignment withdraws a not-yet-started run, but never transfers a running worker.
+    if (task.status === 'queued' && task.linear?.accountId !== linear.accountId) { task.status = 'planned'; task.owner = undefined; }
+    Object.assign(task, { title, prompt, linear });
+    this.changed(true);
+  }
+
+  manualTask(id: string): string | undefined {
+    const task = this.tasks.find((t) => t.id === id && t.linear);
+    if (!task) return 'No linked task';
+    if (task.status === 'running' || task.status === 'queued') return 'An agent already has this task';
+    task.manual = true; this.changed();
+  }
+
+  startOwn(id: string, account: string, by: string, provider?: AgentProvider, model?: string, effort?: AgentEffort): string | undefined {
+    const task = this.tasks.find((t) => t.id === id);
+    if (!task?.linear || task.linear.accountId !== account) return 'Only the assigned employee can start their own agent';
+    if (task.linear.pending) return 'Wait for the pending Linear changes to sync first';
+    if (task.linear.archived || task.linear.conflict || ['completed', 'canceled'].includes(task.linear.workStatus)) return 'Resolve or reopen this task before starting an agent';
+    if (task.status === 'running' || task.status === 'queued') return 'This task already has an agent run';
+    provider ??= this.workers.officeDefault?.provider ?? this.workers.defaultProvider;
+    const error = personalProviderError(account, 'agent', provider) || validateWorkerModel('agent', provider, model) || validateWorkerEffort('agent', provider, effort);
+    if (error) return error;
+    if (this.tasks.filter((t) => t.status === 'queued' || t.status === 'running').length >= MAX_TASKS) return 'The agent queue is full';
+    Object.assign(task, { owner: account, addedBy: by, provider, model, effort, status: 'queued', manual: false, workerId: undefined, workerName: undefined, outcome: undefined, error: undefined, finishedAt: undefined, startedAt: undefined });
+    this.changed(); this.pump();
+  }
+
   remove(taskId: string): string | undefined {
     const t = this.tasks.find((x) => x.id === taskId);
     if (!t) return 'No such task';
+    if (t.linear) return 'Keep linked tasks on the board; archive them in Linear';
     if (t.status === 'running') return `${t.workerName ?? 'Its worker'} is on it — send the worker home to stop it`;
     this.tasks.splice(this.tasks.indexOf(t), 1);
     this.changed();
@@ -172,6 +207,7 @@ export class TaskQueue {
   retry(taskId: string, refresh?: (task: QueueTask) => { prompt: string; contextRev?: QueueTask['contextRev'] } | undefined): string | undefined {
     const t = this.tasks.find((x) => x.id === taskId);
     if (!t) return 'No such task';
+    if (t.linear) return 'Use Start my agent on the linked task';
     if (t.status !== 'done') return 'That task is still on the queue';
     if (t.issue !== undefined && this.tasks.some((x) => x !== t && x.issue === t.issue && x.status !== 'done')) return `Issue #${t.issue} is already on the queue`;
     if (t.issue !== undefined && this.tasks.some((x) => x !== t && x.issue === t.issue && x.supersedes === t.id)) return `That task is already retried`;
@@ -204,7 +240,7 @@ export class TaskQueue {
   /** Forgets the finished tasks. */
   clear() {
     const before = this.tasks.length;
-    this.tasks = this.tasks.filter((t) => t.status !== 'done');
+    this.tasks = this.tasks.filter((t) => t.linear || t.status !== 'done');
     if (this.tasks.length !== before) this.changed();
   }
 
@@ -409,15 +445,16 @@ export class TaskQueue {
     if (changed) this.changed();
   }
 
-  private changed() {
-    this.persist();
+  private changed(strict = false) {
+    this.persist(strict);
     this.events.update(this.state());
   }
 
-  private persist() {
+  private persist(strict = false) {
     try {
       writeFileSync(this.statePath, JSON.stringify({ maxWorkers: this.maxWorkers, tasks: this.tasks }, null, 2), { mode: 0o600 });
-    } catch {
+    } catch (error) {
+      if (strict) throw error;
       // disk issues shouldn't take the office down
     }
   }
@@ -441,7 +478,8 @@ export class TaskQueue {
           addedBy: s.addedBy ?? '?',
           owner: typeof s.owner === 'string' && s.owner ? s.owner : undefined,
           addedAt: s.addedAt ?? Date.now(),
-          status: s.status === 'running' || s.status === 'done' ? s.status : 'queued',
+          status: s.status === 'planned' || s.status === 'running' || s.status === 'done' ? s.status : 'queued',
+          linear: s.linear, manual: s.manual,
           workerId: s.workerId,
           workerName: s.workerName,
           branch: s.branch,
