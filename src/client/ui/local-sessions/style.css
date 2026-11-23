@@ -1,0 +1,4 @@
+.local-sessions { border-top: 1px solid color-mix(in srgb, var(--ink) 18%, transparent); padding-top: 10px; font-size: 12px; }
+.local-sessions p { margin: 4px 0; overflow-wrap: anywhere; }
+.local-session { border-left: 3px solid var(--orange, #e78236); padding: 6px 10px; margin-top: 8px; background: color-mix(in srgb, var(--ink) 4%, transparent); border-radius: 4px; }
+.local-session strong { font-size: 13px; }

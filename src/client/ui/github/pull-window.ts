@@ -1,4 +1,5 @@
 import './windows.css';
+import { openDelivery } from '../delivery';
 import type { GhPull, GhPullDetail, GhReviewComment } from '../../../shared/protocol';
 import type { Net } from '../../net';
 import { store, workerForPull } from '../../state';
@@ -59,7 +60,7 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
   const el = h(
     'div.modal.gh-window',
     { role: 'dialog', 'aria-label': `Pull request #${it.number}`, tabindex: -1 },
-    h('header', {}, pill, title, reload, close),
+    h('header', {}, pill, title, h('button.btn', { type: 'button', onclick: () => openDelivery(net, it.number) }, 'CI evidence'), reload, close),
     meta,
     h('nav.gh-tabs', { role: 'tablist' }, tabConv, tabFiles),
     h('div.gh-body', {}, conv, filesPane),

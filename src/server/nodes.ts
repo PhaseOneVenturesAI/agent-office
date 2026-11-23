@@ -12,11 +12,14 @@ import type { WebSocket } from 'ws';
 import type { AgentProvider } from '../shared/providers.js';
 import { isAgentProvider } from '../shared/providers.js';
 import type { NodeInfo, NodesState } from '../shared/protocol.js';
+import type { LocalSnapshot } from '../shared/protocol/local-sessions.js';
+import { readSnapshot } from './local-sessions/schema.js';
 
 /** What a satellite sends: the hello first, then heartbeats. */
 export type NodeFrame =
   | { t: 'hello'; name?: string; host: string; platform: string; cpus: number; memGB: number; providers: string[]; version?: string }
-  | { t: 'ping'; memFreeGB?: number };
+  | { t: 'ping'; memFreeGB?: number }
+  | { t: 'local.snapshot'; snapshot: LocalSnapshot };
 
 /** Silent this long and the node counts as gone quiet. */
 const STALE_MS = 60_000;
@@ -38,6 +41,7 @@ interface LiveNode extends SavedNode {
   /** What the machine said it is, from its last hello. */
   hello?: { name: string; host: string; platform: string; cpus: number; memGB: number; providers: AgentProvider[]; version?: string };
   lastSeen: number;
+  snapshot?: LocalSnapshot;
 }
 
 export class Nodes {
@@ -55,7 +59,7 @@ export class Nodes {
     this.sweeper.unref?.();
   }
 
-  state(): NodesState {
+  state(floorId?: string): NodesState {
     const nodes = [...this.nodes.values()]
       .map((n): NodeInfo => {
         const online = !!n.ws && Date.now() - n.lastSeen < STALE_MS;
@@ -71,6 +75,7 @@ export class Nodes {
           online,
           lastSeen: n.lastSeen,
           joinedAt: n.joinedAt,
+          ...(floorId && n.snapshot ? { localSessions: { ...n.snapshot, sessions: n.snapshot.sessions.filter((s) => s.floorId === floorId) } } : {}),
         };
       })
       .sort((a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name));
@@ -127,18 +132,25 @@ export class Nodes {
     } catch {
       // already gone
     }
+    node.ws = ws;
+    node.lastSeen = 0;
+    let helloReceived = false;
     const greeted = setTimeout(() => ws.close(4003, 'no hello'), 10_000);
     ws.on('message', (raw) => {
+      // A replaced/revoked socket cannot refresh presence or submit another node's observations.
+      const size = Array.isArray(raw) ? raw.reduce((n, b) => n + b.byteLength, 0) : raw.byteLength;
+      if (this.nodes.get(node.id) !== node || node.ws !== ws || size > 64 * 1024) return;
       let frame: NodeFrame;
       try {
         frame = JSON.parse(raw.toString());
       } catch {
         return;
       }
-      if (!node.ws) {
+      if (!frame || typeof frame !== 'object') return;
+      if (!helloReceived) {
         if (frame.t !== 'hello') return;
         clearTimeout(greeted);
-        node.ws = ws;
+        helloReceived = true;
         node.hello = {
           name: typeof frame.name === 'string' ? frame.name.slice(0, 60) : '',
           host: String(frame.host ?? '').slice(0, 120),
@@ -152,6 +164,12 @@ export class Nodes {
           node.name = node.hello.name;
           this.save();
         }
+      } else if (frame.t === 'local.snapshot') {
+        const snapshot = readSnapshot(frame.snapshot);
+        if (!snapshot || (node.snapshot && snapshot.observedAt <= node.snapshot.observedAt)) return;
+        node.snapshot = snapshot;
+      } else if (frame.t !== 'ping') {
+        return;
       }
       node.lastSeen = Date.now();
       this.onChange();

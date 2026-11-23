@@ -19,6 +19,7 @@ import { harnessHandlers } from './harness.js';
 import { hygieneHandlers } from './hygiene.js';
 import { jukeboxHandlers, jukeboxView } from './jukebox.js';
 import { meetingHandlers, meetingView } from './meetings.js';
+import { deliveryHandlers, deliveryHooks } from './delivery.js';
 import { nodesHandlers } from './nodes.js';
 import { planHandlers, planView } from './plan.js';
 import { presenceHandlers } from './presence.js';
@@ -54,6 +55,7 @@ export const handlers: HandlerMap<ClientMsg> = {
   ...jukeboxHandlers,
   ...meetingHandlers,
   ...nodesHandlers,
+  ...deliveryHandlers,
   ...planHandlers,
   ...presenceHandlers,
   ...queueHandlers,
@@ -71,7 +73,7 @@ export const handlers: HandlerMap<ClientMsg> = {
  * The features that keep something per person on a floor, in the order they let go of it when
  * someone leaves the floor or the office (see FeatureHooks): the order the office has always done it in.
  */
-export const features: readonly FeatureHooks[] = [conversationHooks, workerHooks, changesHooks, whiteboardHooks, ballHooks, carHooks, cabinetHooks];
+export const features: readonly FeatureHooks[] = [deliveryHooks, conversationHooks, workerHooks, changesHooks, whiteboardHooks, ballHooks, carHooks, cabinetHooks];
 
 /** What someone arriving on a floor is sent (see office/views.ts): a piece from each feature, in the order it has always gone out. */
 export const views: ViewPieces = {

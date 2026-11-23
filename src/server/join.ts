@@ -11,6 +11,8 @@ import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
 import { AGENT_PROVIDERS, type AgentProvider } from '../shared/providers.js';
 import type { NodeFrame } from './nodes.js';
+import { accessHeaders, ACCESS_HELP, officeOrigin, nodeSocket } from './join-access.js';
+import { addMapping, collectParadev } from './local-sessions/paradev.js';
 
 const HELP = `agent-office join — make this computer a satellite of an office
 
@@ -25,6 +27,9 @@ somewhere safe — the office only keeps its hash.
 Options:
   --token <t>     The join token (env AGENT_OFFICE_NODE_TOKEN)
   --name <name>   What to call this machine (default: its hostname)
+  --cloudflare-access  Use an existing cloudflared user application-token cache
+  --paradev-map <workspace-id=floor-id>  Opt in one local workspace (repeatable)
+  --paradev-bin <path>  Paradev CLI (default ~/.paradev/bin/paradev)
   -h, --help      Show this help
 `;
 
@@ -96,6 +101,9 @@ function hello(name: string | undefined): NodeFrame {
 export async function joinCommand(argv: string[]): Promise<number> {
   let url = '';
   let name: string | undefined;
+  let cloudflareAccess = false;
+  let paradevBin = path.join(os.homedir(), '.paradev/bin/paradev');
+  const mappings = new Map<string, string>();
   let token = process.env.AGENT_OFFICE_NODE_TOKEN ?? '';
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -110,6 +118,9 @@ export async function joinCommand(argv: string[]): Promise<number> {
         return 0;
       } else if (a === '--token') token = value();
       else if (a === '--name') name = value();
+      else if (a === '--cloudflare-access') cloudflareAccess = true;
+      else if (a === '--paradev-map') addMapping(mappings, value());
+      else if (a === '--paradev-bin') paradevBin = value();
       else if (a.startsWith('-')) throw new Error(`unknown option ${a}`);
       else if (url) throw new Error(`one office at a time: ${url} or ${a}?`);
       else url = a;
@@ -127,6 +138,11 @@ export async function joinCommand(argv: string[]): Promise<number> {
     return 2;
   }
 
+  try { url = officeOrigin(url); } catch { console.error('Use an http(s) office origin without credentials, path, query or fragment'); return 2; }
+  let access: Awaited<ReturnType<typeof accessHeaders>> | undefined;
+  if (cloudflareAccess) {
+    try { access = await accessHeaders(url); } catch { console.error(ACCESS_HELP); return 1; }
+  }
   const ws = url.replace(/^http/, 'ws').replace(/\/$/, '');
   const say = (line: string) => console.log(`  ${line}`);
   say(`\n  🛰️  agent-office join\n`);
@@ -144,6 +160,7 @@ export async function joinCommand(argv: string[]): Promise<number> {
     current?.close(1000, 'bye');
   });
   for (;;) {
+    if (access && Date.now() >= access.expiresAt - 1000) { say(ACCESS_HELP); return 1; }
     const code = await once(ws, token, name, say);
     if (code !== undefined) return code;
     const wait = Math.min(1000 * 2 ** retry++, RETRY_MAX_MS);
@@ -154,12 +171,24 @@ export async function joinCommand(argv: string[]): Promise<number> {
   /** One connection's whole life; undefined to retry, an exit code to stop. */
   function once(wsUrl: string, tok: string, nodeName: string | undefined, out: (line: string) => void): Promise<number | undefined> {
     return new Promise((resolve) => {
-      const socket = new WebSocket(`${wsUrl}/ws/node?token=${encodeURIComponent(tok)}`, { handshakeTimeout: 10_000 });
+      const socket = nodeSocket(wsUrl, tok, access?.headers);
       current = socket;
       let heartbeat: NodeJS.Timeout | undefined;
+      let sampleTimer: NodeJS.Timeout | undefined;
+      let expiry: NodeJS.Timeout | undefined;
+      let ended = false;
+      const sample = async () => {
+        const snapshot = await collectParadev(paradevBin, mappings);
+        if (ended || socket.readyState !== WebSocket.OPEN) return;
+        socket.send(JSON.stringify({ t: 'local.snapshot', snapshot } satisfies NodeFrame));
+        sampleTimer = setTimeout(() => void sample(), 30_000);
+      };
       const stop = () => {
         if (heartbeat) clearInterval(heartbeat);
         heartbeat = undefined;
+        ended = true;
+        if (sampleTimer) clearTimeout(sampleTimer);
+        if (expiry) clearTimeout(expiry);
       };
       quit = () => {
         stop();
@@ -171,18 +200,27 @@ export async function joinCommand(argv: string[]): Promise<number> {
         socket.send(JSON.stringify(hello(nodeName)));
         out('✓ joined — this machine is on the office wall (☰ → 🛰️ Satellites). Leave this running; Ctrl-C leaves.');
         heartbeat = setInterval(() => socket.send(JSON.stringify({ t: 'ping' } satisfies NodeFrame)), HELLO_MS);
+        if (mappings.size) void sample();
+        if (access) expiry = setTimeout(() => { stop(); out(ACCESS_HELP); socket.close(1000, 'Access session expired'); resolve(1); }, Math.min(2 ** 31 - 1, Math.max(1, access.expiresAt - Date.now() - 1000)));
       });
       socket.on('close', (code, reason) => {
         stop();
         quit = undefined;
-        if (code === 4001) {
+        if (code === 4001 || code === 4000) {
           out("✗ the office doesn't know this token — it was revoked, or it's mistyped. Mint a new one in ☰ → 🛰️ Satellites.");
           resolve(1);
           return;
         }
-        if (code === 1000) return; // our own Ctrl-C
-        out(`… the connection dropped (${reason.toString() || code})`);
+        if (code === 1000) { resolve(0); return; }
+        out(`… the connection dropped (${code})`);
         resolve(undefined);
+      });
+      socket.on('unexpected-response', (_req, res) => {
+        res.resume();
+        stop();
+        socket.terminate();
+        out(access ? ACCESS_HELP : 'Satellite authentication failed. Check the node invite and whether this office requires --cloudflare-access.');
+        resolve(1);
       });
       socket.on('error', () => {
         stop();

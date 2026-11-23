@@ -1,4 +1,5 @@
 import './nodes.css';
+import { localSessions } from './local-sessions';
 import type { NodeInfo } from '../../shared/protocol';
 import type { Net } from '../net';
 import { store } from '../state';
@@ -33,6 +34,8 @@ function card(net: Net, n: NodeInfo, admin: boolean) {
   } else if (n.host) {
     el.append(h('p.nd-spec', {}, 'no agent CLIs on its PATH'));
   }
+  const observations = localSessions(n, store.floor);
+  if (observations) el.append(observations);
   if (admin) {
     const revoke = h('button.btn.small', { type: 'button', title: 'Take this machine off the office — its join token stops working' }, 'Remove');
     revoke.addEventListener('click', () => {
@@ -74,7 +77,8 @@ export function openNodes(net: Net) {
     'div.modal.nodes',
     { role: 'dialog', 'aria-label': 'Satellites' },
     h('header', {}, h('h2', {}, '🛰️ Satellites'), close),
-    h('span.nd-status', {}, 'The team’s own computers, joined with agent-office join — who could run work here. Hiring onto one is the next iteration.'),
+    h('span.nd-status', {}, 'Joined computers and read-only local session observations for this floor. Installed CLIs do not establish account readiness.'),
+    h('p.nd-spec', {}, 'Map a local workspace explicitly with --paradev-map workspace-id=', h('code', {}, store.floor ?? 'floor-id')),
     inviteSlot,
     list,
   );
@@ -95,15 +99,20 @@ export function openNodes(net: Net) {
   };
 
   // The join token answers only the admin who asked; it lands here, once.
-  net.onMessage((m) => {
+  const offMessage = net.onMessage((m) => {
     if (el.isConnected && m.t === 'nodes.token') inviteSlot.replaceChildren(inviteBox(location.origin, m.name, m.token));
   });
   const offMe = store.on('me', repaint);
   const off = store.on('nodes', repaint);
+  const floorOff = store.on('floor', () => { net.send({ t: 'nodes.get' }); repaint(); });
+  const timer = setInterval(repaint, 30_000);
   const modal = openModal(el, {
     doing: '🛰️ looking at the satellites',
     onClose: () => {
       offMe();
+      offMessage();
+      floorOff();
+      clearInterval(timer);
       off();
     },
   });

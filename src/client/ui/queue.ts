@@ -1,4 +1,5 @@
 import './queue.css';
+import { openDelivery } from './delivery';
 import type { AgentProvider, QueueTask, Usage } from '../../shared/protocol';
 import type { Net } from '../net';
 import { store } from '../state';
@@ -134,6 +135,7 @@ export function openQueue(net: Net, actions: QueueActions) {
       buttons.push(h('button.btn', { type: 'button', title: 'Put it back on the queue', onclick: () => net.send({ t: 'queue.retry', taskId: t.id }) }, '↻ Requeue'));
       buttons.push(h('button.btn', { type: 'button', title: 'Forget it', 'aria-label': 'Remove', onclick: () => net.send({ t: 'queue.remove', taskId: t.id }) }, '✕'));
     }
+    if (t.pr) buttons.push(h('button.btn', { type: 'button', onclick: () => openDelivery(net, t.pr!.number) }, 'CI evidence'));
     return h(
       'li',
       { class: t.status },
