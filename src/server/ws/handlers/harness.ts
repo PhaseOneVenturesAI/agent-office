@@ -5,6 +5,7 @@ import type { Ctx } from '../../office/context.js';
 import type { Client } from '../../office/client.js';
 import { str } from '../../office/input.js';
 import type { HandlerMap } from './types.js';
+import { sendOwnHarness } from './personal-harness.js';
 
 /** Whether `c` may touch the harness; if not, they're told so. Reading the list is fine for everyone. */
 const admin = (ctx: Ctx, c: Client): boolean => {
@@ -62,7 +63,8 @@ export const harnessHandlers = {
     const err = ctx.harness.setOptOut(c.accountId, msg.out === true);
     if (err) return ctx.warn(c, err);
     const out = msg.out === true;
-    ctx.sendTo(c, { t: 'harness.opt', out });
+    // Every browser this account has open, the 🧰 Harness window's choice included.
+    sendOwnHarness(ctx, c.accountId);
     ctx.sendTo(c, { t: 'toast', text: out ? '🧰 Harness pushes now skip your agents — you run your own' : '🧰 Your agents are back on the office harness', level: 'info' });
   },
 } satisfies HandlerMap<HarnessClientMsg>;

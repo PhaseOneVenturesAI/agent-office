@@ -100,7 +100,7 @@ export function installHud(ctx: Ctx, core: CoreState, parts: HudParts) {
       { id: 'team', icon: '👥', label: 'Invite teammates', section: 'Together', shown: () => store.invites, run: () => openTeam(net) },
       { id: 'accounts', icon: '🔑', label: 'Accounts', section: 'Together', shown: () => store.me.admin, title: () => 'Invite people, see who has an account, revoke them', run: () => openAccounts(net) },
       { id: 'signins', icon: '🔐', label: 'Your sign-ins', section: 'Together', shown: () => !!store.me.account, tone: () => (needsSigningIn() ? 'danger' : undefined), status: needsSigningIn, chip: () => 'Sign in to Claude', title: () => 'The Claude plan and GitHub account your workers run on: your own', run: () => openSignIns(net) },
-      { id: 'harness', icon: '🧰', label: 'Harness', section: 'Office', shown: () => store.me.admin, title: () => 'The instructions and skills every worker runs with: view, edit and push them', run: () => openHarness(net) },
+      { id: 'harness', icon: '🧰', label: 'Harness', section: 'Office', shown: () => store.me.admin || !!store.me.account, title: () => (store.me.admin ? 'The instructions and skills every worker runs with: view, edit and push them, or keep your own' : 'The office’s instructions and skills, or your own: choose, edit and apply them to your agents'), run: () => openHarness(net) },
       { id: 'project-context', icon: '📖', label: 'Project context', section: 'Open', shown: () => !!store.floor, title: () => 'Inspect project instruction, brand and memory files with revision history', run: () => openProjectContext(net) },
       {
         id: 'departments',
