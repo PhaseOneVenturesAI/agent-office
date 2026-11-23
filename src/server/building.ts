@@ -1,11 +1,13 @@
-import { execFileSync, spawn } from 'node:child_process';
-import { accessSync, constants, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { accessSync, constants, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { FLOOR_PALETTES, MAX_FLOORS, normalizeRepo, sameRepo } from '../shared/floors.js';
 import type { CloneProgress, ProjectsDirState, RepoChoice } from '../shared/protocol.js';
 import { CloneRun, dropLog, whyCloneFailed, type CloneEnd, type CloneRunOptions } from './clone.js';
 import { gh } from './github.js';
+import { checkoutAt, missingPath, originRepo } from './building-checkout.js';
+export { originRepo } from './building-checkout.js';
 
 /** A floor as floors.json keeps it. */
 export interface FloorDef {
@@ -183,11 +185,12 @@ export class Building {
   resumeClones(done: (r: FloorDef | string) => void) {
     for (const s of this.loadClones()) {
       const repo = normalizeRepo(s.repo);
-      if (!repo || this.defs.some((d) => sameRepo(d.repo, repo)) || this.cloning.has(repo.toLowerCase())) {
+      const previous = this.defs.find((d) => sameRepo(d.repo, repo));
+      if (!repo || (previous && !missingPath(previous.dir)) || this.cloning.has(repo.toLowerCase())) {
         dropLog(s.log);
         continue;
       }
-      const def = this.newDef(s.name, repo, s.dir, s.addedBy);
+      const def = previous ? { ...previous, repo, dir: s.dir } : this.newDef(s.name, repo, s.dir, s.addedBy);
       const pending: Pending = { def, owner: s.owner, empty: !!s.empty };
       const run = CloneRun.adopt(s.pid, s.log, { ...this.opts.clone, changed: () => this.cloneChanged?.() });
       if (!run) {
@@ -196,8 +199,7 @@ export class Building {
           done(`Cloning ${repo} stopped when the office restarted — add it again`);
           continue;
         }
-        this.defs.push(def);
-        this.save();
+        this.finishFloor(def);
         done(def);
         continue;
       }
@@ -208,8 +210,7 @@ export class Building {
         this.cloning.delete(repo.toLowerCase());
         this.saveClones();
         if (!err) {
-          this.defs.push(def);
-          this.save();
+          this.finishFloor(def);
         }
         done(err ?? def);
       });
@@ -263,8 +264,9 @@ export class Building {
    * in). Returns the floor, or why it can't.
    */
   remove(id: string, by = '?'): FloorDef | string {
+    if (this.pendingFloor(id)) return "That floor is still being cloned — stop it, or take it off once it's there";
     const def = this.defs.find((d) => d.id === id);
-    if (!def) return this.pendingFloor(id) ? "That floor is still being cloned — stop it, or take it off once it's there" : 'No such floor';
+    if (!def) return 'No such floor';
     this.defs = this.defs.filter((d) => d !== def);
     if (this.isLocal(id)) {
       this.localId = undefined;
@@ -283,9 +285,10 @@ export class Building {
   async add(input: string, by: string, started: (def: FloorDef) => void, account?: string): Promise<FloorDef | string> {
     const wanted = normalizeRepo(input);
     if (!wanted) return 'Pick a repository, or type it as owner/name';
-    if (this.defs.some((d) => sameRepo(d.repo, wanted))) return `${wanted} already has a floor`;
+    let previous = this.defs.find((d) => sameRepo(d.repo, wanted));
+    if (previous && !missingPath(previous.dir)) return `${wanted} already has a floor`;
     if (this.cloning.has(wanted.toLowerCase())) return `${wanted} is already being cloned`;
-    if (this.defs.length + this.cloning.size >= MAX_FLOORS) return `The building is full (${MAX_FLOORS} floors)`;
+    if (!previous && this.defs.length + this.cloning.size >= MAX_FLOORS) return `The building is full (${MAX_FLOORS} floors)`;
     // The office's own checkout, taken off before: it moves back in where it is, not into a second clone.
     const home = this.local;
     if (this.localOff && home && sameRepo(home.repo, wanted) && existsSync(home.dir)) {
@@ -308,12 +311,16 @@ export class Building {
       return `Couldn't find ${wanted} on GitHub: ${(err as Error).message}`;
     }
     const key = repo.toLowerCase();
-    if (this.defs.some((d) => sameRepo(d.repo, repo))) return `${repo} already has a floor`;
+    previous = this.defs.find((d) => sameRepo(d.repo, repo));
+    if (previous && !missingPath(previous.dir)) return `${repo} already has a floor`;
     if (this.cloning.has(key)) return `${repo} is already being cloned`;
     const [owner, name] = repo.split('/');
     const dest = path.join(this.projectsDir, owner, name);
-    if (this.defs.some((d) => path.resolve(d.dir) === dest)) return `${dest} is already a floor`;
-    const def = this.newDef(name, repo, dest, by);
+    if (previous && path.resolve(previous.dir) === dest) return `The registered checkout at ${dest} is missing — restore it before adding the floor again`;
+    if (this.defs.some((d) => d !== previous && path.resolve(d.dir) === dest)) return `${dest} is already a floor`;
+    // A moved office can retain a floor whose old host's path is gone. Keep that record until a
+    // checkout in the current projects folder is ready, then replace only its location.
+    const def = previous ? { ...previous, repo, dir: dest } : this.newDef(name, repo, dest, by);
     const pending: Pending = { def, owner: account, empty };
     this.cloning.set(key, pending);
     started(def);
@@ -324,8 +331,7 @@ export class Building {
       this.cloning.delete(key);
       this.saveClones();
     }
-    this.defs.push(def);
-    this.save();
+    this.finishFloor(def);
     return def;
   }
 
@@ -391,6 +397,13 @@ export class Building {
     const free = FLOOR_PALETTES.findIndex((_, i) => !used.has(i));
     const palette = free >= 0 ? free : (this.defs.length + this.cloning.size) % FLOOR_PALETTES.length;
     return { id, name, repo, dir, palette, addedBy: by, addedAt: Date.now() };
+  }
+
+  private finishFloor(def: FloorDef) {
+    const index = this.defs.findIndex((d) => d.id === def.id);
+    if (index < 0) this.defs.push(def);
+    else this.defs[index] = def;
+    this.save();
   }
 
   private load() {
@@ -508,38 +521,6 @@ function unwritable(dir: string): string | undefined {
     return `The office can't write in ${tildify(at)}`;
   }
   return undefined;
-}
-
-/** The GitHub repository a checkout's origin points at. */
-export function originRepo(dir: string): string | undefined {
-  try {
-    const url = execFileSync('git', ['remote', 'get-url', 'origin'], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 10_000 }).trim();
-    return /github\.com[/:]/i.test(url) ? normalizeRepo(url) : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * What's at `dest`: nothing yet ('none'), a checkout of `repo` ('ok'), or why it's in the way. A
- * clone that was cut off has its origin but no commit checked out; an `empty` repository has none to.
- */
-function checkoutAt(dest: string, repo: string, empty: boolean): 'none' | 'ok' | string {
-  if (!existsSync(dest)) return 'none';
-  if (!statSync(dest).isDirectory()) return `${dest} is already there and isn't a folder`;
-  if (!readdirSync(dest).length) return 'none';
-  if (!sameRepo(originRepo(dest), repo)) return `${dest} already exists and isn't a checkout of ${repo} — move it out of the way first`;
-  if (!empty && !hasCommit(dest)) return `${dest} is a clone of ${repo} that didn't finish — delete that folder and add the floor again`;
-  return 'ok';
-}
-
-function hasCommit(dir: string): boolean {
-  try {
-    execFileSync('git', ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}'], { cwd: dir, stdio: 'ignore', timeout: 10_000 });
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /** Clones `repo` to `dest` in this terminal: git shows its progress, and ssh or git can ask here. Resolves to an error, if any. */

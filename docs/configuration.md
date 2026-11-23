@@ -8,6 +8,8 @@ The office keeps its data in `~/agent-office` (`--home` or `AGENT_OFFICE_HOME` t
 
 Already have a checkout? Pick its repository anyway: a checkout of it that's already where the workspace folder would clone it is used as it is. You can still start the office in a project, `agent-office ~/code/my-project`: that project becomes a floor, and the office keeps its data in `~/code/my-project/.agent-office` as it did before there were floors. An office that already ran in a project carries on in it when you start `agent-office` there again. An admin can take that project off the building in the elevator like any other floor.
 
+If a registered floor's checkout path no longer exists after moving the office (for example, a Mac path on a Linux server), the floor cannot open. Add that repository again in the elevator: when the current workspace destination differs from the missing old path, the office reuses a matching checkout there, or clones when the destination is absent. It preserves the floor's ID, name, palette and original attribution, and updates its location only after the checkout is ready. A failed or interrupted recovery keeps the old registration; an in-progress clone can resume after restart. A missing checkout already at the current destination must be restored in place; it is not automatically re-cloned. Existing files, unrelated repositories, incomplete checkouts and registered dangling links are not removed or overwritten. Inspect and recover those separately instead of deleting them to retry.
+
 ## Command line
 
 ```
