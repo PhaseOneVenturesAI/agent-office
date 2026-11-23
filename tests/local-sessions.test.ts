@@ -42,6 +42,28 @@ test('unsupported terminal shapes and cross-workspace rows become partial, never
   }
 });
 
+test('installed Paradev states survive collector and schema; blocked stays visible and exited never implies completion', async () => {
+  for (const state of ['starting', 'working', 'blocked', 'idle', 'exited', 'unsupported-state']) {
+    const result = await collectParadev('/paradev', new Map([['workspace-a', 'floor-a']]), async (_bin, args) => {
+      if (args[0] === 'workspaces') return [{ id: 'workspace-a' }];
+      if (args[0] === 'terminals') return { sessions: [{ terminalId: 'terminal-a', workspaceId: 'workspace-a', exited: false }] };
+      return { agentId: 'claude', state, lastEventAt: now, owner: 'unproven' };
+    }, () => now);
+    const session = result.sessions[0];
+    assert.equal(result.collection, 'ok');
+    assert.equal(session.state, state === 'unsupported-state' ? 'unknown' : state);
+    assert.equal('owner' in session, false, 'a native state does not establish ownership');
+    if (state === 'blocked') assert.equal(localObservation(session, result, true, now), 'Recently observed · blocked');
+    if (state === 'exited') {
+      assert.equal(localObservation(session, result, true, now), 'Exited · outcome unknown');
+      assert.equal(localObservation(session, result, false, now), 'Stale observation · last reported exited · outcome unknown');
+    }
+  }
+  for (const unsupported of ['running', 'waiting', 'stopped', 'error']) {
+    assert.equal(readSnapshot({ ...snapshot, sessions: [{ ...row, state: unsupported }] }, now), undefined);
+  }
+});
+
 test('schema drops unknown keys and rejects malformed, future, repeated and oversized snapshots', () => {
   assert.deepEqual(readSnapshot({ ...snapshot, token: 'secret', sessions: [{ ...row, prompt: 'secret', nodeId: 'other' }] }, now), snapshot);
   assert.equal(readSnapshot({ ...snapshot, observedAt: now + 60_000 }, now), undefined);

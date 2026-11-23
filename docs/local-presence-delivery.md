@@ -39,7 +39,7 @@ Each bounded sample reconstructs this allowlist, rather than forwarding CLI JSON
 }
 ```
 
-IDs, provider/state enums, timestamps and exit observations are the only session fields sent. Titles, prompts, transcripts, explanations, command lines, paths and credentials are omitted. Ownership is **unknown**. A partial or unavailable collection is visible; an absent row does not establish completion. There are at most 20 mappings and 100 rows, and sampling is sequential with a bounded time budget. A completed sample schedules the next after 30 seconds.
+IDs, provider/state enums, timestamps and exit observations are the only session fields sent. Native states are `starting`, `working`, `blocked`, `idle` and `exited`; unsupported values become `unknown`. A fresh `blocked` observation remains visible as blocked. Either an `exited` state or a terminal exit has an **unknown outcome**, including when stale. Titles, prompts, transcripts, explanations, command lines, paths and credentials are omitted. Ownership is **unknown**. A partial or unavailable collection is visible; an absent row does not establish completion. There are at most 20 mappings and 100 rows, and sampling is sequential with a bounded time budget. A completed sample schedules the next after 30 seconds.
 
 Node authentication must precede a hello and snapshot. The server rejects future/out-of-order or malformed snapshots and isolates replaced/revoked connections. Observations are held in memory, filtered to the viewer's current floor and lost on Office restart. Machine presence remains building-wide. Removing the satellite revokes its credential and removes its observations.
 
