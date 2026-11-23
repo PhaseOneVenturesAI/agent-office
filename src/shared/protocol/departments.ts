@@ -50,6 +50,35 @@ export interface DeptRosterEntry {
   at: number;
 }
 
+/**
+ * The department's lead: one persistent identity that talks to the person and orchestrates the
+ * department's real workers (see docs/department-leads.md). `workerId` is set only while the lead's
+ * worker is live; the identity survives restarts and its worker going home.
+ */
+export interface DeptLead {
+  /** e.g. "Maya". */
+  name: string;
+  /** The live worker speaking for the lead, when its shift is running. */
+  workerId?: string;
+  /** The engine the lead last ran on; the next launch offers it as the saved default. */
+  provider?: AgentProvider;
+  model?: string;
+  effort?: AgentEffort;
+  by: string;
+  at: number;
+}
+
+/** The department's team engine policy: chosen once, used for lead launches and delegations. */
+export interface DeptPolicy {
+  provider: AgentProvider;
+  model?: string;
+  effort?: AgentEffort;
+  /** 'policy': use this silently. 'ask': the picker shows each time, prefilled from this. */
+  mode: 'policy' | 'ask';
+  by: string;
+  at: number;
+}
+
 export interface Department {
   id: string;
   preset: DeptPreset;
@@ -65,6 +94,10 @@ export interface Department {
   briefArchived: number;
   roster: DeptRosterEntry[];
   assets: DeptAsset[];
+  /** The department's lead, when one has been named; one at most, resumed rather than duplicated. */
+  lead?: DeptLead;
+  /** The team engine policy for lead launches and delegations. */
+  policy?: DeptPolicy;
   by: string;
   at: number;
 }
@@ -98,7 +131,17 @@ export type DepartmentsClientMsg =
   /** Hire a worker into a role: a desk in its corner, the brief and skills in its prompt. */
   | { t: 'departments.launch'; id: string; role: string; prompt?: string; provider?: AgentProvider; model?: string; effort?: AgentEffort }
   /** Take a worker off the roster (the worker itself stays). */
-  | { t: 'departments.release'; id: string; workerId: string };
+  | { t: 'departments.release'; id: string; workerId: string }
+  /** Name (or replace) the department's lead identity and its saved engine. Never launches. */
+  | { t: 'departments.lead'; id: string; name: string; provider?: AgentProvider; model?: string; effort?: AgentEffort }
+  /** Take the lead identity away (a live lead worker keeps its desk). */
+  | { t: 'departments.lead.clear'; id: string }
+  /** Start the lead's shift explicitly: seats its worker with the lead prompt on the policy engine. */
+  | { t: 'departments.lead.launch'; id: string; prompt?: string; provider?: AgentProvider; model?: string; effort?: AgentEffort }
+  /** Set the team engine policy: 'policy' runs it silently, 'ask' shows the picker prefilled from it. */
+  | { t: 'departments.policy'; id: string; provider: AgentProvider; model?: string; effort?: AgentEffort; mode: 'policy' | 'ask' }
+  /** The lead delegates a job to the floor queue: the project's one task source, deduped per department. */
+  | { t: 'departments.delegate'; id: string; title: string; task: string; provider?: AgentProvider; model?: string; effort?: AgentEffort };
 
 export type DepartmentsServerMsg =
   | { t: 'departments'; state: DepartmentsState }

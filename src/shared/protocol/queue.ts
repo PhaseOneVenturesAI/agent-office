@@ -33,6 +33,8 @@ export interface QueueTask {
   error?: string;
   /** The pull request that closes the issue, or was opened from the worker's branch. */
   pr?: { number: number; url: string; state: string; title: string };
+  /** The department that delegated it (its id): one task source per project, deduped per department. */
+  dept?: string;
 }
 
 export interface QueueState {

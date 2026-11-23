@@ -15,7 +15,8 @@
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
-import type { Department, DepartmentsState, DeptBriefRev, DeptPreset, DeptRole, ProjectSource } from '../shared/protocol.js';
+import type { AgentEffort, AgentProvider } from '../shared/providers.js';
+import type { Department, DepartmentsState, DeptBriefRev, DeptLead, DeptPolicy, DeptPreset, DeptRole, ProjectSource } from '../shared/protocol.js';
 
 /** Implementation writers one project staffs at a time, across all its departments. */
 export const MAX_WRITERS = 2;
@@ -84,6 +85,10 @@ export class Departments {
         d.brief.forEach((r, i) => (r.rev ??= d.brief.length - i));
         d.rev ??= d.brief.length;
         d.briefArchived ??= 0;
+        // A malformed lead or policy is dropped from the live view; the file is rewritten clean on
+        // the next real change, and a stale live link self-heals at launch time.
+        if (d.lead && (typeof d.lead.name !== 'string' || !d.lead.name || typeof d.lead.by !== 'string' || !Number.isFinite(d.lead.at))) delete d.lead;
+        if (d.policy && (typeof d.policy.provider !== 'string' || (d.policy.mode !== 'policy' && d.policy.mode !== 'ask'))) delete d.policy;
       }
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') this.loadError = "Couldn't load departments; preserving the original file. Repair it and reload the floor.";
@@ -288,6 +293,98 @@ export class Departments {
     this.commit(this.departments.map((d) => (d.id === id ? next : d)));
   }
 
+  /** Names (or replaces) the lead identity and its saved engine; never launches anything. */
+  setLead(id: string, ask: { name: unknown; provider?: AgentProvider; model?: string; effort?: AgentEffort }, by: string): string | undefined {
+    const dept = this.get(id);
+    if (!dept) return 'That department is gone';
+    const name = oneLine(String(ask.name ?? ''), MAX_NAME);
+    if (!name) return 'Give the lead a name';
+    if (dept.lead?.workerId) return `${dept.lead.name} is on shift — send their worker home before replacing them`;
+    const lead: DeptLead = { name, by, at: Date.now() };
+    if (ask.provider !== undefined) lead.provider = ask.provider;
+    if (ask.model !== undefined) lead.model = ask.model;
+    if (ask.effort !== undefined) lead.effort = ask.effort;
+    const next: Department = { ...dept, lead };
+    return this.commit(this.departments.map((d) => (d.id === id ? next : d)));
+  }
+
+  /** Takes the lead identity away; its worker, when live, keeps its desk as a normal worker. */
+  clearLead(id: string): string | undefined {
+    const dept = this.get(id);
+    if (!dept?.lead) return 'That department has no lead';
+    const workerId = dept.lead.workerId;
+    const next: Department = {
+      ...dept,
+      lead: undefined,
+      roster: workerId ? dept.roster.filter((r) => !(r.role === 'lead' && r.workerId === workerId)) : dept.roster,
+    };
+    return this.commit(this.departments.map((d) => (d.id === id ? next : d)));
+  }
+
+  /** The team engine policy: 'policy' runs it silently, 'ask' shows the picker prefilled from it. */
+  setPolicy(id: string, ask: { provider: AgentProvider; model?: string; effort?: AgentEffort; mode: 'policy' | 'ask' }, by: string): string | undefined {
+    const dept = this.get(id);
+    if (!dept) return 'That department is gone';
+    const policy: DeptPolicy = { provider: ask.provider, mode: ask.mode, by, at: Date.now() };
+    if (ask.model !== undefined) policy.model = ask.model;
+    if (ask.effort !== undefined) policy.effort = ask.effort;
+    const next: Department = { ...dept, policy };
+    return this.commit(this.departments.map((d) => (d.id === id ? next : d)));
+  }
+
+  /**
+   * The lead's shift: the prompt its worker starts with, or why it can't start. The lead orchestrates
+   * — it never takes an implementation seat, so it doesn't count against the writer cap. A lead whose
+   * worker is live is resumed (Talk), never duplicated; a stale workerId (its worker went home) is
+   * cleared here so the identity can take a new shift.
+   */
+  composeLeadLaunch(id: string, task: string | undefined, liveAgents: () => string[]): { prompt: string; lead: DeptLead } | string {
+    if (this.loadError) return this.loadError;
+    const dept = this.get(id);
+    if (!dept) return 'That department is gone';
+    const lead = dept.lead;
+    if (!lead) return 'Name a lead first';
+    if (lead.workerId && liveAgents().includes(lead.workerId)) return `${lead.name} is already on shift — talk to them instead`;
+    if (lead.workerId) {
+      const next: Department = { ...dept, lead: { ...lead, workerId: undefined } };
+      this.commit(this.departments.map((d) => (d.id === id ? next : d)));
+      lead.workerId = undefined;
+    }
+    const brief = dept.brief[0];
+    const current = dept.assets.filter((a) => a.status === 'current' && (a.kind === 'link' || !this.referenceError(a.ref))).slice(0, 10);
+    const lines = [
+      `You are ${lead.name}, the ${dept.name} department's lead in this office.`,
+      'You orchestrate: you don’t take an implementation seat yourself. At most two implementation writers work this project at a time, and review specialists serve you.',
+      'Hire only into your department’s roles, through office-workers or by asking to have the role seated; give every hire the brief and its skill references. Delegate work through the floor queue so the project keeps one task source, and never assign the same job twice.',
+      'Watch your team and report to the person who talks to you: progress, finished results, and blockers — a worker stopped on a question says what it needs and who it is.',
+      brief ? `Department brief (rev ${brief.rev}, by ${brief.by}):\n${brief.text}` : 'The department has no brief yet — ask what "good" means before producing work.',
+      current.length ? `Current brand & asset references:\n${current.map((a) => `- ${a.label}: ${a.kind === 'file' ? `${a.ref} (in this project)` : a.ref}`).join('\n')}` : '',
+      'Takes are judged in the Review Room: stage exactly one link per take (office-workers review <url> --title …).',
+      task ? `Task: ${task}` : '',
+    ].filter(Boolean);
+    return { prompt: lines.join('\n\n'), lead };
+  }
+
+  /** The lead's shift seat: its worker joins the roster under the pseudo-role 'lead', desk joins the corner. */
+  recordLeadHire(id: string, workerId: string, deskId: string, by: string): void {
+    const dept = this.get(id);
+    if (!dept?.lead) return;
+    const next: Department = {
+      ...dept,
+      lead: { ...dept.lead, workerId },
+      roster: [...dept.roster, { workerId, role: 'lead', by, at: Date.now() }],
+      desks: dept.desks.includes(deskId) ? dept.desks : [...dept.desks, deskId],
+    };
+    this.commit(this.departments.map((d) => (d.id === id ? next : d)));
+  }
+
+  /** The lead's engine as saved, or the policy's, for prefilling the next launch. */
+  leadChoice(id: string): { provider?: AgentProvider; model?: string; effort?: AgentEffort } | undefined {
+    const lead = this.get(id)?.lead;
+    if (!lead) return undefined;
+    return { ...(lead.provider !== undefined ? { provider: lead.provider } : {}), ...(lead.model !== undefined ? { model: lead.model } : {}), ...(lead.effort !== undefined ? { effort: lead.effort } : {}) };
+  }
+
   /** The project's instruction sources, live-checked; paths and sizes only, never contents. */
   private sources(): ProjectSource[] {
     return SOURCE_CANDIDATES.map((p) => {
@@ -360,6 +457,8 @@ function isDept(v: unknown): v is Department {
     (d.briefArchived === undefined || (Number.isSafeInteger(d.briefArchived) && d.briefArchived >= 0)) &&
     Array.isArray(d.roster) && d.roster.every((r) => r && typeof r.workerId === 'string' && typeof r.role === 'string' && typeof r.by === 'string' && Number.isFinite(r.at)) &&
     Array.isArray(d.assets) && d.assets.every((a) => a && typeof a.id === 'string' && typeof a.label === 'string' && ['file', 'link'].includes(a.kind) && typeof a.ref === 'string' && ['current', 'historical'].includes(a.status) && typeof a.by === 'string' && Number.isFinite(a.at)) &&
+    (d.lead === undefined || (d.lead && typeof d.lead === 'object' && typeof d.lead.name === 'string' && (d.lead.workerId === undefined || typeof d.lead.workerId === 'string') && typeof d.lead.by === 'string' && Number.isFinite(d.lead.at))) &&
+    (d.policy === undefined || (d.policy && typeof d.policy === 'object' && typeof d.policy.provider === 'string' && ['policy', 'ask'].includes(d.policy.mode) && typeof d.policy.by === 'string' && Number.isFinite(d.policy.at))) &&
     typeof d.by === 'string' &&
     typeof d.at === 'number'
   );

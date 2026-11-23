@@ -96,7 +96,7 @@ export function buildDepartmentsDirectory(): DepartmentsDirectory {
         g.fillText(`${PRESET_ICON[d.preset]} ${d.name}`, 48, y);
         g.fillStyle = '#8a8f98';
         g.font = `600 30px ${FONT}`;
-        g.fillText(`${d.roster.length ? `${d.roster.length} assigned` : 'no one hired yet'}${desks}`, 96, y + 52);
+        g.fillText(`${d.roster.length ? `${d.roster.length} assigned` : 'no one hired yet'}${desks}${d.lead ? ` · 🎖️ ${d.lead.name}` : ''}`, 96, y + 52);
         g.font = `700 40px ${FONT}`;
         y += 108;
       }

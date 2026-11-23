@@ -1,7 +1,7 @@
 import { realpathSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import type { HandoffBrief, WorkerHandoff } from '../../shared/protocol.js';
+import type { HandoffBrief, WorkerHandoff, WorkerInfo } from '../../shared/protocol.js';
 import type { Worker, WorkerContext } from './types.js';
 
 const idle = (w: Worker) => !w.stopping && !w.bootBlocked && !w.info.lost && !!(w.pty || w.dsh) && ['idle', 'done'].includes(w.info.status);
@@ -73,4 +73,25 @@ export function savedHandoff(v: unknown): WorkerHandoff | undefined {
   const keys = ['id', 'from', 'to', 'fromName', 'toName', 'fromPath', 'toPath', 'fromBranch', 'toBranch', 'brief', 'evidence', 'next', 'by', 'prompt'] as const;
   if (!keys.every((k) => typeof h[k] === 'string' && h[k].length > 0 && h[k].length <= 20000) || !Number.isFinite(h.at) || !['pending', 'acknowledged', 'delivery-failed'].includes(h.state)) return;
   return h;
+}
+
+const clipSwap = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
+
+/**
+ * The handoff brief an engine swap prepares (see docs/department-leads.md): the replacement takes
+ * over the task on a new engine; the source keeps its session, transcript and branch. The person
+ * reviews the exact prompt and acknowledges once — evidence is explicitly unverified until they
+ * (or the replacement) checks the source branch and its CI.
+ */
+export function swapBrief(source: WorkerInfo, engine: string, note?: string): HandoffBrief {
+  const task = (source.task ? `${source.task.name}: ${source.task.summary}` : source.prompt)?.replace(/\s+/g, ' ').trim();
+  const branch = source.worktree?.made ?? source.worktree?.branch;
+  const brief = [
+    note?.trim() || (task ? `Take over “${clipSwap(task, 300)}”, continuing it on ${engine}.` : `Take over this worker's current job on ${engine}.`),
+    branch ? `Source branch: ${branch} — left exactly as it is. Preserve or merge from it; never rebase over other people's work.` : 'The source has no branch of its own: pick the work up from its last pull request or its terminal history.',
+    'The source worker is not stopped by the swap and keeps its own session and transcript: do not spawn a duplicate of it or repeat its finished steps.',
+  ].join('\n');
+  const evidence = 'Explicitly unverified: an engine swap moves the task, not the proof. Check the source branch and its CI before building on it.';
+  const next = task ? `Continue: ${clipSwap(task, 240)}` : 'Ask the office what the worker was on, then continue it.';
+  return { brief, evidence, next };
 }

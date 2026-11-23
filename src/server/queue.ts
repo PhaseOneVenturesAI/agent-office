@@ -87,7 +87,7 @@ export class TaskQueue {
 
   /** Queues a task. With no `provider`, it runs on the office's default worker, model and effort included. */
   /** Queues a task; `owner` is the account adding it, whose sign-ins its worker will run on. */
-  add(prompt: string, by: string, title?: string, issue?: number, provider?: AgentProvider, model?: string, effort?: AgentEffort, owner?: string): string | undefined {
+  add(prompt: string, by: string, title?: string, issue?: number, provider?: AgentProvider, model?: string, effort?: AgentEffort, owner?: string, dept?: string): string | undefined {
     if (provider === undefined) ({ provider, model, effort } = this.workers.officeDefault ?? { provider: this.workers.defaultProvider });
     if (!isAgentProvider(provider) || (provider === 'custom' && this.workers.defaultProvider !== 'custom')) return 'Unknown agent provider';
     const modelError = validateWorkerModel('agent', provider, model);
@@ -96,7 +96,10 @@ export class TaskQueue {
     if (effortError) return effortError;
     const clean = prompt.replace(/\r\n?/g, '\n').trim();
     if (!clean) return 'Empty task';
+    const cleanTitle = (title?.trim() || firstLine(clean)).slice(0, 120);
     if (issue !== undefined && this.tasks.some((t) => t.issue === issue && t.status !== 'done')) return `Issue #${issue} is already on the queue`;
+    // One job, one owner: a department cannot be assigned the same task twice while it's live.
+    if (dept && this.tasks.some((t) => t.dept === dept && t.status !== 'done' && t.title === cleanTitle)) return `“${cleanTitle}” is already assigned on this project`;
     if (this.tasks.filter((t) => t.status !== 'done').length >= MAX_TASKS) return `The queue is full (${MAX_TASKS} tasks)`;
     const task: QueueTask = {
       id: randomBytes(6).toString('hex'),
@@ -104,10 +107,11 @@ export class TaskQueue {
       model: takesModel(provider) ? model : undefined,
       effort: takesEffort(provider) ? effort : undefined,
       issue,
-      title: (title?.trim() || firstLine(clean)).slice(0, 120),
+      title: cleanTitle,
       prompt: clean,
       addedBy: by,
       ...(owner ? { owner } : {}),
+      ...(dept ? { dept } : {}),
       addedAt: Date.now(),
       status: 'queued',
     };
@@ -156,7 +160,7 @@ export class TaskQueue {
     if (t.status !== 'done') return 'That task is still on the queue';
     if (t.issue !== undefined && this.tasks.some((x) => x !== t && x.issue === t.issue && x.status !== 'done')) return `Issue #${t.issue} is already on the queue`;
     this.tasks.splice(this.tasks.indexOf(t), 1);
-    const fresh: QueueTask = { id: t.id, provider: t.provider, model: t.model, effort: t.effort, issue: t.issue, title: t.title, prompt: t.prompt, addedBy: t.addedBy, owner: t.owner, addedAt: Date.now(), status: 'queued' };
+    const fresh: QueueTask = { id: t.id, provider: t.provider, model: t.model, effort: t.effort, issue: t.issue, title: t.title, prompt: t.prompt, addedBy: t.addedBy, owner: t.owner, dept: t.dept, addedAt: Date.now(), status: 'queued' };
     this.tasks.push(fresh);
     this.changed();
     this.pump();
@@ -408,6 +412,7 @@ export class TaskQueue {
           outcome: s.outcome,
           error: s.error,
           pr: s.pr,
+          dept: typeof s.dept === 'string' ? s.dept : undefined,
         };
         // Whatever was running died with the old office process; its worker comes back asleep at best.
         if (t.status === 'running') {

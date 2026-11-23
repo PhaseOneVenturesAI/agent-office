@@ -86,4 +86,93 @@ export const departmentsHandlers = {
     };
     ctx.withSignIn(c, ctx.signInFor(msg.provider ?? floor.workers.officeDefault.provider), () => ctx.withFreshBase(c, [floor], hire));
   },
+  'departments.lead'(ctx, c, msg) {
+    const floor = here(ctx, c);
+    if (!floor) return;
+    if (msg.provider !== undefined && (!isAgentProvider(msg.provider) || !floor.project.agentProviders.includes(msg.provider))) {
+      ctx.warn(c, 'Unknown agent provider');
+      return;
+    }
+    const model = msg.model === undefined ? undefined : str(msg.model, OPEN_CODE_MODEL_MAX + 1);
+    const err = floor.departments.setLead(str(msg.id, 16), { name: str(msg.name, 60), ...(msg.provider !== undefined ? { provider: msg.provider } : {}), ...(model !== undefined ? { model } : {}), ...(isAgentEffort(msg.effort) ? { effort: msg.effort } : {}) }, c.peer.name);
+    if (err) ctx.warn(c, err);
+  },
+  'departments.lead.clear'(ctx, c, msg) {
+    const floor = here(ctx, c);
+    if (!floor) return;
+    ctx.warn(c, floor.departments.clearLead(str(msg.id, 16)));
+  },
+  'departments.policy'(ctx, c, msg) {
+    const floor = here(ctx, c);
+    if (!floor) return;
+    if (!isAgentProvider(msg.provider) || !floor.project.agentProviders.includes(msg.provider)) {
+      ctx.warn(c, 'Unknown agent provider');
+      return;
+    }
+    const model = msg.model === undefined ? undefined : str(msg.model, OPEN_CODE_MODEL_MAX + 1);
+    const err = floor.departments.setPolicy(str(msg.id, 16), { provider: msg.provider, ...(model !== undefined ? { model } : {}), ...(isAgentEffort(msg.effort) ? { effort: msg.effort } : {}), mode: msg.mode === 'ask' ? 'ask' : 'policy' }, c.peer.name);
+    if (err) ctx.warn(c, err);
+  },
+  'departments.lead.launch'(ctx, c, msg) {
+    const who = c.peer.name;
+    const floor = here(ctx, c);
+    if (!floor) return;
+    if (msg.provider !== undefined && (!isAgentProvider(msg.provider) || !floor.project.agentProviders.includes(msg.provider))) {
+      ctx.warn(c, 'Unknown agent provider');
+      return;
+    }
+    const id = str(msg.id, 16);
+    const model = msg.model === undefined ? undefined : str(msg.model, OPEN_CODE_MODEL_MAX + 1);
+    const effort = isAgentEffort(msg.effort) ? msg.effort : undefined;
+    const task = str(msg.prompt, 20000) || undefined;
+    // The engine: an explicit pick (the policy's 'ask' mode), else the policy, else the lead's saved engine.
+    const policy = floor.departments.get(id)?.policy;
+    const saved = floor.departments.leadChoice(id);
+    const provider = msg.provider ?? policy?.provider ?? saved?.provider;
+    const chosenModel = model ?? (msg.provider === undefined ? policy?.model : undefined) ?? saved?.model;
+    const chosenEffort = effort ?? (msg.provider === undefined ? policy?.effort : undefined) ?? saved?.effort;
+    const liveAgents = () => floor.workers.list().filter((w) => w.kind === 'agent').map((w) => w.id);
+    const hire = () => {
+      const composed = floor.departments.composeLeadLaunch(id, task, liveAgents);
+      if (typeof composed === 'string') return ctx.warn(c, composed);
+      const fresh = floor.departments.get(id)!;
+      const desk = fresh.desks.find((d) => !floor.workers.deskOccupied(d)) ?? nextFreeSeat((x) => floor.workers.deskOccupied(x), floor.plan.wing)?.id;
+      if (!desk) return ctx.warn(c, 'No free desk — knock the back office out a row first');
+      // The lead orchestrates rather than writes: it takes a worktree only when every worker here has one.
+      const worktree = !!floor.project.branch;
+      const r = floor.workers.spawn(desk, who, composed.prompt, worktree, 'agent', provider, chosenModel, chosenEffort, undefined, c.accountId);
+      if (typeof r === 'string') return ctx.warn(c, r);
+      floor.departments.recordLeadHire(id, r.id, desk, who);
+      ctx.toastFloor(floor, `🎖️ ${who} started ${composed.lead.name}'s shift as the ${fresh.name} lead`);
+    };
+    ctx.withSignIn(c, ctx.signInFor(provider ?? floor.workers.officeDefault.provider), () => ctx.withFreshBase(c, [floor], hire));
+  },
+  'departments.delegate'(ctx, c, msg) {
+    const who = c.peer.name;
+    const floor = here(ctx, c);
+    if (!floor) return;
+    const id = str(msg.id, 16);
+    const dept = floor.departments.get(id);
+    if (!dept) return ctx.warn(c, 'That department is gone');
+    const title = str(msg.title, 200);
+    const task = str(msg.task, 20000).replace(/\r\n?/g, '\n').trim();
+    if (!title || !task) return ctx.warn(c, 'Give the delegation a title and the task');
+    if (msg.provider !== undefined && (!isAgentProvider(msg.provider) || !floor.project.agentProviders.includes(msg.provider))) {
+      ctx.warn(c, 'Unknown agent provider');
+      return;
+    }
+    const model = msg.model === undefined ? undefined : str(msg.model, OPEN_CODE_MODEL_MAX + 1);
+    const effort = isAgentEffort(msg.effort) ? msg.effort : undefined;
+    // The lead delegates on the policy engine unless the ask-mode picker sent an explicit choice.
+    const policy = dept.policy;
+    const provider = msg.provider ?? policy?.provider;
+    const chosenModel = model ?? (msg.provider === undefined ? policy?.model : undefined);
+    const chosenEffort = effort ?? (msg.provider === undefined ? policy?.effort : undefined);
+    const by = dept.lead ? `${dept.lead.name} (lead)` : who;
+    ctx.withSignIn(c, ctx.signInFor(provider ?? floor.workers.officeDefault.provider), () => {
+      const err = floor.queue.add(task, by, title, undefined, provider, chosenModel, chosenEffort, c.accountId, id);
+      if (err) ctx.warn(c, err);
+      else ctx.toastFloor(floor, `📋 ${by} delegated “${title}” to the floor queue`);
+    });
+  },
 } satisfies HandlerMap<DepartmentsClientMsg>;
