@@ -1,6 +1,6 @@
 // Department leads (see docs/department-leads.md): the lead identity and its engine, the shift
-// launch (resumed, never duplicated), the team engine policy, delegation dedupe on the one queue,
-// and the engine-swap handoff brief.
+// launch (resumed, never duplicated), the team engine policy, delegation ownership, the child→lead
+// dispatch, and the engine-swap guards and handoff brief.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
@@ -8,8 +8,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Departments } from '../src/server/departments.js';
 import { TaskQueue, type QueueWorkers } from '../src/server/queue.js';
-import { swapBrief } from '../src/server/workers/handoffs.js';
-import type { AgentProvider, WorkerInfo } from '../src/shared/protocol.js';
+import { LeadDispatch } from '../src/server/dept-dispatch.js';
+import { swapBrief, swapGuard } from '../src/server/workers/handoffs.js';
+import type { AgentProvider, Department, QueueTask, WorkerInfo, WorkerStatus } from '../src/shared/protocol.js';
 
 function setup() {
   const base = mkdtempSync(path.join(tmpdir(), 'agent-office-leads-'));
@@ -122,18 +123,24 @@ function queueFixture() {
   return { queue, workers, close: () => { queue.shutdown(); rmSync(dir, { recursive: true, force: true }); } };
 }
 
-test('a department cannot be assigned the same live job twice; a finished one can be requeued', () => {
+test('one project-wide owner per job: any live task with the same normalized title blocks the claim', () => {
   const f = queueFixture();
   try {
-    assert.equal(f.queue.add('Write the launch email', 'Maya (lead)', 'Launch email', undefined, 'claude', undefined, undefined, undefined, 'dept-1'), undefined);
-    assert.match(f.queue.add('Write the launch email', 'Maya (lead)', 'Launch email', undefined, 'claude', undefined, undefined, undefined, 'dept-1')!, /already assigned/);
-    // A different job is fine; another department with the same title is fine too.
+    assert.equal(f.queue.add('Write the launch email', 'Maya (lead)', 'Launch email', undefined, 'claude', undefined, undefined, undefined, 'dept-1', 'lead-1'), undefined);
+    // Same title, same department: refused.
+    assert.match(f.queue.add('Write the launch email', 'Maya (lead)', 'Launch email', undefined, 'claude', undefined, undefined, undefined, 'dept-1', 'lead-1')!, /already assigned/);
+    // Same title, ANOTHER department: also refused — ownership is project-wide.
+    assert.match(f.queue.add('Write the launch email', 'Dev (lead)', 'Launch email', undefined, 'claude', undefined, undefined, undefined, 'dept-2')!, /already assigned/);
+    // Normalized match: case, extra inner whitespace and surrounding space still claim the job.
+    assert.match(f.queue.add('Any prompt', 'Dev (lead)', '  LAUNCH   email ', undefined, 'claude')!, /already assigned/);
+    // A different job is fine.
     assert.equal(f.queue.add('Update the pricing page', 'Maya (lead)', 'Pricing page', undefined, 'claude', undefined, undefined, undefined, 'dept-1'), undefined);
-    assert.equal(f.queue.add('Write the launch email', 'Dev (lead)', 'Launch email', undefined, 'claude', undefined, undefined, undefined, 'dept-2'), undefined);
     const tasks = f.queue.state().tasks;
     assert.equal(tasks[0].dept, 'dept-1');
-    assert.equal(tasks[2].dept, 'dept-2');
-    // Once the job is finished, the same title can be delegated again.
+    assert.equal(tasks[0].parentId, 'lead-1');
+    assert.equal(tasks[1].dept, 'dept-1');
+    assert.equal(tasks[1].parentId, undefined);
+    // Once the job is finished, the title is free again.
     f.workers[0].status = 'done';
     f.queue.onWorker(f.workers[0]);
     assert.equal(f.queue.state().tasks[0].status, 'done');
@@ -143,8 +150,7 @@ test('a department cannot be assigned the same live job twice; a finished one ca
   }
 });
 
-test('the engine swap brief says what moves, what stays, and that the evidence is unverified', () => {
-  const source = {
+test('the engine swap brief says what moves, what stays, and that the evidence is unverified', () => {  const source = {
     id: 'w1', kind: 'agent', deskId: 'desk-1', name: 'Muse', color: '#fff', status: 'done', acked: true,
     createdBy: 'Kim', createdAt: 0, cols: 80, rows: 24, viewers: [], viewerIds: [],
     task: { name: 'Fix login redirect', summary: 'the /auth callback drops the query string' },
@@ -164,4 +170,145 @@ test('the engine swap brief says what moves, what stays, and that the evidence i
   const noBranch = swapBrief(bare, 'claude', undefined);
   assert.match(noBranch.brief, /no branch of its own/);
   assert.match(noBranch.next, /Ask the office what the worker was on/);
+});
+
+// --- Ask-policy requests, swap relink, guards ----------------------------------------------------------------
+
+test('an ask-policy delegation waits as a request a person decides; relink follows a landed swap', () => {
+  const { dataDir, project, departments, cleanup } = setup();
+  try {
+    const d = departments.add('marketing', undefined, 'Kim');
+    assert.ok(typeof d !== 'string');
+    assert.match(departments.addRequest(d.id, { title: '', task: 'x', by: 'Maya' })!, /title and the task/);
+    assert.equal(departments.addRequest(d.id, { title: 'Hero rewrite', task: 'Redo the hero section', by: 'Maya' }), undefined);
+    assert.match(departments.addRequest(d.id, { title: 'Hero rewrite', task: 'Again', by: 'Maya' })!, /already waiting/);
+    assert.equal(departments.get(d.id)!.requests!.length, 1);
+    // Approving takes it out; a second take is gone.
+    const taken = departments.takeRequest(d.id, departments.get(d.id)!.requests![0].id);
+    assert.ok(typeof taken !== 'string');
+    assert.equal(taken.title, 'Hero rewrite');
+    assert.equal(departments.get(d.id)!.requests!.length, 0);
+    assert.match(departments.takeRequest(d.id, taken.id) as string, /gone/);
+    // Rejecting drops it.
+    assert.equal(departments.addRequest(d.id, { title: 'Footer', task: 'Fix the footer', by: 'Maya' }), undefined);
+    const req = departments.get(d.id)!.requests![0];
+    assert.equal(departments.dropRequest(d.id, req.id), undefined);
+    assert.equal(departments.get(d.id)!.requests!.length, 0);
+    // Requests survive a reload.
+    departments.addRequest(d.id, { title: 'Nav', task: 'Rework the nav', by: 'Maya' });
+    const reloaded = new Departments(dataDir, project, () => {});
+    assert.equal(reloaded.get(d.id)!.requests!.length, 1);
+    // A landed swap moves the lead identity and roster rows to the replacement, policy untouched.
+    departments.setLead(d.id, { name: 'Maya' }, 'Kim');
+    departments.setPolicy(d.id, { provider: 'kimi', mode: 'policy' }, 'Kim');
+    departments.recordLeadHire(d.id, 'old-lead', 'desk-1', 'Kim');
+    const story = departments.get(d.id)!.roles.find((r) => r.name === 'Story')!;
+    departments.recordHire(d.id, story.id, 'old-writer', 'desk-2', 'Kim');
+    departments.relinkWorker('old-lead', 'new-lead');
+    departments.relinkWorker('old-writer', 'new-writer');
+    const after = departments.get(d.id)!;
+    assert.equal(after.lead!.workerId, 'new-lead');
+    assert.equal(after.roster.find((r) => r.role === 'lead')!.workerId, 'new-lead');
+    assert.equal(after.roster.find((r) => r.role === story.id)!.workerId, 'new-writer');
+    assert.equal(after.policy!.provider, 'kimi');
+    // The lead's department is findable from the worker (parent ownership checks).
+    assert.equal(departments.leadDeptOfWorker('new-lead')!.id, d.id);
+    assert.equal(departments.leadDeptOfWorker('nobody'), undefined);
+  } finally {
+    cleanup();
+  }
+});
+
+// --- The lead dispatch: children report transitions to the lead's session ------------------------------------
+
+function dispatchFixture(leadStatus: WorkerStatus = 'idle') {
+  const lead: WorkerInfo = { id: 'lead-1', kind: 'agent', deskId: 'desk-1', name: 'Maya', color: '#fff', status: leadStatus, acked: true, createdBy: 'Kim', createdAt: 0, cols: 80, rows: 24, viewers: [], viewerIds: [] };
+  const child: WorkerInfo = { id: 'child-1', kind: 'agent', deskId: 'desk-2', name: 'Pip', color: '#fff', status: 'working', acked: true, createdBy: 'Kim', createdAt: 0, cols: 80, rows: 24, viewers: [], viewerIds: [] };
+  const dept: Department = {
+    id: 'dept-1', preset: 'marketing', name: 'Marketing', desks: [], rev: 0, roles: [], brief: [], briefArchived: 0,
+    roster: [], assets: [], lead: { name: 'Maya', workerId: 'lead-1', by: 'Kim', at: 0 },
+  };
+  const task: QueueTask = { id: 'task-1', title: 'Hero rewrite', prompt: 'Redo it', addedBy: 'Maya (lead)', addedAt: 0, status: 'running', workerId: 'child-1', dept: 'dept-1', parentId: 'lead-1' };
+  const workers = new Map([[lead.id, lead], [child.id, child]]);
+  const prompted: string[] = [];
+  const dispatch = new LeadDispatch({
+    get: (id) => workers.get(id),
+    prompt: (id, text) => {
+      if (!workers.has(id)) return 'No such worker';
+      prompted.push(text);
+      return undefined;
+    },
+    tasks: () => [task],
+    departments: () => [dept],
+  });
+  return { lead, child, dept, task, workers, dispatch, prompted };
+}
+
+test('a child’s transitions reach the lead as prompts: delivered when idle, coalesced while busy', () => {
+  const f = dispatchFixture('idle');
+  // Turn ended: delivered at once, with the job and the not-yet-reviewed PR.
+  f.task.pr = { number: 7, url: 'https://github.com/acme/app/pull/7', state: 'open', title: 'Hero' };
+  f.child.status = 'done';
+  f.dispatch.onWorker(f.child);
+  assert.equal(f.prompted.length, 1);
+  assert.match(f.prompted[0], /Pip ended its turn on “Hero rewrite”/);
+  assert.match(f.prompted[0], /PR #7 opened \(not yet reviewed\)/);
+  // Blocker while the lead works: held, not typed into a running turn.
+  f.lead.status = 'working';
+  f.child.status = 'needs_input';
+  f.child.activity = 'Which headline?';
+  f.dispatch.onWorker(f.child);
+  assert.equal(f.prompted.length, 1, 'nothing delivered mid-turn');
+  // ...a newer transition coalesces to the latest notice per child.
+  f.child.activity = 'Font choice?';
+  f.dispatch.onWorker({ ...f.child, status: 'working' });
+  f.child.status = 'needs_input';
+  f.dispatch.onWorker(f.child);
+  // The lead's turn ends: the held notice flushes.
+  f.lead.status = 'done';
+  f.dispatch.onWorker(f.lead);
+  assert.equal(f.prompted.length, 2);
+  assert.match(f.prompted[1], /Font choice\?/);
+  assert.ok(!f.prompted[1].includes('Which headline?'), 'only the latest notice per child');
+});
+
+test('the dispatch is receipt-protected and bounded: gone leads drop, strangers are ignored', () => {
+  const f = dispatchFixture('working');
+  f.child.status = 'done';
+  f.dispatch.onWorker(f.child);
+  assert.equal(f.prompted.length, 0);
+  // The lead goes home: its held notices drop with it, never replayed.
+  f.workers.delete('lead-1');
+  f.lead.status = 'done';
+  f.dispatch.onWorker(f.lead);
+  f.dispatch.onWorkerGone('lead-1');
+  const child2: WorkerInfo = { ...f.child, id: 'child-2', status: 'needs_input' };
+  f.workers.set('child-2', child2);
+  f.task.workerId = 'child-2';
+  f.dispatch.onWorker(child2);
+  assert.equal(f.prompted.length, 0, 'a gone lead is never prompted and notices are not replayed');
+  // A worker with no delegated task is nobody's child.
+  const stranger: WorkerInfo = { ...f.child, id: 'lone-1', status: 'done' };
+  f.workers.set('lone-1', stranger);
+  f.dispatch.onWorker(stranger);
+  assert.equal(f.prompted.length, 0);
+  // A task killed with no transition to carry it still reaches the lead.
+  f.lead.status = 'idle';
+  f.workers.set('lead-1', f.lead);
+  f.dispatch.onTaskFinished({ ...f.task, status: 'done', outcome: 'killed', workerName: 'Pip' });
+  assert.equal(f.prompted.length, 1);
+  assert.match(f.prompted[0], /sent home mid-job/);
+});
+
+// --- Swap guards: every refusal fires before a replacement spawns ---------------------------------------------
+
+test('a swap is refused before anything spawns: busy, pending handoff, or already reserved', () => {
+  const base: WorkerInfo = { id: 'w1', kind: 'agent', deskId: 'desk-1', name: 'Muse', color: '#fff', status: 'done', acked: true, createdBy: 'Kim', createdAt: 0, cols: 80, rows: 24, viewers: [], viewerIds: [] };
+  assert.equal(swapGuard(base), undefined);
+  assert.match(swapGuard({ ...base, kind: 'shell' })!, /agent worker/);
+  assert.match(swapGuard({ ...base, status: 'working' })!, /wait until its turn ends/);
+  assert.match(swapGuard({ ...base, status: 'needs_input' })!, /wait until its turn ends/);
+  const pending = { id: 'h1', from: 'w1', to: 'w2', fromName: 'a', toName: 'b', fromPath: '/a', toPath: '/b', fromBranch: 'a', toBranch: 'b', brief: 'b', evidence: 'e', next: 'n', by: 'k', at: 0, state: 'pending' as const, prompt: 'p' };
+  assert.match(swapGuard({ ...base, handoff: pending })!, /pending handoff/);
+  assert.match(swapGuard({ ...base, swap: { engine: 'kimi', by: 'Kim', at: 0 } })!, /Already being swapped/);
 });

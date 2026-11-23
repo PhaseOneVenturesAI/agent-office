@@ -49,6 +49,8 @@ export interface WorkerInfo {
   prompt?: string;
   /** Latest explicit task handoff; independent of the credential account. */
   handoff?: WorkerHandoff;
+  /** An engine swap staged for this worker: set before the replacement spawns, cleared on resolution. */
+  swap?: { engine: string; by: string; at: number; replacementId?: string };
   /**
    * Set when the worker runs in its own git worktree (path relative to the office dir). `from` is
    * the branch the office was on when the worktree was cut, which its pull request targets.

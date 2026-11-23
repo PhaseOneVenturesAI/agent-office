@@ -16,7 +16,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, 
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import type { AgentEffort, AgentProvider } from '../shared/providers.js';
-import type { Department, DepartmentsState, DeptBriefRev, DeptLead, DeptPolicy, DeptPreset, DeptRole, ProjectSource } from '../shared/protocol.js';
+import type { Department, DepartmentsState, DeptBriefRev, DeptLead, DeptPolicy, DeptPreset, DeptRequest, DeptRole, ProjectSource } from '../shared/protocol.js';
 
 /** Implementation writers one project staffs at a time, across all its departments. */
 export const MAX_WRITERS = 2;
@@ -89,6 +89,7 @@ export class Departments {
         // the next real change, and a stale live link self-heals at launch time.
         if (d.lead && (typeof d.lead.name !== 'string' || !d.lead.name || typeof d.lead.by !== 'string' || !Number.isFinite(d.lead.at))) delete d.lead;
         if (d.policy && (typeof d.policy.provider !== 'string' || (d.policy.mode !== 'policy' && d.policy.mode !== 'ask'))) delete d.policy;
+        if (d.requests && (!Array.isArray(d.requests) || d.requests.some((r) => !r || typeof r.id !== 'string' || typeof r.title !== 'string' || typeof r.task !== 'string' || typeof r.by !== 'string' || !Number.isFinite(r.at)))) delete d.requests;
       }
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') this.loadError = "Couldn't load departments; preserving the original file. Repair it and reload the floor.";
@@ -299,7 +300,8 @@ export class Departments {
     if (!dept) return 'That department is gone';
     const name = oneLine(String(ask.name ?? ''), MAX_NAME);
     if (!name) return 'Give the lead a name';
-    if (dept.lead?.workerId) return `${dept.lead.name} is on shift — send their worker home before replacing them`;
+    // Replacing the identity under a live worker is refused; refreshing the saved engine is not.
+    if (dept.lead?.workerId && name !== dept.lead.name) return `${dept.lead.name} is on shift — send their worker home before replacing them`;
     const lead: DeptLead = { name, by, at: Date.now() };
     if (ask.provider !== undefined) lead.provider = ask.provider;
     if (ask.model !== undefined) lead.model = ask.model;
@@ -385,6 +387,61 @@ export class Departments {
     return { ...(lead.provider !== undefined ? { provider: lead.provider } : {}), ...(lead.model !== undefined ? { model: lead.model } : {}), ...(lead.effort !== undefined ? { effort: lead.effort } : {}) };
   }
 
+  /** An agent-triggered delegation under an 'ask' policy waits here for a person's engine decision. */
+  addRequest(id: string, ask: { title: unknown; task: unknown; by: string }): string | undefined {
+    const dept = this.get(id);
+    if (!dept) return 'That department is gone';
+    const title = oneLine(String(ask.title ?? ''), 200);
+    const task = String(ask.task ?? '').replace(/\r\n?/g, '\n').trim().slice(0, 20_000);
+    if (!title || !task) return 'Give the delegation a title and the task';
+    const requests = dept.requests ?? [];
+    if (requests.length >= 10) return 'Too many pending requests — approve or reject some first';
+    if (requests.some((r) => r.title === title)) return 'That request is already waiting for a decision';
+    const next: Department = { ...dept, requests: [...requests, { id: randomBytes(3).toString('hex'), title, task, by: ask.by, at: Date.now() }] };
+    return this.commit(this.departments.map((d) => (d.id === id ? next : d)));
+  }
+
+  /** Takes a pending request out (an approval seats it); a string says why it can't be taken. */
+  takeRequest(id: string, request: string): DeptRequest | string {
+    const dept = this.get(id);
+    const found = dept?.requests?.find((r) => r.id === request);
+    if (!dept || !found) return 'That request is gone';
+    const next: Department = { ...dept, requests: dept.requests!.filter((r) => r.id !== request) };
+    const err = this.commit(this.departments.map((d) => (d.id === id ? next : d)));
+    return err ?? found;
+  }
+
+  /** Drops a pending request (a rejection). */
+  dropRequest(id: string, request: string): string | undefined {
+    const dept = this.get(id);
+    if (!dept?.requests?.some((r) => r.id === request)) return 'That request is gone';
+    const next: Department = { ...dept, requests: dept.requests.filter((r) => r.id !== request) };
+    return this.commit(this.departments.map((d) => (d.id === id ? next : d)));
+  }
+
+  /** The department whose live lead is this worker, when there is one (parent ownership checks). */
+  leadDeptOfWorker(workerId: string): Department | undefined {
+    return this.departments.find((d) => d.lead?.workerId === workerId);
+  }
+
+  /** After a swap lands: the lead identity and roster rows move from the old worker to the replacement. */
+  relinkWorker(fromId: string, toId: string): void {
+    let changed = false;
+    const next = this.departments.map((d) => {
+      let dept = d;
+      if (d.lead?.workerId === fromId) {
+        dept = { ...dept, lead: { ...dept.lead!, workerId: toId } };
+        changed = true;
+      }
+      if (d.roster.some((r) => r.workerId === fromId)) {
+        dept = { ...dept, roster: dept.roster.map((r) => (r.workerId === fromId ? { ...r, workerId: toId } : r)) };
+        changed = true;
+      }
+      return dept;
+    });
+    if (changed) this.commit(next);
+  }
+
   /** The project's instruction sources, live-checked; paths and sizes only, never contents. */
   private sources(): ProjectSource[] {
     return SOURCE_CANDIDATES.map((p) => {
@@ -459,6 +516,7 @@ function isDept(v: unknown): v is Department {
     Array.isArray(d.assets) && d.assets.every((a) => a && typeof a.id === 'string' && typeof a.label === 'string' && ['file', 'link'].includes(a.kind) && typeof a.ref === 'string' && ['current', 'historical'].includes(a.status) && typeof a.by === 'string' && Number.isFinite(a.at)) &&
     (d.lead === undefined || (d.lead && typeof d.lead === 'object' && typeof d.lead.name === 'string' && (d.lead.workerId === undefined || typeof d.lead.workerId === 'string') && typeof d.lead.by === 'string' && Number.isFinite(d.lead.at))) &&
     (d.policy === undefined || (d.policy && typeof d.policy === 'object' && typeof d.policy.provider === 'string' && ['policy', 'ask'].includes(d.policy.mode) && typeof d.policy.by === 'string' && Number.isFinite(d.policy.at))) &&
+    (d.requests === undefined || (Array.isArray(d.requests) && d.requests.every((r) => r && typeof r.id === 'string' && typeof r.title === 'string' && typeof r.task === 'string' && typeof r.by === 'string' && Number.isFinite(r.at)))) &&
     typeof d.by === 'string' &&
     typeof d.at === 'number'
   );

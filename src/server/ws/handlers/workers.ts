@@ -34,6 +34,11 @@ export const workerHandlers = {
       if (!other || other === floor) return ctx.warn(c, other ? "The worker's own floor's project is already in its workspace" : 'That project is no longer in the building');
       repos.push({ floor: other.id, name: other.def.name, repo: other.def.repo, dir: other.dir });
     }
+    // A manual hire is an implementation writer until something says otherwise: the project's cap holds.
+    if (kind === 'agent') {
+      const cap = floor.writerCap();
+      if (cap) return ctx.warn(c, cap);
+    }
     // A shell is theirs too: `claude auth login` or `gh auth login` typed there signs them in.
     const hire = () => {
       const r = floor.workers.spawn(str(msg.deskId, 32), who, str(msg.prompt, 20000) || undefined, msg.worktree === true, kind, msg.provider, model, effort, undefined, c.accountId, repos, msg.via === 'herald' ? 'herald' : undefined);

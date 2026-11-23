@@ -2,6 +2,7 @@
 // paperwork on the floor's store; launch goes through the same spawn as every hire, after the
 // department composed the worker's prompt.
 import { nextFreeSeat } from '../../../shared/layout.js';
+import { normTitle } from '../../queue.js';
 import { OPEN_CODE_MODEL_MAX } from '../../../shared/providers.js';
 import { isAgentEffort, isAgentProvider, type DepartmentsClientMsg } from '../../../shared/protocol.js';
 import { str } from '../../office/input.js';
@@ -140,7 +141,7 @@ export const departmentsHandlers = {
       if (!desk) return ctx.warn(c, 'No free desk — knock the back office out a row first');
       // The lead orchestrates rather than writes: it takes a worktree only when every worker here has one.
       const worktree = !!floor.project.branch;
-      const r = floor.workers.spawn(desk, who, composed.prompt, worktree, 'agent', provider, chosenModel, chosenEffort, undefined, c.accountId);
+      const r = floor.workers.spawn(desk, who, composed.prompt, worktree, 'agent', provider, chosenModel, chosenEffort, undefined, c.accountId, [], undefined, composed.lead.name);
       if (typeof r === 'string') return ctx.warn(c, r);
       floor.departments.recordLeadHire(id, r.id, desk, who);
       ctx.toastFloor(floor, `🎖️ ${who} started ${composed.lead.name}'s shift as the ${fresh.name} lead`);
@@ -169,10 +170,46 @@ export const departmentsHandlers = {
     const chosenModel = model ?? (msg.provider === undefined ? policy?.model : undefined);
     const chosenEffort = effort ?? (msg.provider === undefined ? policy?.effort : undefined);
     const by = dept.lead ? `${dept.lead.name} (lead)` : who;
+    // The claim refuses before the cap: "already assigned" is the truer answer (queue.add re-checks).
+    if (floor.queue.state().tasks.some((t) => t.status !== 'done' && normTitle(t.title) === normTitle(title))) return ctx.warn(c, `“${title}” is already assigned on this project`);
+    // The task will seat an implementation writer: the project's cap holds here too.
+    const cap = floor.writerCap();
+    if (cap) return ctx.warn(c, cap);
+    const parentId = dept.lead?.workerId && floor.workers.get(dept.lead.workerId) ? dept.lead.workerId : undefined;
     ctx.withSignIn(c, ctx.signInFor(provider ?? floor.workers.officeDefault.provider), () => {
-      const err = floor.queue.add(task, by, title, undefined, provider, chosenModel, chosenEffort, c.accountId, id);
+      const err = floor.queue.add(task, by, title, undefined, provider, chosenModel, chosenEffort, c.accountId, id, parentId);
       if (err) ctx.warn(c, err);
       else ctx.toastFloor(floor, `📋 ${by} delegated “${title}” to the floor queue`);
     });
+  },
+  'departments.request.approve'(ctx, c, msg) {
+    const floor = here(ctx, c);
+    if (!floor) return;
+    const id = str(msg.id, 16);
+    const dept = floor.departments.get(id);
+    if (!dept) return ctx.warn(c, 'That department is gone');
+    const policy = dept.policy;
+    const provider = msg.provider ?? policy?.provider;
+    // Seating an implementation writer: the cap holds at approval time, before the request is spent.
+    const cap = floor.writerCap();
+    if (cap) return ctx.warn(c, `${cap} — the request stays pending`);
+    const taken = floor.departments.takeRequest(id, str(msg.request, 16));
+    if (typeof taken === 'string') return ctx.warn(c, taken);
+    const model = msg.model !== undefined ? str(msg.model, OPEN_CODE_MODEL_MAX + 1) : policy?.model;
+    const effort = isAgentEffort(msg.effort) ? msg.effort : policy?.effort;
+    const by = dept.lead ? `${dept.lead.name} (lead)` : c.peer.name;
+    const parentId = dept.lead?.workerId && floor.workers.get(dept.lead.workerId) ? dept.lead.workerId : undefined;
+    ctx.withSignIn(c, ctx.signInFor(provider ?? floor.workers.officeDefault.provider), () => {
+      const err = floor.queue.add(taken.task, by, taken.title, undefined, provider, model, effort, c.accountId, id, parentId);
+      if (err) ctx.warn(c, `${err} — the request is cleared; the job is claimed elsewhere or the queue refused it`);
+      else ctx.toastFloor(floor, `📋 ${by}'s “${taken.title}” approved and queued`);
+    });
+  },
+  'departments.request.reject'(ctx, c, msg) {
+    const floor = here(ctx, c);
+    if (!floor) return;
+    const err = floor.departments.dropRequest(str(msg.id, 16), str(msg.request, 16));
+    if (err) ctx.warn(c, err);
+    else ctx.toastFloor(floor, `${c.peer.name} rejected a delegation request`);
   },
 } satisfies HandlerMap<DepartmentsClientMsg>;

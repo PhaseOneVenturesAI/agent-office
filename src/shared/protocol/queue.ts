@@ -35,6 +35,8 @@ export interface QueueTask {
   pr?: { number: number; url: string; state: string; title: string };
   /** The department that delegated it (its id): one task source per project, deduped per department. */
   dept?: string;
+  /** The lead worker that delegated it: the dispatch reports the child's results and blockers here. */
+  parentId?: string;
 }
 
 export interface QueueState {

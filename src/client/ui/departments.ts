@@ -9,7 +9,7 @@ import { openReviews } from './reviews';
 import { openDeploys } from './deploys';
 import { openProjectContext } from './project-context';
 import { acknowledgeBriefDraft, type BriefDraft } from './department-draft';
-import { delegateBlock, leadBlock, leadStatusText, policyBlock } from './dept-lead';
+import { delegateBlock, leadBlock, leadForm, leadStatusText, policyBlock } from './dept-lead';
 import { openEngineSwap } from './engine-swap';
 
 const PRESET_META: Record<DeptPreset, { icon: string; label: string; blurb: string }> = {
@@ -70,7 +70,7 @@ export function openDepartments(net: Net) {
     'div.modal.departments',
     { role: 'dialog', 'aria-label': 'Departments' },
     h('header', {}, h('h2', {}, '🏬 Departments'), close),
-    h('p.dept-intro', {}, 'A department is a brief, roles and a brand library — never an auto-running team. Name a lead to talk to one coordinator; hiring into a role still seats a worker with the brief and its skills in the prompt. At most two writers per project; everything else reviews.'),
+    h('p.dept-intro', {}, 'One corner of the project, one lead to talk to — hire the roles yourself and nothing runs on its own.'),
     h('div.dept-layout', {}, cards, panel),
   );
 
@@ -299,11 +299,36 @@ export function openDepartments(net: Net) {
     );
   };
 
-  /** Only the selected department's panel: brief, lead, policy, roles, work, delegation. */
+  /** Only the selected department's panel: the lead hero up front, configuration under Manage. */
   const paintPanel = (d: Department, writers: number) => {
     panel.replaceChildren();
     const meta = PRESET_META[d.preset];
     const repaint = () => paint();
+    let replacing = false;
+    const manage = h(
+      'details.dept-advanced',
+      {},
+      h('summary', {}, 'Manage — lead, engine, brand & results'),
+      h(
+        'div.dept-block',
+        {},
+        h('h4', {}, '🎛️ This department'),
+        h('p.dept-meta', {}, `Opened by ${d.by} · ${timeAgo(d.at)}${d.lead ? ` · lead named by ${d.lead.by}` : ''}`),
+        ...(d.lead
+          ? [
+              replacing
+                ? leadForm(net, d, d.lead, () => { replacing = false; paintPanel(d, liveWriters(store.departments.departments)); })
+                : h('div.dept-row', {}, h('button.btn.small', { type: 'button', onclick: () => { replacing = true; paintPanel(d, liveWriters(store.departments.departments)); } }, 'Replace the lead…')),
+              h('div.dept-row', {}, h('button.btn.small', { type: 'button', title: 'Retire the lead identity; their worker, when on shift, keeps its desk', onclick: () => net.send({ t: 'departments.lead.clear', id: d.id }) }, 'Retire the lead')),
+            ]
+          : []),
+        h('div.dept-row', {}, h('button.btn.small', { type: 'button', title: 'Take the department off this floor (refused while its workers are at desks)', onclick: () => net.send({ t: 'departments.remove', id: d.id }) }, 'Remove the department')),
+      ),
+      policyBlock(net, d, repaint),
+      brandBlock(d),
+      resultsBlock(),
+      contextBlock(),
+    );
     panel.append(
       h(
         'section.dept',
@@ -313,15 +338,13 @@ export function openDepartments(net: Net) {
           {},
           h('h3', {}, `${meta.icon} ${d.name}`),
           h('span.dept-meta', {}, `opened by ${d.by} · ${timeAgo(d.at)}`),
-          h('button.btn.small', { type: 'button', title: 'Take the department off this floor (refused while its workers are at desks)', onclick: () => net.send({ t: 'departments.remove', id: d.id }) }, 'Remove'),
         ),
         leadBlock(net, d, repaint),
-        policyBlock(net, d, repaint),
         briefBlock(d, repaint),
         rolesBlock(d, writers),
         workBlock(d),
         delegateBlock(net, d),
-        h('details.dept-advanced', {}, h('summary', {}, 'Details — brand library, results, context'), brandBlock(d), resultsBlock(), contextBlock()),
+        manage,
       ),
     );
   };
@@ -363,7 +386,6 @@ export function openDepartments(net: Net) {
           { type: 'button', class: selected ? 'selected' : '', title: meta.blurb, onclick: () => { selectedId = d.id; paint(); } },
           h('span.dept-card-icon', {}, meta.icon),
           h('span.dept-card-main', {}, h('strong', {}, d.name), h('small', {}, leadStatusText(d))),
-          h('span.dept-card-rev', {}, `rev ${d.rev}`),
         ),
       );
     }

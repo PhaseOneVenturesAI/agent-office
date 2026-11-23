@@ -27,6 +27,7 @@ import { providerLabel, resolvedProvider } from '../../ui/provider';
 import { openPull } from '../../ui/pull';
 import { openRepoPulls, workerRepos } from '../../ui/repos';
 import { openTerminal } from '../../ui/terminal';
+import { openLeadChooser } from '../../ui/dept-lead';
 import { hiringPaused, usageLabel, usageTitle } from '../../ui/usage';
 
 // The kinds of thing you can use that this defines (see InteractKinds in world/types.ts).
@@ -385,13 +386,16 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
     const workerProvider = w.kind === 'agent' ? resolvedProvider(w.provider, store.project) : undefined;
     const spent = w.kind === 'agent' && w.usage ? usageLabel(w.usage, workerProvider) : '';
     const shell = w.kind === 'shell';
+    // A department lead's character is approachable as the lead: T talks to them, E stays the terminal.
+    const leadDept = w.kind === 'agent' ? store.departments.departments.find((d) => d.lead?.workerId === w.id) : undefined;
     return {
-      k: w.status + w.id + (w.pr?.number ?? '') + (w.repos?.map((r) => r.pr?.number ?? '-').join() ?? '') + (w.prOpening ? '!' : '') + doing + spent + (sign ?? ''),
+      k: w.status + w.id + (leadDept?.id ?? '') + (w.pr?.number ?? '') + (w.repos?.map((r) => r.pr?.number ?? '-').join() ?? '') + (w.prOpening ? '!' : '') + doing + spent + (sign ?? ''),
       parts: [
-        h('span.title', {}, `${sign ? `🪧 ${sign} · ` : ''}${w.name} · ${STATUS_LABEL[w.status]}`),
+        h('span.title', {}, `${sign ? `🪧 ${sign} · ` : ''}${leadDept ? '🎖️ ' : ''}${w.name} · ${STATUS_LABEL[w.status]}`),
         doing ? aside(doing) : '',
         spent ? h('span.cost', { title: usageTitle(w.usage!, workerProvider) }, spent) : '',
         key('E', 'Open terminal'),
+        leadDept ? key('T', `Talk to ${leadDept.lead!.name}`) : '',
         key('C', 'Changes'),
         isAsleep(w.status) ? key('R', shell ? 'Restart' : 'Resume') : key('P', shell ? 'Run command' : 'Prompt'),
         w.repos?.length ? reposKey(w) : w.pr ? key('O', `PR #${w.pr.number}`) : w.prOpening ? aside('⏳ Opening PR…') : prReady(w) ? key('O', 'Open PR') : '',
@@ -455,6 +459,10 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
       if (key === 'B' && !w) return openShell(it.deskId);
       if (key === 'P') return promptAtDesk(it.deskId);
       if (key === 'E') return w ? openWorkerTerminal(w.id) : hireAtDesk(it.deskId);
+      if (key === 'T' && w?.kind === 'agent') {
+        const dept = store.departments.departments.find((d) => d.lead?.workerId === w.id);
+        if (dept) return openLeadChooser(net, dept, w.id);
+      }
       if (key === 'C' && w) return openWorkerChanges(w.id);
       if (key === 'R' && w && isAsleep(w.status)) return resumeWorker(w);
       if (key === 'X' && w) return killWorker(w.id);

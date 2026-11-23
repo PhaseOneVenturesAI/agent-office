@@ -64,6 +64,50 @@ export class WorkerHandoffs {
     if (!this.save()) { source.info.handoff = handoff; return 'Could not save cancellation.'; }
     this.ctx.emit(source);
   }
+
+  /**
+   * The swap reservation (see docs/department-leads.md): set on the source before a replacement
+   * spawns, so a second swap, a prompt or another handoff sees it; cleared on resolution.
+   */
+  reserve(id: string, swap: NonNullable<WorkerInfo['swap']>): string | undefined {
+    const w = this.ctx.workers.get(id);
+    if (!w) return 'No such worker';
+    if (w.info.swap) return `Already being swapped to ${w.info.swap.engine}`;
+    w.info.swap = swap;
+    this.save();
+    this.ctx.emit(w);
+    return undefined;
+  }
+
+  /** Clears a swap reservation (rolled back, cancelled, or landed and relinked). */
+  clearSwap(id: string): void {
+    const w = this.ctx.workers.get(id);
+    if (!w?.info.swap) return;
+    delete w.info.swap;
+    this.save();
+    this.ctx.emit(w);
+  }
+
+  /** Records which worker the staged swap seated as the replacement, so removal can clean up. */
+  tagReplacement(id: string, replacementId: string): void {
+    const w = this.ctx.workers.get(id);
+    if (!w?.info.swap) return;
+    w.info.swap = { ...w.info.swap, replacementId };
+    this.save();
+    this.ctx.emit(w);
+  }
+
+  /** A swap replacement died before the handoff landed: free its source to try again. */
+  freeReplacement(deadId: string): void {
+    for (const w of this.ctx.workers.values()) {
+      if (w.info.swap?.replacementId !== deadId) continue;
+      const engine = w.info.swap.engine;
+      delete w.info.swap;
+      this.save();
+      this.ctx.emit(w);
+      this.ctx.events.toast(`🔁 The replacement for ${w.info.name}'s swap to ${engine} went home before the handoff landed — the swap is off; stage it again when ready.`, 'warn');
+    }
+  }
 }
 
 /** Bound and validate disk state; unknown/corrupt versions cannot become executable handoffs. */
@@ -83,8 +127,7 @@ const clipSwap = (s: string, max: number) => (s.length > max ? `${s.slice(0, max
  * reviews the exact prompt and acknowledges once — evidence is explicitly unverified until they
  * (or the replacement) checks the source branch and its CI.
  */
-export function swapBrief(source: WorkerInfo, engine: string, note?: string): HandoffBrief {
-  const task = (source.task ? `${source.task.name}: ${source.task.summary}` : source.prompt)?.replace(/\s+/g, ' ').trim();
+export function swapBrief(source: WorkerInfo, engine: string, note?: string): HandoffBrief {  const task = (source.task ? `${source.task.name}: ${source.task.summary}` : source.prompt)?.replace(/\s+/g, ' ').trim();
   const branch = source.worktree?.made ?? source.worktree?.branch;
   const brief = [
     note?.trim() || (task ? `Take over “${clipSwap(task, 300)}”, continuing it on ${engine}.` : `Take over this worker's current job on ${engine}.`),
@@ -94,4 +137,15 @@ export function swapBrief(source: WorkerInfo, engine: string, note?: string): Ha
   const evidence = 'Explicitly unverified: an engine swap moves the task, not the proof. Check the source branch and its CI before building on it.';
   const next = task ? `Continue: ${clipSwap(task, 240)}` : 'Ask the office what the worker was on, then continue it.';
   return { brief, evidence, next };
+}
+
+/**
+ * Why this worker can't be swapped right now — every refusal that must fire BEFORE a replacement
+ * spawns: not an agent, already reserved, a handoff still pending review, or a turn still running.
+ */
+export function swapGuard(source: WorkerInfo): string | undefined {
+  if (source.kind !== 'agent') return 'Only an agent worker can change engines';
+  if (source.swap) return `Already being swapped to ${source.swap.engine}`;
+  if (source.handoff?.state === 'pending') return 'Review the pending handoff first; it has not been delivered.';
+  if (!['idle', 'done'].includes(source.status)) return `${source.name} is ${source.status} — wait until its turn ends before swapping its engine`;
 }

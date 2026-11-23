@@ -14,7 +14,8 @@ import { TaskQueue } from './queue.js';
 import { Changes } from './changes.js';
 import { Decor } from './decor.js';
 import { FloorPlanStore } from './floorplan.js';
-import { Departments } from './departments.js';
+import { Departments, MAX_WRITERS } from './departments.js';
+import { LeadDispatch } from './dept-dispatch.js';
 import { Docs } from './docs.js';
 import { Dog } from './dog.js';
 import { Court } from './court.js';
@@ -121,6 +122,8 @@ export class Floor {
   /** The signs over its desks, and how far its back office is built out. */
   readonly plan: FloorPlanStore;
   readonly departments: Departments;
+  /** The lead dispatch: child transitions become messages in the lead's own session. */
+  readonly dispatch: LeadDispatch;
   readonly jukebox: Jukebox;
   /** The whiteboard everyone on the floor draws on together. */
   readonly whiteboard: Whiteboard;
@@ -182,6 +185,8 @@ export class Floor {
           ctx.emit(this, { t: 'worker.update', worker });
           // Still being built: the first updates come from waking the workers already at their desks.
           this.queue?.onWorker(worker);
+          // After the queue reconciled the task, so a child's notice sees the final outcome.
+          this.dispatch?.onWorker(worker);
           this.meetings?.onWorker(worker);
           this.dog.onWorker(worker);
           ctx.workerChanged(this, worker);
@@ -197,6 +202,11 @@ export class Floor {
           ctx.emit(this, { t: 'worker.remove', workerId, ...(jail ? { jail } : {}) });
           this.queue?.onWorkerGone(workerId);
           this.meetings?.onWorkerGone(workerId);
+          this.dispatch?.onWorkerGone(workerId);
+          // A swap's unfinished business goes with it: a reserved source takes its idle replacement
+          // home; a replacement that died frees the source to try again.
+          if (info?.swap?.replacementId) void this.sendHome(info.swap.replacementId);
+          else this.workers.handoffs.freeReplacement(workerId);
           this.dog.onWorkerGone(workerId);
           ctx.workerChanged(this, workerId);
         },
@@ -244,11 +254,22 @@ export class Floor {
       refreshGitHub: () => void this.github.refresh(),
       hiringPaused: () => ctx.ledger.hiringPaused,
       room: () => ctx.capacity.room(),
+      writersFull: () => this.writerCap(),
+      finished: (task) => this.dispatch?.onTaskFinished(task),
       emptied: () => {
         ctx.toast(this, '📋 The queue is empty: every task is done 🎉');
         ctx.emit(this, { t: 'gong', why: 'queue' });
       },
       worktreeNote: () => officePrompt(ctx.prompts, 'queue.worktree'),
+    });
+
+    // The lead dispatch: children of a department (delegated tasks' workers) report transitions to
+    // the lead's own session. Reads the queue's reconciled state, so it is wired after the queue.
+    this.dispatch = new LeadDispatch({
+      get: (id) => this.workers.get(id),
+      prompt: (id, text) => this.workers.prompt(id, text, 'office'),
+      tasks: () => this.queue.state().tasks,
+      departments: () => this.departments.state().departments,
     });
 
     // Meetings seat their own workers round the meeting room's table and run them round by round.
@@ -388,6 +409,18 @@ export class Floor {
   /** Someone just walked in: boards that haven't been looked at in a while get fetched again. */
   arrived() {
     if (Date.now() - Math.max(this.github.issues.fetchedAt, this.github.pulls.fetchedAt) > REFRESH_MS) void this.github.refresh();
+  }
+
+  /**
+   * Why no implementation writer may start right now: the project's two-writer cap, counting every
+   * live agent that isn't rostered as review/support/lead. Manual hires, queue seating and hook
+   * hires all ask here; department role launches keep their role-aware check in composeLaunch.
+   */
+  writerCap(): string | undefined {
+    const live = () => this.workers.list().filter((w) => w.kind === 'agent').map((w) => w.id);
+    return this.departments.writers(live) >= MAX_WRITERS
+      ? `This project already has ${MAX_WRITERS} implementation writers — review or ship what's in flight first`
+      : undefined;
   }
 
   private active(): boolean {

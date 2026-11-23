@@ -79,6 +79,20 @@ export interface DeptPolicy {
   at: number;
 }
 
+/**
+ * A delegation the engine policy held for a person: an agent-triggered delegation under an 'ask'
+ * policy cannot choose an engine itself, so it waits here until someone approves it (picking the
+ * engine) or rejects it.
+ */
+export interface DeptRequest {
+  id: string;
+  title: string;
+  task: string;
+  /** The lead worker that asked. */
+  by: string;
+  at: number;
+}
+
 export interface Department {
   id: string;
   preset: DeptPreset;
@@ -98,6 +112,8 @@ export interface Department {
   lead?: DeptLead;
   /** The team engine policy for lead launches and delegations. */
   policy?: DeptPolicy;
+  /** Engine decisions waiting for a person (agent-triggered delegations under an 'ask' policy). */
+  requests?: DeptRequest[];
   by: string;
   at: number;
 }
@@ -141,7 +157,11 @@ export type DepartmentsClientMsg =
   /** Set the team engine policy: 'policy' runs it silently, 'ask' shows the picker prefilled from it. */
   | { t: 'departments.policy'; id: string; provider: AgentProvider; model?: string; effort?: AgentEffort; mode: 'policy' | 'ask' }
   /** The lead delegates a job to the floor queue: the project's one task source, deduped per department. */
-  | { t: 'departments.delegate'; id: string; title: string; task: string; provider?: AgentProvider; model?: string; effort?: AgentEffort };
+  | { t: 'departments.delegate'; id: string; title: string; task: string; provider?: AgentProvider; model?: string; effort?: AgentEffort }
+  /** Approve a pending engine request: seats the delegation on the picked engine (a person decides). */
+  | { t: 'departments.request.approve'; id: string; request: string; provider?: AgentProvider; model?: string; effort?: AgentEffort }
+  /** Reject a pending engine request: the delegation is dropped. */
+  | { t: 'departments.request.reject'; id: string; request: string };
 
 export type DepartmentsServerMsg =
   | { t: 'departments'; state: DepartmentsState }

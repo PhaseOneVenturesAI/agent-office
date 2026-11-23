@@ -238,7 +238,7 @@ export class WorkerManager {
    * (see meetings.ts), in the meeting's own worktree, which everyone at the table shares. `repos` are
    * other floors' repositories a worker in its own worktree works in too (see makeWorkspace).
    */
-  spawn(deskId: string, by: string, prompt?: string, worktree = false, kind: WorkerKind = 'agent', provider?: AgentProvider, model?: string, effort?: AgentEffort, meeting?: { id: string; worktree?: WorkerInfo['worktree'] }, owner?: string, repos: RepoSource[] = [], via?: 'herald'): WorkerInfo | string {
+  spawn(deskId: string, by: string, prompt?: string, worktree = false, kind: WorkerKind = 'agent', provider?: AgentProvider, model?: string, effort?: AgentEffort, meeting?: { id: string; worktree?: WorkerInfo['worktree'] }, owner?: string, repos: RepoSource[] = [], via?: 'herald', name?: string): WorkerInfo | string {
     if (this.closing) return 'This floor is closing; no new workers can start.';
     // Nobody picked (a board agent, say): the office's default worker, model and effort included.
     if (kind === 'agent' && provider === undefined) ({ provider, model, effort } = this.officeDefault);
@@ -269,21 +269,22 @@ export class WorkerManager {
     if (full) return full;
     const used = new Set([...this.workers.values()].map((w) => w.info.name.replace(/ 🐚$/, '')));
     const agent = seat.station && STATION_AGENT[seat.station];
-    const name = agent ? agent.name : (NAMES.find((n) => !used.has(n)) ?? `Worker ${this.workers.size + 1}`);
+    // A named seat (a department lead takes the lead's name) wins when the name is free; else the next unused one.
+    const picked = agent ? agent.name : name && !used.has(name) ? name : (NAMES.find((n) => !used.has(n)) ?? `Worker ${this.workers.size + 1}`);
     const id = randomBytes(6).toString('hex');
     let wt: WorkerInfo['worktree'] = meeting?.worktree;
     let others: WorkerRepo[] | undefined;
     if (worktree) {
-      const slug = `${name.toLowerCase()}-${id.slice(0, 4)}`;
+      const slug = `${picked.toLowerCase()}-${id.slice(0, 4)}`;
       const made = repos.length ? this.makeWorkspace(slug, repos) : this.trees.create(slug);
       if (typeof made === 'string') return made;
       if ('repos' in made) {
         ({ worktree: wt, repos: others } = made);
-        for (const note of made.notes) this.events.toast(`🌿 ${name}'s worktree of ${note}`, 'info');
+        for (const note of made.notes) this.events.toast(`🌿 ${picked}'s worktree of ${note}`, 'info');
       } else {
         const { note, ...ref } = made;
         wt = ref;
-        if (note) this.events.toast(`🌿 ${name}'s worktree ${note}`, 'info');
+        if (note) this.events.toast(`🌿 ${picked}'s worktree ${note}`, 'info');
       }
     }
     const info: WorkerInfo = {
@@ -293,7 +294,7 @@ export class WorkerManager {
       model: takesModel(selectedProvider) ? model : undefined,
       effort: takesEffort(selectedProvider) ? effort : undefined,
       deskId,
-      name: kind === 'shell' ? `${name} 🐚` : name,
+      name: kind === 'shell' ? `${picked} 🐚` : picked,
       color: kind === 'shell' ? '#8d99ae' : agent ? agent.color : COLORS[Math.floor(Math.random() * COLORS.length)],
       status: 'starting',
       acked: true,

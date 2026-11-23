@@ -3,6 +3,7 @@ import { notLeaving } from '../leave-on-merge.js';
 import { findWorker, readHireRequest, readHomeRequest, readPrRequest, workerRow, type PullsView } from '../office-workers.js';
 import { gh } from '../github.js';
 import type { Floor } from '../floor.js';
+import { normTitle } from '../queue.js';
 import { nextFreeSeat } from '../../shared/layout.js';
 import type { WorkerInfo } from '../../shared/protocol.js';
 import type { Ctx } from '../office/context.js';
@@ -65,7 +66,7 @@ export async function officeWorkers(ctx: Ctx, req: http.IncomingMessage, res: ht
       workers: list.map((w) => workerRow(w, view, me.id)),
     });
   }
-  if (req.method !== 'POST' || !['', '/home', '/tell', '/pr', '/review'].includes(action)) return send(res, 405, { error: 'GET /office/workers, or POST to /office/workers, /office/workers/home, /office/workers/tell, /office/workers/pr or /office/workers/review' });
+  if (req.method !== 'POST' || !['', '/home', '/tell', '/pr', '/review', '/delegate'].includes(action)) return send(res, 405, { error: 'GET /office/workers, or POST to /office/workers, /office/workers/home, /office/workers/tell, /office/workers/pr, /office/workers/review or /office/workers/delegate' });
   let body: unknown;
   try {
     body = JSON.parse((await readBody(req)) || '{}');
@@ -160,8 +161,46 @@ export async function officeWorkers(ctx: Ctx, req: http.IncomingMessage, res: ht
     return send(res, 200, { ok: true, review: { id: r.id, title: r.title, url: r.url } });
   }
 
+  if (action === '/delegate') {
+    // The department-scoped orchestration path (see docs/department-leads.md): only the department's
+    // live lead may delegate for it, the team policy always picks the engine, and an 'ask' policy
+    // holds the delegation for a person's decision instead of letting an agent supply a provider.
+    const b = (body ?? {}) as { dept?: unknown; title?: unknown; task?: unknown; provider?: unknown; model?: unknown; effort?: unknown };
+    if (b.provider !== undefined || b.model !== undefined || b.effort !== undefined) return send(res, 400, { error: 'The engine is chosen by the department policy — a person decides when it asks. provider/model/effort are not accepted here.' });
+    if (me.kind !== 'agent') return send(res, 403, { error: 'Only a department lead delegates' });
+    const dept = floor.departments.leadDeptOfWorker(me.id);
+    if (!dept) {
+      const named = floor.departments.state().departments.filter((d) => d.lead).map((d) => d.lead!.name);
+      return send(res, 403, { error: `You are not a department lead here${named.length ? ` (the leads are ${named.join(', ')})` : ' — no lead is on shift'}` });
+    }
+    const title = str(b.title, 200);
+    const task = str(b.task, 20000).replace(/\r\n?/g, '\n').trim();
+    if (!title || !task) return send(res, 400, { error: 'Give the delegation a title and the task: {"title": "…", "task": "…"}' });
+    // The claim refuses before anything else: "already assigned" is the truer answer, for the
+    // person-decided path too. queue.add re-checks synchronously, so nothing is lost.
+    const claimed = floor.queue.state().tasks.some((t) => t.status !== 'done' && normTitle(t.title) === normTitle(title));
+    if (claimed) return send(res, 400, { error: `“${title}” is already assigned on this project` });
+    const policy = dept.policy;
+    if (policy?.mode === 'ask') {
+      const err = floor.departments.addRequest(dept.id, { title, task, by: who });
+      if (err) return send(res, 400, { error: err });
+      ctx.toastFloor(floor, `🙋 ${who} asked for an engine decision on “${title}”`);
+      return send(res, 200, { ok: true, pending: true, message: 'The team policy asks each time: a person will pick the engine and approve it. The job is not queued yet.' });
+    }
+    const cap = floor.writerCap();
+    if (cap) return send(res, 409, { error: cap });
+    const err = floor.queue.add(task, `${dept.lead!.name} (lead)`, title, undefined, policy?.provider, policy?.model, policy?.effort, floor.workers.ownerOf(me.id), dept.id, me.id);
+    if (err) return send(res, 400, { error: err });
+    const queued = floor.queue.state().tasks.at(-1)!;
+    ctx.toastFloor(floor, `📋 ${who} delegated “${queued.title}” to the floor queue`);
+    return send(res, 200, { ok: true, pending: false, task: { id: queued.id, title: queued.title, status: queued.status } });
+  }
+
   const ask = readHireRequest(body, floor.project.agentProviders);
   if (typeof ask === 'string') return send(res, 400, { error: ask });
+  // A worker hiring another adds an implementation writer: the project's cap holds here too.
+  const cap = floor.writerCap();
+  if (cap) return send(res, 409, { error: cap });
   const desk = ask.desk ?? nextFreeSeat((id) => floor.workers.deskOccupied(id), floor.plan.wing)?.id;
   if (!desk) return send(res, 409, { error: 'Every desk and bean bag is taken: send someone home first' });
   // A model or effort is the office's default worker's unless it says whose.
