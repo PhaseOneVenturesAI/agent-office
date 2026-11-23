@@ -285,8 +285,8 @@ export const PLANTS: readonly (readonly [x: number, z: number, scale: number])[]
   [17.2, 12.2, 1.3],
   [-17.2, 8.5, 1.2],
   [14.2, -12.2, 1.1],
-  [-6, 0, 1],
-  [3.5, 0, 0.9],
+  [-6, 8.4, 1],
+  [3.5, -8.2, 0.9],
   [8.5, 5, 1.1],
 ];
 
@@ -308,11 +308,11 @@ export function plantsAt(level: number): readonly (readonly [x: number, z: numbe
 export const WHITEBOARD = { x: 5.4, z: -5.4, width: 4, height: 2.2, bottom: 0.5 } as const;
 
 /**
- * The department directory: a standing sign by the north wall between the PR board and the gong,
+ * The department directory: a standing sign in the south commons, clear of the elevator,
  * facing into the room (+z). Its face lists the floor's departments and where their corners are;
  * walk up and press E for the Departments panel (see features/departments).
  */
-export const DEPARTMENTS = { x: 8.6, z: FLOOR.minZ + 0.55, width: 2.6, height: 1.5, bottom: 0.55 } as const;
+export const DEPARTMENTS = { x: 2.2, z: 8.6, width: 2.6, height: 1.5, bottom: 0.55 } as const;
 
 /**
  * The bottom floor of the building is its second storey: the street, and the open garage under the

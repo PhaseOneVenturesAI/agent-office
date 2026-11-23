@@ -4,7 +4,8 @@
 // An office floor built out into the back office (see WING) has more of it to get round: the office's
 // helpers take how many rows it's built out (`wing`), and each level gets a grid of its own.
 
-import { BALCONY, BALCONY_DOOR, BEANBAGS, BOOKSHELF, CABINET, DESK_SIZE, ELEVATOR, ELEVATOR_FRONT, EXIT_DOOR, EXIT_STAIRS, FLOOR, GONG, JUKEBOX, KIOSK, LADDER, LOFT, MEETING_ROOM, MEETING_SEATS, MEETING_TABLE, PARACHUTE, POLE, POLES, ROAD, STAIRS, STATIONS, WHITEBOARD, WING, builtDesks, plantsAt, wingLevel, wingMinZ, type DeskDef } from './layout.js';
+import { DEPARTMENT_ROOMS, departmentRoomWalls } from './department-rooms.js';
+import { DEPARTMENTS, BALCONY, BALCONY_DOOR, BEANBAGS, BOOKSHELF, CABINET, DESK_SIZE, ELEVATOR, ELEVATOR_FRONT, EXIT_DOOR, EXIT_STAIRS, FLOOR, GONG, JUKEBOX, KIOSK, LADDER, LOFT, MEETING_ROOM, MEETING_SEATS, MEETING_TABLE, PARACHUTE, POLE, POLES, ROAD, STAIRS, STATIONS, WHITEBOARD, WING, builtDesks, plantsAt, wingLevel, wingMinZ, type DeskDef } from './layout.js';
 
 
 export type Pt = [number, number];
@@ -43,7 +44,8 @@ export function deskPoint(d: DeskDef, t: number, s: number): Pt {
 
 /** What's in the way on the office floor, built out `wing` rows. The lounge, kitchen and plants are where world/office/room.ts (and world/kitchen.ts) put them. */
 function obstacles(wing: number): Obstacles {
-  const rects: Rect[] = [];
+  const rects: Rect[] = DEPARTMENT_ROOMS.flatMap((room) => departmentRoomWalls(room));
+  rects.push([DEPARTMENTS.x - DEPARTMENTS.width / 2 - 0.25, DEPARTMENTS.x + DEPARTMENTS.width / 2 + 0.25, DEPARTMENTS.z - 0.3, DEPARTMENTS.z + 0.3]);
   const circles: Circle[] = [];
   const hw = DESK_SIZE.width / 2;
   const hd = DESK_SIZE.depth / 2;

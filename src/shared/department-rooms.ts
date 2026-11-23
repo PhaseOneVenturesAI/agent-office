@@ -14,9 +14,9 @@ export interface DepartmentRoom {
 }
 
 export const DEPARTMENT_ROOMS: readonly DepartmentRoom[] = [
-  { preset: 'marketing', name: 'Marketing studio', minX: -14.8, maxX: -6.7, minZ: -7.2, maxZ: -1.2, door: { side: 'south', x: -10.5, width: 2 }, desks: ['desk-1', 'desk-2', 'desk-3', 'desk-4'] },
-  { preset: 'product', name: 'Product & Engineering', minX: -5.3, maxX: 2.8, minZ: -7.2, maxZ: -1.2, door: { side: 'south', x: -1.5, width: 2 }, desks: ['desk-5', 'desk-6', 'desk-7', 'desk-8'] },
-  { preset: 'review', name: 'Review room', minX: -14.8, maxX: -6.7, minZ: 1.2, maxZ: 7.2, door: { side: 'north', x: -10.5, width: 2 }, desks: ['desk-9', 'desk-10', 'desk-11', 'desk-12'] },
+  { preset: 'marketing', name: 'Marketing studio', minX: -14.1, maxX: -6.7, minZ: -7.2, maxZ: -1.05, door: { side: 'south', x: -10.5, width: 2 }, desks: ['desk-1', 'desk-2', 'desk-3', 'desk-4'] },
+  { preset: 'product', name: 'Product & Engineering', minX: -5.3, maxX: 2.8, minZ: -7.2, maxZ: -1.05, door: { side: 'south', x: -1.5, width: 2 }, desks: ['desk-5', 'desk-6', 'desk-7', 'desk-8'] },
+  { preset: 'review', name: 'Review room', minX: -14.1, maxX: -6.7, minZ: 1.05, maxZ: 7.2, door: { side: 'north', x: -10.5, width: 2 }, desks: ['desk-9', 'desk-10', 'desk-11', 'desk-12'] },
 ];
 
 export const ROOM_HEIGHT = 2.7;
