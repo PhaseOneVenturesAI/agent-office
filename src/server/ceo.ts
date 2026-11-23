@@ -40,8 +40,10 @@ export class FloorCeo {
     if (this.loadError) return this.loadError;
     const name = oneLine(String(ask.name ?? ''), MAX_NAME);
     if (!name) return 'Give the CEO a name';
+    // Replacing the identity under a live worker is refused; refreshing the saved engine is not —
+    // and it must keep the live link, or a duplicate shift could be launched under the new save.
     if (this.ceo?.workerId && name !== this.ceo.name) return `${this.ceo.name} is on shift — send their worker home before replacing them`;
-    const next: CeoIdentity = { name, by, at: Date.now() };
+    const next: CeoIdentity = { ...(this.ceo ?? { name, by, at: Date.now() }), name, by, at: Date.now() };
     if (ask.provider !== undefined) next.provider = ask.provider;
     if (ask.model !== undefined) next.model = ask.model;
     if (ask.effort !== undefined) next.effort = ask.effort;

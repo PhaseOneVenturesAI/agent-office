@@ -394,6 +394,14 @@ export class Floor {
     return landedWork(worker, this.github.pulls.items, this.queue.state().tasks, (id) => this.ctx.floor(id)?.github.pulls.items);
   }
 
+  /** A worker speaking for a role (the CEO or a department manager): protected from send-home. */
+  isRoleWorker(workerId: string): { role: string; name: string } | undefined {
+    if (this.ceo.get()?.workerId === workerId) return { role: 'CEO', name: this.ceo.get()!.name };
+    const dept = this.departments.leadDeptOfWorker(workerId);
+    if (dept?.lead) return { role: `${dept.name} manager`, name: dept.lead.name };
+    return undefined;
+  }
+
   /**
    * Sends a worker home as someone asked (not by itself, see sendLandedHome): with no `cleanup`, its
    * worktree and branch go unless they hold work, where what its merged pull requests delivered
@@ -401,11 +409,14 @@ export class Floor {
    */
   sendHome(workerId: string, cleanup?: WorktreeCleanup): Promise<{ note?: string; error?: string }> {
     const info = this.workers.get(workerId);
+    const role = this.isRoleWorker(workerId);
+    if (role) return Promise.resolve({ error: `${role.name} is the ${role.role} — a permanent project character. Retire the role in the Roles view instead; stopping their process is not deleting them.` });
     const landed = info && this.landed(info);
     return this.workers.kill(workerId, cleanup, landed?.head, landed?.heads);
   }
 
   private goHome(worker: WorkerInfo, why: string, head?: string, heads?: Record<string, string | undefined>) {
+    if (this.isRoleWorker(worker.id)) return; // A landed pull request never sends a role character home.
     const done = this.workers.kill(worker.id, undefined, head, heads);
     this.ctx.toast(this, `🏠 ${worker.name} went home: ${why}`);
     void done.then(({ note, error }) => {

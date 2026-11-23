@@ -403,7 +403,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
         key('C', 'Changes'),
         isAsleep(w.status) ? key('R', shell ? 'Restart' : 'Resume') : key('P', shell ? 'Run command' : 'Prompt'),
         w.repos?.length ? reposKey(w) : w.pr ? key('O', `PR #${w.pr.number}`) : w.prOpening ? aside('⏳ Opening PR…') : prReady(w) ? key('O', 'Open PR') : '',
-        key('X', 'Send home'),
+        role ? aside('🛡️ permanent') : key('X', 'Send home'),
         labelKey,
       ],
     };
@@ -470,7 +470,10 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
       }
       if (key === 'C' && w) return openWorkerChanges(w.id);
       if (key === 'R' && w && isAsleep(w.status)) return resumeWorker(w);
-      if (key === 'X' && w) return killWorker(w.id);
+      if (key === 'X' && w) {
+        if (store.ceo.ceo?.workerId === w.id || store.departments.departments.some((d) => d.lead?.workerId === w.id)) return toast(`${w.name} is a permanent project character — retire the role in the Roles view instead`, 'warn');
+        return killWorker(w.id);
+      }
       if (key === 'O' && w) return pullRequestFor(w);
     },
   });

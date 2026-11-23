@@ -26,7 +26,10 @@ export const ceoHandlers = {
   'ceo.clear'(ctx, c) {
     const floor = here(ctx, c);
     if (!floor) return;
+    const live = floor.ceo.get()?.workerId;
     ctx.warn(c, floor.ceo.clear());
+    // Retiring the role sends its worker home: deleting the role is what frees the seat.
+    if (live && !floor.ceo.get()?.workerId) void floor.sendHome(live);
   },
   'ceo.launch'(ctx, c, msg) {
     const who = c.peer.name;

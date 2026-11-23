@@ -236,6 +236,11 @@ test('user → CEO → manager → worker, and results back up the chain', async
     assert.equal((await again.json()).started, false);
     await inbox(mgrWorker.id, /Tighten the message/);
 
+    // A role character is permanent: sending them home is refused, seat and link intact.
+    ada.send({ t: 'worker.kill', workerId: mgrWorker.id });
+    const stillThere = await fetch(`${hooks}/office/workers?worker=${ceoWorker.id}`, { headers: { authorization: `Bearer ${ceo.token}` } }).then((r) => r.json()) as { workers: { id: string }[] };
+    assert.ok(stillThere.workers.some((w) => w.id === mgrWorker.id), 'the manager is not fireable');
+
     // The manager delegates the actual work; the floor queue seats a worker under her ownership.
     const ok = await hook('/office/workers/delegate?worker=' + mgrWorker.id, { title: 'Hero rebuild', task: 'Rebuild the hero section' }, mgrCreds.token);
     assert.equal(ok.status, 200);

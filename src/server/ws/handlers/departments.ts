@@ -101,7 +101,11 @@ export const departmentsHandlers = {
   'departments.lead.clear'(ctx, c, msg) {
     const floor = here(ctx, c);
     if (!floor) return;
-    ctx.warn(c, floor.departments.clearLead(str(msg.id, 16)));
+    const id = str(msg.id, 16);
+    const live = floor.departments.get(id)?.lead?.workerId;
+    ctx.warn(c, floor.departments.clearLead(id));
+    // Retiring the manager sends their worker home: deleting the role is what frees the seat.
+    if (live && !floor.departments.get(id)?.lead?.workerId) void floor.sendHome(live);
   },
   'departments.policy'(ctx, c, msg) {
     const floor = here(ctx, c);

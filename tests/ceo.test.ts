@@ -25,6 +25,10 @@ test('a CEO is named with a saved engine, replaced only off shift, and retires c
     // While their worker is live, the identity can't be replaced under it.
     ceo.recordHire('w1', 'Kim');
     assert.match(ceo.set({ name: 'Sam' }, 'Kim')!, /on shift/);
+    // But an engine refresh keeps the live link — losing it would allow a duplicate shift.
+    assert.equal(ceo.set({ name: 'Avery', provider: 'codex' }, 'Kim'), undefined);
+    assert.equal(ceo.get()!.workerId, 'w1', 'the engine refresh preserves the live link');
+    assert.match(ceo.composeLaunch(undefined, () => ['w1']) as string, /already on shift/);
     assert.equal(ceo.clear(), undefined);
     assert.equal(ceo.get(), undefined);
   } finally {
