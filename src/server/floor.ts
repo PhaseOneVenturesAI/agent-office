@@ -22,6 +22,7 @@ import { FloorCeo } from './ceo.js';
 import { LeadDispatch } from './dept-dispatch.js';
 import { RoleChat } from './role-chat.js';
 import { floorStaffQA } from './dept-staff-qa.js';
+import { isRoleWorkerOn, relinkRoleSeat } from './role-seats.js';
 import type { QaOutcome } from './staff-qa.js';
 import { Docs } from './docs.js';
 import { Dog } from './dog.js';
@@ -439,19 +440,14 @@ export class Floor {
     return floorStaffQA(this, deptId, question, by, custodianId);
   }
 
-  /** After a landed swap: the manager and CEO identities, the roster, and the durable record follow. */
+  /** After a landed swap: the durable record moves first, transactionally, then the identities. */
   relinkEverywhere(fromId: string, toId: string): void {
-    this.departments.relinkWorker(fromId, toId);
-    this.ceo.relinkWorker(fromId, toId);
-    this.roleChat.migrate(fromId, toId);
+    relinkRoleSeat(this.ctx, this, fromId, toId);
   }
 
   /** A worker speaking for a role (the CEO or a department manager): protected from send-home. */
   isRoleWorker(workerId: string): { role: string; name: string } | undefined {
-    if (this.ceo.get()?.workerId === workerId) return { role: 'CEO', name: this.ceo.get()!.name };
-    const dept = this.departments.leadDeptOfWorker(workerId);
-    if (dept?.lead) return { role: `${dept.name} manager`, name: dept.lead.name };
-    return undefined;
+    return isRoleWorkerOn(this, workerId);
   }
 
   /**

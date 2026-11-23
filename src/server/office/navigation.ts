@@ -17,7 +17,7 @@ export function navigation(ctx: Ctx): Navigation {
     if (c.peer.floor === floor.id) return;
     const left = leave(c, at);
     Object.assign(c.peer, { floor: floor.id });
-    ctx.sendTo(c, { t: 'floor.enter', peers: [...ctx.clients.values()].map((o) => o.peer), ...floorView(ctx, floor) });
+    ctx.sendTo(c, { t: 'floor.enter', peers: [...ctx.clients.values()].map((o) => o.peer), ...floorView(ctx, floor, c) });
     screensOf(ctx, c, floor);
     arrived(c, left);
     floor.arrived();
@@ -39,7 +39,7 @@ export function navigation(ctx: Ctx): Navigation {
   const toLobby = (c: Client) => {
     const left = leave(c);
     delete c.peer.floor;
-    ctx.sendTo(c, { t: 'floor.enter', peers: [...ctx.clients.values()].map((o) => o.peer), ...floorView(ctx, undefined) });
+    ctx.sendTo(c, { t: 'floor.enter', peers: [...ctx.clients.values()].map((o) => o.peer), ...floorView(ctx, undefined, c) });
     arrived(c, left);
   };
 

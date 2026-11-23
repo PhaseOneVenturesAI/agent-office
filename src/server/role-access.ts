@@ -120,6 +120,11 @@ export function canEditManager(ctx: Ctx, floor: Floor, deptId: string, accountId
  * never prompt, activity, task, handoff, usage, or worktree paths. The authoritative conversation
  * and the work itself stay private.
  */
+/** Recipient-aware redaction for a worker list (initial views and updates share it). */
+export function redactWorkersFor(ctx: Ctx, floor: Floor, workers: WorkerInfo[], accountId: string | undefined): WorkerInfo[] {
+  return workers.map((w) => (floor.isRoleWorker(w.id) ? publicRoleWorker(w, roleAccess(ctx, floor, w.id, accountId).kind) : w));
+}
+
 export function publicRoleWorker(w: WorkerInfo, access: RoleAccess['kind']): WorkerInfo {
   if (access === 'owner' || access === 'controller') return w;
   return {
