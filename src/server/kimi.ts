@@ -397,7 +397,7 @@ export class KimiSession {
     const card = renderPermission(params, options, this.renderer.toolDetail(toolCall ? str(toolCall.toolCallId) : undefined));
     const detail = JSON.stringify(toolCall ?? {}, null, 2);
     const choices = options.filter((o) => ['allow_once', 'allow_always', 'reject_once', 'reject_always'].includes(o.kind));
-    const approval: ApprovalRequest | undefined = this.sessionId && (typeof id === 'string' || typeof id === 'number') && detail.length <= 20000 && choices.length
+    const approval: ApprovalRequest | undefined = this.sessionId && isRec(params) && params.sessionId === this.sessionId && (typeof id === 'string' || typeof id === 'number') && detail.length <= 20000 && choices.length
       ? { id: randomUUID(), nativeRequestId: id, source: 'acp', provider: 'kimi', sessionId: this.sessionId,
           title: str(toolCall?.title) ?? 'Kimi requests permission', detail,
           options: choices.map((o) => ({ id: o.optionId, label: o.name, kind: o.kind as ApprovalRequest['options'][number]['kind'] })) }

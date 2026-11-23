@@ -1,3 +1,4 @@
+import { approvalCard } from './approval-card';
 import type { ConversationMessage } from '../../shared/protocol';
 import type { Net } from '../net';
 import { store } from '../state';
@@ -32,10 +33,10 @@ export function openWorkerConversation(net: Net, workerId: string, terminal: () 
   const floor = store.floor, speaker = agentSpeaker();
   let supported = false, listening = false, alive = true, historyEnd = false, loadingEarlier = false;
   const close = h('button.btn.close', { 'aria-label': 'Close conversation' }, '✕');
-  const terminalButton = h('button.btn', { type: 'button' }, 'Terminal / approvals');
+  const terminalButton = h('button.btn', { type: 'button' }, 'Terminal');
   const handoff = h('button.btn', { type: 'button' }, 'Handoff');
   const note = h('p.note', {}, 'Loading this existing agent…');
-  const pending = h('div.conversation-pending');
+  const approvals = approvalCard(net, workerId, () => { modal.close(); terminal(); });
   const earlier = h('button.btn.small', { type: 'button' }, 'Load earlier messages');
   const transcript = h('div.conversation-transcript', { role: 'log', 'aria-label': 'Conversation transcript', 'aria-live': 'polite' });
   const draft = h('textarea', { rows: 3, maxlength: 20000, 'aria-label': 'Message draft', placeholder: 'Type or dictate, review the draft, then Send.' });
@@ -48,8 +49,8 @@ export function openWorkerConversation(net: Net, workerId: string, terminal: () 
   const form = h('form', {}, draft, mic.live, h('div.conversation-actions', {}, mic.button, send));
   const el = h('div.modal.worker-conversation', { role: 'dialog', 'aria-label': `${worker.name} conversation` },
     h('header', {}, h('h2', {}, `${worker.name} · Conversation`), close), h('div.body', {},
-      h('div.conversation-actions', {}, terminalButton, handoff), note, pending,
-      h('p.note', {}, 'This is the ongoing conversation: replies appear here, links open the artifact, and history pages in below. The character keeps its session and model. Tool approvals are answered in the terminal — never guessed here.'),
+      h('div.conversation-actions', {}, terminalButton, handoff), note, approvals.element,
+      h('p.note', {}, 'This is the ongoing conversation: replies appear here, links open the artifact, and history pages in below. The character keeps its session and model. Supported permission choices appear here. Terminal remains available for other questions and setup prompts.'),
       earlier, transcript, form,
       h('div.conversation-actions', {}, h('label', {}, voice, ' Speak new replies'), stop, interrupt),
       h('p.note', {}, speaker.available ? 'Dictation and read-aloud use your browser/OS speech; review sensitive work in text. Closing or disconnecting stops audio.' : 'Speech is unavailable in this browser; typed messages still work.')));
@@ -74,17 +75,7 @@ export function openWorkerConversation(net: Net, workerId: string, terminal: () 
       : !supported
         ? 'Structured replies are unavailable for this provider; use its terminal.'
         : `${w.provider ?? 'Agent'} · ${statusLine} · selected model ${w.model ?? 'provider default'} · last reported ${w.usage?.model ?? 'unknown'} · quota unknown here`;
-    // A pending approval/question is a real decision: show it, and answer it where it lives.
-    pending.replaceChildren();
-    if (w.status === 'needs_input') {
-      pending.append(
-        h('div.conversation-pending-card', {},
-          h('strong', {}, '⏸ Waiting on a decision'),
-          h('p', {}, w.activity ?? 'This agent is stopped on a question or approval.'),
-          h('p.note', {}, 'Approvals and permission prompts are answered in the terminal, with the exact request — this chat never guesses them.'),
-          h('button.btn.small', { type: 'button', onclick: () => { modal.close(); terminal(); } }, 'Open Terminal / approvals')),
-      );
-    }
+    approvals.paint();
   };
   const offMessage = net.onMessage((msg) => {
     if (!alive) return;
@@ -109,15 +100,15 @@ export function openWorkerConversation(net: Net, workerId: string, terminal: () 
     loadingEarlier = true;
     net.send({ t: 'conversation.page', workerId, before: at ? Number(at) : Date.now() });
   };
-  const offStatus = net.onStatus((up) => { speaker.stop(); mic.stop(); if (up) net.send({ t: 'conversation.open', workerId }); paint(); });
+  const offStatus = net.onStatus((up) => { speaker.stop(); mic.stop(); if (up) { net.send({ t: 'conversation.open', workerId }); approvals.reconnect(); } paint(); });
   const offWorkers = store.on('workers', paint);
   const modal = openModal(el, { onClose: () => {
-    alive = false; speaker.enable(false); mic.drop(); offDictating(); offMessage(); offStatus(); offWorkers();
+    alive = false; approvals.close(); speaker.enable(false); mic.drop(); offDictating(); offMessage(); offStatus(); offWorkers();
     net.send({ t: 'conversation.close', workerId }); if (current === modal) current = undefined;
   } });
   current = modal;
   close.onclick = () => modal.close();
-  terminalButton.onclick = () => { modal.close(); terminal(); };
+  terminalButton.onclick = () => approvals.openTerminal();
   handoff.onclick = () => { modal.close(); openWorkerHandoff(net, workerId); };
   voice.onchange = () => speaker.enable(voice.checked);
   stop.onclick = () => { speaker.stop(); mic.stop(); };

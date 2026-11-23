@@ -7,6 +7,12 @@ export function approvalCard(net: Net, workerId: string, terminal: () => void) {
   const element = h('section.approval-panel', { 'aria-label': 'Agent approvals', 'aria-live': 'polite' });
   let state: ApprovalState = { queued: 0 }, submitting: string | undefined, terminalAfter: string | undefined, alive = true;
   const message = h('p.note', { role: 'status' });
+  const openTerminal = () => {
+    const request = state.request;
+    if (!request) return terminal();
+    if (!net.up || submitting) return;
+    submitting = request.id; terminalAfter = request.id; net.send({ t: 'approval.terminal', workerId, requestId: request.id }); render();
+  };
   const render = () => {
     const request = state.request;
     if (submitting && request?.id !== submitting) submitting = undefined;
@@ -15,9 +21,7 @@ export function approvalCard(net: Net, workerId: string, terminal: () => void) {
       const options = h('div.approval-choices');
       for (const option of request.options) options.append(h('button.btn', { type: 'button', disabled: !net.up || submitting === request.id, 'data-option-id': option.id,
         onclick: () => { submitting = request.id; message.textContent = 'Submitting this choice…'; net.send({ t: 'approval.answer', workerId, requestId: request.id, optionId: option.id }); render(); } }, option.label));
-      options.append(h('button.btn', { type: 'button', disabled: !net.up || submitting === request.id, onclick: () => {
-        submitting = request.id; terminalAfter = request.id; net.send({ t: 'approval.terminal', workerId, requestId: request.id }); render();
-      } }, 'Use Terminal'));
+      options.append(h('button.btn', { type: 'button', disabled: !net.up || submitting === request.id, onclick: openTerminal }, 'Use Terminal'));
       children.push(h('div.approval-card', {}, h('strong', {}, '✋ Your decision'), h('h3', {}, request.title),
         h('p.note', {}, `${request.provider} · ${state.queued > 1 ? `${state.queued} requests waiting · oldest first` : 'This request only'}`),
         h('pre', { tabindex: 0, 'aria-label': 'Exact permission request details' }, request.detail), options,
@@ -38,6 +42,6 @@ export function approvalCard(net: Net, workerId: string, terminal: () => void) {
     }
   });
   net.send({ t: 'approval.open', workerId });
-  return { element, /** Invoke with the conversation's existing connection paint. */ paint: render,
+  return { element, openTerminal, reconnect() { state = { queued: 0 }; submitting = undefined; terminalAfter = undefined; message.textContent = ''; render(); net.send({ t: 'approval.open', workerId }); }, /** Invoke with the conversation's existing connection paint. */ paint: render,
     close() { alive = false; unsubscribe(); net.send({ t: 'approval.close', workerId }); } };
 }

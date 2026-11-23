@@ -1,10 +1,15 @@
 import { createApprovalHandlers, type ApprovalAuthority } from '../../approvals/handlers.js';
+import { roleAccess } from '../../role-access.js';
 import { canUseWorker } from '../../worker-ownership.js';
-/** Safe personal-worker default. Coordinator replaces this callback with the maintained role ACL
- * and billing-custody policy at integration. A role never inherits a generic admin/owner bypass. */
+/** Role authority and runtime credential ownership are separate checks. Editable custodian
+ * metadata is not a subscription-sharing grant. No generic admin or controller bypass. */
 export const approvalAuthority: ApprovalAuthority = (ctx, c, workerId) => {
   const floor = ctx.workerFloor(workerId), worker = floor?.workers.get(workerId);
-  if (!floor || !worker || floor.isRoleWorker?.(workerId)) return false;
+  if (!floor || !worker) return false;
+  if (floor.isRoleWorker?.(workerId)) {
+    const access = roleAccess(ctx, floor, workerId, c.accountId);
+    if (access.kind !== 'owner' && access.kind !== 'controller') return false;
+  }
   return canUseWorker(ctx, c.accountId, floor.workers.ownerOf(workerId), worker.provider);
 };
 const feature = createApprovalHandlers(approvalAuthority);

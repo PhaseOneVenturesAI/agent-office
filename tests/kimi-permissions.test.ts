@@ -119,3 +119,16 @@ test('Kimi terminal answers and cancellation invalidate displayed conversation c
   assert.match(f.session.answerApproval(second.id, 'second-allow') ?? '', /no longer current/);
   assert.ok(f.answers().filter((a) => a.id === 'second').every((a) => a.result.outcome.outcome === 'cancelled'));
 });
+
+test('Kimi RPC id reuse on a later turn does not revive an old conversation approval', async (t) => {
+  const f = await fixture(t), old = f.session.approvals().request!;
+  f.session.answerApproval(old.id, 'first-allow');
+  f.session.answerApproval(f.session.approvals().request!.id, 'second-allow');
+  await until(() => f.statuses.at(-1) === 'done');
+  f.session.writeInput('next task\r'); await until(() => f.session.approvals().queued === 2);
+  const next = f.session.approvals().request!;
+  assert.equal(next.nativeRequestId, old.nativeRequestId); assert.notEqual(next.id, old.id);
+  const before = f.answers().length;
+  assert.match(f.session.answerApproval(old.id, 'first-allow') ?? '', /no longer current/);
+  assert.equal(f.answers().length, before);
+});

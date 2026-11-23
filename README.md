@@ -458,3 +458,9 @@ Harness Apply now retires removed instructions/skills only when Office previousl
 ### Inspect project instructions and memory
 
 **☰ → 📖 Project context** (or **📖 Context** on `/lite`) opens actual project Markdown, including conventional ignored local instructions. Inspect its source, host and revision; admins can edit with content-hash conflict checks, archive/supersede explicitly, inspect retained prior text and restore it. Existing agent context is labeled unknown; project edits do not prompt agents, synchronize worktrees, commit or push. The shared Harness stays separate. See [project context and history](docs/project-context.md).
+
+Supported tool permissions appear as clickable choices in an agent's **Conversation**.
+Kimi uses its real ACP requests; Claude and Codex use their native blocking permission
+hooks. **Terminal** remains the fallback for unsupported questions and setup screens.
+See [conversation approvals](docs/conversation-approvals.md) for provider capabilities,
+identity checks and rollout requirements.

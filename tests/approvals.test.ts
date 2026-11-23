@@ -69,9 +69,17 @@ test('wrong owners and revoked department controllers cannot view or answer; rev
   assert.equal(f.approvals.state('worker').queued, 1); pending.cancel(); assert.deepEqual(await pending.result, {});
 });
 
-test('the registered default never treats a generic admin as a role controller', () => {
-  const worker = { provider: 'claude' }, floor = { isRoleWorker: () => true, workers: { get: () => worker, ownerOf: () => 'admin' } };
-  assert.equal(approvalAuthority({ workerFloor: () => floor } as any, { accountId: 'admin' } as any, 'worker'), false);
+test('actual role policy requires both role authority and credential custody, never a generic admin bypass', () => {
+  const worker = { provider: 'claude' }, lead = { controllers: ['controller@example.test'], custodian: 'custodian@example.test' };
+  let owner = 'custodian';
+  const floor = { isRoleWorker: () => true, ceo: { get: () => ({ owner: 'ceo@example.test', workerId: 'ceo-worker' }) }, departments: { leadDeptOfWorker: () => ({ name: 'Development', lead }) }, workers: { get: () => worker, ownerOf: () => owner } };
+  const ctx = { workerFloor: () => floor, accounts: { any: true, get: (id: string) => ({ email: `${id}@example.test` }) }, signins: { officeRevoked: () => false }, meOf: () => ({ admin: true }) } as any;
+  assert.equal(approvalAuthority(ctx, { accountId: 'admin' } as any, 'worker'), false);
+  assert.equal(approvalAuthority(ctx, { accountId: 'controller' } as any, 'worker'), false, 'controller metadata alone is not a sharing grant');
+  owner = 'controller'; assert.equal(approvalAuthority(ctx, { accountId: 'controller' } as any, 'worker'), true);
+  lead.controllers = []; assert.equal(approvalAuthority(ctx, { accountId: 'controller' } as any, 'worker'), false);
+  owner = 'ceo'; assert.equal(approvalAuthority(ctx, { accountId: 'ceo' } as any, 'ceo-worker'), true);
+  ctx.signins.officeRevoked = () => true; assert.equal(approvalAuthority(ctx, { accountId: 'ceo' } as any, 'ceo-worker'), false);
 });
 
 for (const provider of ['claude', 'codex'] as const) test(`${provider} real generated hook helper returns native structured choice only for its live HTTP invocation`, async (t) => {
