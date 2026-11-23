@@ -67,12 +67,13 @@ export function openDepartments(net: Net) {
   const close = h('button.btn.close', { 'aria-label': 'Close' }, '✕');
   const cards = h('div.dept-cards');
   const panel = h('div.dept-panel');
+  const ceoWrap = h('div');
   const el = h(
     'div.modal.departments',
     { role: 'dialog', 'aria-label': 'Departments' },
     h('header', {}, h('h2', {}, '🏬 Departments'), close),
     h('p.dept-intro', {}, 'Talk to your CEO or a manager, see what the team is making, and help when they need you.'),
-    ceoBlock(net, () => paint()),
+    ceoWrap,
     h('div.dept-layout', {}, cards, panel),
   );
 
@@ -352,6 +353,7 @@ export function openDepartments(net: Net) {
   };
 
   const paint = () => {
+    ceoWrap.replaceChildren(ceoBlock(net, () => paint()));
     const state = store.departments;
     // A landed revision that echoes a saving draft retires it; everything else stays a draft.
     for (const [id, draft] of drafts) {
