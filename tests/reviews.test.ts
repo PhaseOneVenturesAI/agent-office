@@ -128,3 +128,67 @@ test('unreadable historical data is never replaced with an empty new board', () 
     cleanup();
   }
 });
+
+test('a staged take starts its pipeline at staged, and moves carry their evidence note', () => {
+  const { reviews, cleanup } = setup();
+  try {
+    const item = reviews.submit({ title: 'Hero v1', url: 'https://s.example.com/h1', by: 'Kim', kind: 'page', group: 'homepage hero', version: 'v1', references: ['https://example.com/mood'] });
+    assert.ok(typeof item !== 'string');
+    assert.equal(item.kind, 'page');
+    assert.equal(item.group, 'homepage hero');
+    assert.equal(item.version, 'v1');
+    assert.deepEqual(item.references, ['https://example.com/mood']);
+    assert.deepEqual(item.stages?.map((s) => s.stage), ['staged'], 'staging is the first pipeline entry');
+
+    // A move without its evidence note is refused.
+    assert.equal(typeof reviews.stage(item.id, 'verified', '', 'Jonathan'), 'string');
+    // So is an unknown stage.
+    assert.equal(typeof reviews.stage(item.id, 'shipped' as never, 'ran it', 'Jonathan'), 'string');
+    const moved = reviews.stage(item.id, 'verified', 'ran it on staging, checked the copy against the brief', 'Jonathan');
+    assert.ok(typeof moved !== 'string');
+    assert.equal(moved.stages?.length, 2);
+    assert.equal(moved.stages?.[1].stage, 'verified');
+    assert.match(moved.stages?.[1].note ?? '', /checked the copy/);
+
+    // A reference that isn't a link refuses the whole staging.
+    assert.equal(typeof reviews.submit({ title: 'Bad refs', url: 'https://s.example.com/x', by: 'Kim', references: ['not a url'] }), 'string');
+
+    // A rejected take stays where it fell: it can't be moved on.
+    const rejected = reviews.submit({ title: 'Hero v2', url: 'https://s.example.com/h2', by: 'Kim' });
+    assert.ok(typeof rejected !== 'string');
+    reviews.resolve(rejected.id, false, 'off brand', 'Jonathan');
+    assert.equal(typeof reviews.stage(rejected.id, 'approved', 'looks good', 'Jonathan'), 'string');
+
+    // Old items without the new fields still validate and can move.
+    const legacy = reviews.submit({ title: 'Legacy', url: 'https://s.example.com/old', by: 'Kim' });
+    assert.ok(typeof legacy !== 'string');
+    reviews.resolve(legacy.id, true, 'Accepted the retained take', 'Jonathan');
+    const movedLegacy = reviews.stage(legacy.id, 'released', 'it has been live since Monday', 'Jonathan');
+    assert.ok(typeof movedLegacy !== 'string');
+  } finally {
+    cleanup();
+  }
+});
+
+test('series versions are allocated server-side from the project’s complete history', () => {
+  const { reviews, cleanup } = setup();
+  try {
+    // One take staged through a worker on floor f1, then one by hand on the same floor and series.
+    const a = reviews.submit({ title: 'Hero', url: 'https://s.example.com/1', by: 'Kim', group: 'homepage hero', floorId: 'f1' });
+    assert.ok(typeof a !== 'string');
+    assert.equal(a.version, 'v1');
+    const b = reviews.submit({ title: 'Hero again', url: 'https://s.example.com/2', by: 'Kim', group: 'homepage hero', floorId: 'f1' });
+    assert.ok(typeof b !== 'string');
+    assert.equal(b.version, 'v2', 'the next take of the same project and series continues the numbers');
+    // Another project’s same-named series starts at its own v1.
+    const c = reviews.submit({ title: 'Hero', url: 'https://s.example.com/3', by: 'Kim', group: 'homepage hero', floorId: 'f2' });
+    assert.ok(typeof c !== 'string');
+    assert.equal(c.version, 'v1');
+    // New grouped submissions use allocated versions even when the client supplies a label.
+    const d = reviews.submit({ title: 'Old cut', url: 'https://s.example.com/4', by: 'Kim', group: 'homepage hero', version: 'director’s cut', floorId: 'f1' });
+    assert.ok(typeof d !== 'string');
+    assert.equal(d.version, 'v3');
+  } finally {
+    cleanup();
+  }
+});

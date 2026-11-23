@@ -308,6 +308,13 @@ export function plantsAt(level: number): readonly (readonly [x: number, z: numbe
 export const WHITEBOARD = { x: 5.4, z: -5.4, width: 4, height: 2.2, bottom: 0.5 } as const;
 
 /**
+ * The department directory: a standing sign by the north wall between the PR board and the gong,
+ * facing into the room (+z). Its face lists the floor's departments and where their corners are;
+ * walk up and press E for the Departments panel (see features/departments).
+ */
+export const DEPARTMENTS = { x: 8.6, z: FLOOR.minZ + 0.55, width: 2.6, height: 1.5, bottom: 0.55 } as const;
+
+/**
  * The bottom floor of the building is its second storey: the street, and the open garage under the
  * office, are this far below its floor. Each floor stands one STOREY higher than the one below it,
  * so from floor `i` the street is `streetBelow(i)` down.

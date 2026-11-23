@@ -9,6 +9,7 @@ import type { BallState } from '../hoop.js';
 import type { JukeboxState } from '../jukebox.js';
 import type { WhiteboardView } from '../whiteboard.js';
 import type { AgentProvider } from './agents.js';
+import type { DepartmentsState } from './departments.js';
 import type { GhIssue, GhPull, GhState } from './github.js';
 import type { MeetingState } from './meetings.js';
 import type { PeerInfo } from './presence.js';
@@ -124,6 +125,8 @@ export interface FloorView {
   cars: CarState[];
   /** Workers sent home and locked up in the dungeon, on a map that has one. */
   jail: JailState;
+  /** The floor's departments: their briefs, rosters, brand assets, and the project's instruction files. */
+  departments: DepartmentsState;
 }
 
 export type FloorClientMsg =
@@ -162,4 +165,6 @@ export type FloorServerMsg =
   /** The projects folder moved (see floor.projectsDir). */
   | { t: 'projectsDir'; state: ProjectsDirState }
   /** Your floor's signs changed, or its back office was built out or walled up. */
-  | { t: 'plan'; plan: FloorPlan };
+  | { t: 'plan'; plan: FloorPlan }
+  /** Your floor's departments changed. */
+  | { t: 'departments'; state: DepartmentsState };

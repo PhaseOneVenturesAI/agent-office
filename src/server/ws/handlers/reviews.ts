@@ -11,7 +11,7 @@ export const reviewsHandlers = {
     ctx.sendTo(c, { t: 'reviews', state: ctx.reviews.state() });
   },
   'reviews.submit'(ctx, c, msg) {
-    const r = ctx.reviews.submit({ title: str(msg.title, 200), url: str(msg.url, 600), note: str(msg.note, 600), gate: msg.gate, by: c.peer.name });
+    const r = ctx.reviews.submit({ title: str(msg.title, 200), url: str(msg.url, 600), note: str(msg.note, 600), gate: msg.gate, kind: msg.kind, group: msg.group, version: msg.version, references: msg.references, by: c.peer.name, floorId: ctx.floorOf(c)?.id });
     if (typeof r === 'string') return ctx.warn(c, r);
     ctx.toastAll(`🎬 ${c.peer.name} staged “${r.title}” for review`);
   },
@@ -32,5 +32,10 @@ export const reviewsHandlers = {
         if (err) ctx.toastAll(`Couldn't tell ${w.name} the verdict: ${err}`, 'warn');
       }
     }
+  },
+  'reviews.stage'(ctx, c, msg) {
+    const r = ctx.reviews.stage(str(msg.id, 40), msg.stage, str(msg.note, 600), c.peer.name);
+    if (typeof r === 'string') return ctx.warn(c, r);
+    ctx.toastAll(`🎬 ${c.peer.name} moved “${r.title}” to ${msg.stage}`);
   },
 } satisfies HandlerMap<ReviewsClientMsg>;

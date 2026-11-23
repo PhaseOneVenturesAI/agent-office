@@ -1,0 +1,224 @@
+/* 🏬 Departments: the floor's corners of work. */
+.modal.departments {
+  width: min(720px, 94vw);
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.modal.departments .dept-intro {
+  margin: 0 12px;
+  opacity: 0.75;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.modal.departments > .provider-pick { margin-inline: 12px; }
+
+.modal.departments .dept-list {
+  padding: 0 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  min-height: 60px;
+}
+
+.modal.departments .dept-add {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.modal.departments section.dept {
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.modal.departments .dept-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.modal.departments .dept-head h3 {
+  margin: 0;
+  font-size: 15px;
+  flex: 1;
+}
+
+.modal.departments .dept-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.modal.departments .dept-block h4 {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.modal.departments .dept-meta {
+  font-size: 12px;
+  opacity: 0.65;
+  font-weight: 400;
+}
+
+.modal.departments .dept-brief {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.modal.departments .dept-brief.old {
+  opacity: 0.7;
+  border-left: 2px solid color-mix(in srgb, currentColor 20%, transparent);
+  padding-left: 8px;
+}
+
+.modal.departments .dept-brief-edit {
+  min-height: 90px;
+  resize: vertical;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+}
+
+.modal.departments .dept-role {
+  border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.modal.departments .dept-role-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.modal.departments .dept-chip {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.modal.departments .dept-chip.skill {
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: 0.75;
+}
+
+.modal.departments .dept-hint {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.modal.departments .dept-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+
+.modal.departments .dept-task {
+  flex: 1;
+  min-width: 160px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+}
+
+.modal.departments .dept-asset {
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.modal.departments .dept-asset:hover {
+  text-decoration: underline;
+}
+
+.modal.departments .dept-asset-add input,
+.modal.departments .dept-asset-add select {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+}
+
+.modal.departments .dept-asset-ref {
+  flex: 1;
+  min-width: 160px;
+}
+
+.modal.departments .dept-history summary {
+  cursor: pointer;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.modal.departments p.empty {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.6;
+}
+
+.modal.dept-doc {
+  width: min(680px, 94vw);
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal.dept-doc .dept-doc-body {
+  overflow-y: auto;
+}
+
+.modal.departments .dept-conflict {
+  margin: 0;
+  font-size: 12px;
+  color: #b8860b;
+  line-height: 1.4;
+}
+
+.modal.dept-doc .dept-media {
+  max-width: 100%;
+  max-height: 70vh;
+  display: block;
+  margin: 0 auto;
+  border-radius: 8px;
+}
