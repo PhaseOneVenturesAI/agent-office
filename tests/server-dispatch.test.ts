@@ -335,6 +335,7 @@ test('the toys on a floor, and letting go of them on leaving the floor or the of
   await b.take('reviews');
   await b.take('deploys');
   await b.take('hygiene');
+  await b.take('costwall');
 
   a.send({ t: 'jukebox.skip' });
   assert.equal((await b.take('jukebox')).state.on, true);
