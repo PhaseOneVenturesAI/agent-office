@@ -66,10 +66,20 @@ export function findGithub(out: string): { url?: string; code?: string } | undef
 
 /** Kimi's device code and authorize page in `kimi login` output. */
 export function findKimi(out: string): { url?: string; code?: string } | undefined {
-  const code = /enter code:\s*([A-Z0-9]{4}-[A-Z0-9]{4})/i.exec(out)?.[1];
-  if (!code) return undefined;
-  const url = /https:\/\/\S*kimi\.ai\/code\/authorize_device\?\S+/.exec(out)?.[0];
-  return { url: url ?? 'https://www.kimi.ai/code/authorize_device', code };
+  const text = plain(out);
+  // The CLI prints verificationUriComplete, not a fixed .ai domain/path. Wait for both complete
+  // lines: signins.ts keeps the first pending code, so a partial/fallback URL would stick.
+  const code = /enter code:[ \t]*([A-Z0-9]{4}-[A-Z0-9]{4})[ \t]*\n/i.exec(text)?.[1];
+  const url = /(?:^|\n)Opening browser for Kimi device login:[ \t]*(https:\/\/\S+)[ \t]*\n/i.exec(text)?.[1];
+  if (!code || !url) return undefined;
+  try {
+    const parsed = new URL(url);
+    const codes = parsed.searchParams.getAll('user_code');
+    if (!/(^|\.)kimi\.(com|ai)$/.test(parsed.hostname) || parsed.username || parsed.password || codes.length !== 1 || codes[0] !== code) return undefined;
+    return { url, code };
+  } catch {
+    return undefined;
+  }
 }
 
 /** Codex's one-time code and device page in `codex login --device-auth` output (ANSI between words). */
