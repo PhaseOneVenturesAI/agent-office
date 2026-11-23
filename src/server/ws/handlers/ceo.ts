@@ -57,7 +57,8 @@ export const ceoHandlers = {
     const task = str(msg.prompt, 20000) || undefined;
     const saved = floor.ceo.savedChoice();
     const provider = msg.provider ?? saved?.provider;
-    const liveAgents = () => floor.writerIds();
+    // The real live list: the duplicate-shift check must see the CEO's own worker.
+    const liveAgents = () => floor.workers.list().filter((w) => w.kind === 'agent').map((w) => w.id);
     const hire = () => {
       const composed = floor.ceo.composeLaunch(task, liveAgents);
       if (typeof composed === 'string') return ctx.warn(c, composed);
