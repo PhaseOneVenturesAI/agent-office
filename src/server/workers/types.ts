@@ -104,6 +104,8 @@ export interface Worker {
   fresh?: { readonly line: number };
   /** Its lost worktree is being put back (see rebuild): the folder coming back mustn't wake it before that's done. */
   rebuilding?: boolean;
+  /** Child cleanup/recovery owns this worker; its seat remains reserved. */
+  stopping?: boolean;
 }
 
 export interface WorkerEvents {
@@ -163,6 +165,7 @@ export interface WorkerHandle<S = unknown> {
  * project, its workers, and what they all do to one. Narrow on purpose: they never import the manager.
  */
 export interface WorkerContext {
+  closeAcp(session: NonNullable<Worker['dsh']>): Promise<void>;
   assistant(w: Worker, reply: AssistantReply): void;
   /** The floor's project checkout. */
   readonly dir: string;

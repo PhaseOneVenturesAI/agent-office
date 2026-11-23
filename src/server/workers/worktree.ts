@@ -66,6 +66,7 @@ export function lostMessage(info: WorkerInfo): string {
 
 /** The worktrees of one floor's workers (see WorkerContext). */
 export class WorkerTrees {
+  private rebuilding = new Map<string, Promise<{ rebuilt?: boolean; note?: string; error?: string }>>();
   constructor(private ctx: WorkerContext) {}
 
   /**
@@ -264,7 +265,7 @@ export class WorkerTrees {
    * (`git worktree add` at the same place) sets an asleep worker back to work.
    */
   watchFolder(w: Worker) {
-    if (!w.info.worktree || w.rebuilding) return;
+    if (!w.info.worktree || w.rebuilding || w.stopping) return;
     const was = !!w.info.lost;
     if (!this.checkLost(w) && was && !w.pty && !w.dsh) this.ctx.resume(w.info.id);
   }
@@ -276,10 +277,19 @@ export class WorkerTrees {
    * Resolves to whether it `rebuilt` anything, with a note on where a branch came back from (or why
    * there was nothing to do), or to what went wrong.
    */
-  async rebuild(id: string): Promise<{ rebuilt?: boolean; note?: string; error?: string }> {
+  rebuild(id: string): Promise<{ rebuilt?: boolean; note?: string; error?: string }> {
+    const existing = this.rebuilding.get(id);
+    if (existing) return existing;
+    const task = this.rebuildOnce(id); this.rebuilding.set(id, task);
+    void task.then(() => this.rebuilding.delete(id), () => this.rebuilding.delete(id));
+    return task;
+  }
+
+  private async rebuildOnce(id: string): Promise<{ rebuilt?: boolean; note?: string; error?: string }> {
     const w = this.ctx.workers.get(id);
     if (!w) return { error: 'No such worker' };
     const { info } = w;
+    if (w.stopping || this.ctx.closing) return { error: 'This worker is stopping; its workspace is kept.' };
     if (!info.worktree) return { error: `${info.name} works in the main checkout` };
     if (w.rebuilding) return {};
     const folder = this.ctx.cwd(info);
@@ -309,7 +319,10 @@ export class WorkerTrees {
         w.rebuilding = false;
       }
     }
-    for (const o of stranded) if (!this.checkLost(o)) this.restartIn(o);
+    for (const o of stranded) if (!this.checkLost(o)) {
+      const error = await this.restartIn(o);
+      if (error) return { error };
+    }
     if (!stranded.length) {
       if (!w.pty && !w.dsh) this.ctx.resume(id);
       return { note: `${info.name}'s worktree is already there` };
@@ -321,22 +334,21 @@ export class WorkerTrees {
    * Starts a worker in its folder again: an asleep one wakes up, and one whose process was left running
    * in the folder deleted from under it starts over in the new one, carrying on its conversation.
    */
-  private restartIn(w: Worker) {
-    const proc = w.pty;
-    const session = w.dsh;
-    if (proc || session) {
-      if (midTurn(w)) w.interrupted = true;
-      // Gone before it exits, so the exit handler knows it was the office and stays quiet.
-      w.pty = undefined;
-      w.dsh = undefined;
-      try {
-        session?.close();
-        proc?.kill();
-      } catch {
-        // already gone
+  private async restartIn(w: Worker): Promise<string | undefined> {
+    if (w.stopping || this.ctx.closing) return 'This worker is already stopping; recovery did not launch another process.';
+    w.stopping = true;
+    const proc = w.pty, session = w.dsh;
+    try {
+      if (session) await this.ctx.closeAcp(session);
+      if (proc || session) {
+        if (midTurn(w)) w.interrupted = true;
+        w.pty = undefined; w.dsh = undefined;
+        try { proc?.kill(); } catch { /* Already gone. */ }
       }
-    }
-    this.ctx.resume(w.info.id);
+    } catch (error) {
+      return `Could not stop the old worker; its session and workspace were kept: ${String(error)}`;
+    } finally { w.stopping = false; }
+    if (!this.ctx.closing && this.ctx.workers.get(w.info.id) === w) return this.ctx.resume(w.info.id);
   }
 
   /**

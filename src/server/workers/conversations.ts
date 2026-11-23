@@ -37,7 +37,7 @@ export class WorkerConversations {
   send(id: string, value: unknown, by: string): string | undefined {
     const w = this.workers.get(id);
     if (!w || !conversationSupported(w.info.provider)) return 'Structured conversation is unavailable for this provider; use its terminal.';
-    if (w.bootBlocked || w.info.lost || !['idle', 'done'].includes(w.info.status)) return 'Wait for the current turn, or resolve the question in the terminal. This panel cannot answer tool approvals.';
+    if (w.stopping || w.bootBlocked || w.info.lost || !['idle', 'done'].includes(w.info.status)) return 'Wait for the current turn or cleanup, or resolve the question in the terminal. This panel cannot answer tool approvals.';
     if (typeof value !== 'string' || !value.trim() || value.length > 20000 || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(value)) return 'Enter a plain text prompt of at most 20,000 characters.';
     const text = value.trim(), previous = w.info.status as 'idle' | 'done';
     // Reserve synchronously before another browser can send into this idle prompt.
@@ -48,7 +48,7 @@ export class WorkerConversations {
   }
   stop(id: string, by: string): string | undefined {
     const w = this.workers.get(id);
-    if (!w || w.info.status !== 'working') return 'Only a running turn can be interrupted here. Answer permissions in the terminal.';
+    if (!w || w.stopping || w.info.status !== 'working') return 'Only a running turn can be interrupted here. Answer permissions in the terminal.';
     this.interrupt(id, by);
   }
   forget(id: string) { this.feeds.delete(id); }

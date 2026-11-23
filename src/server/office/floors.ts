@@ -35,11 +35,16 @@ export function floorHelpers(ctx: Ctx): FloorHelpers {
   /** Where someone arriving goes: the floor they asked for, else the first one there is. */
   const arrivalFloor = (wanted: string | null): Floor | undefined => (wanted && ctx.floors.get(wanted)) || ctx.floors.values().next().value;
 
+  const closing = new Map<Floor, Promise<string | undefined>>();
   /**
-   * Takes `floor` off the building (already out of floors.json): everyone on it rides the elevator to
+   * Stops `floor` before removing it from floors.json: everyone on it rides the elevator to
    * the next floor, or out to the lobby if it was the last (the roof goes with it), and its workers stop.
    */
-  const closeFloor = (floor: Floor, who: string) => {
+  const removeFloor = async (floor: Floor, who: string): Promise<string | undefined> => {
+    try { await floor.shutdown(); }
+    catch (error) { return `Kept ${floor.def.name}: its workers did not stop (${String(error)})`; }
+    const removed = ctx.building.remove(floor.id, who);
+    if (typeof removed === 'string') return removed;
     const name = floor.def.name;
     const next = [...ctx.floors.values()].find((f) => f !== floor);
     // The list without it first, so nobody arrives somewhere (the lobby's panel) that still shows it.
@@ -54,10 +59,18 @@ export function floorHelpers(ctx: Ctx): FloorHelpers {
       } else ctx.sendTo(c, { t: 'toast', text: `🛗 ${who} took ${name} off the building`, level: 'info' });
     }
     ctx.floors.delete(floor.id);
-    floor.shutdown();
     floorsChanged();
     // Its workers made room under the worker limit.
     ctx.pumpQueues();
+  };
+
+  const closeFloor = (floor: Floor, who: string): Promise<string | undefined> => {
+    const existing = closing.get(floor);
+    if (existing) return existing;
+    const task = removeFloor(floor, who);
+    closing.set(floor, task);
+    void task.then(() => closing.delete(floor), () => closing.delete(floor));
+    return task;
   };
 
   return { floorOf, workerFloor, floorInfos, floorsChanged, cancelFloorsChanged: () => clearTimeout(floorsTimer), arrivalFloor, closeFloor };

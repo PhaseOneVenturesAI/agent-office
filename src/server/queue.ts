@@ -62,6 +62,7 @@ export class TaskQueue {
   private again = false;
   /** Set on shutdown: the workers' exit events must not seat anyone into a dying office. */
   private stopped = false;
+  private recycling = false;
   private lastStatus = new Map<string, WorkerStatus>();
 
   constructor(
@@ -286,19 +287,23 @@ export class TaskQueue {
 
   /**
    * No desk or bean bag is free: send home a worker the queue hired whose task is finished (nobody
-   * is looking at its terminal), and return its seat. Workers with a linked PR go first — their work
-   * is delivered.
+   * is looking at its terminal), then pump again after removal frees its seat. Workers with a linked
+   * PR go first — their work is delivered.
    */
-  private recycleDesk(): string | undefined {
+  private recycleDesk(): undefined {
+    if (this.recycling) return;
     const pick = this.recyclable();
-    if (!pick) return undefined;
-    const done = this.workers.kill(pick.w.id);
-    this.events.toast(`📋 ${pick.w.name} went home after ${label(pick.t)} to make room for the next task`, 'info');
-    void done.then(({ note, error }) => {
+    if (!pick) return;
+    this.recycling = true;
+    let recycled = false;
+    void this.workers.kill(pick.w.id).then(({ note, error }) => {
       if (note) this.events.toast(note, 'info');
       if (error) this.events.toast(error, 'warn');
+      else { recycled = true; this.events.toast(`📋 ${pick.w.name} went home after ${label(pick.t)} to make room for the next task`, 'info'); }
+    }, (error) => this.events.toast(`Worker cleanup failed: ${String(error)}`, 'warn')).finally(() => {
+      this.recycling = false;
+      if (recycled) this.pump();
     });
-    return pick.w.deskId;
   }
 
   /** The finished worker recycleDesk would send home, if there is one. */
