@@ -87,9 +87,8 @@ export function createServices(ctx: Ctx): BuildingServices {
   }, () => ctx.broadcast({ t: 'harness', state: harness.state() }));
 
   // The Review Room: staged deliverables wait here for a person's verdict (☰ → 🎬 Review room),
-  // and every verdict is appended to the harness's review ratchet, so the next worker on any
-  // provider starts from what the verdicts taught (see reviews.ts).
-  const reviews = new Reviews(cfg.dataDir, harness.root, () => ctx.broadcast({ t: 'reviews', state: reviews.state() }));
+  // retained as evidence about the staged deliverable, without changing the shared harness.
+  const reviews = new Reviews(cfg.dataDir, () => ctx.broadcast({ t: 'reviews', state: reviews.state() }));
 
   // The Deploy board: the office's Cloudflare Pages and Workers projects (☰ → 🚀 Deploy board),
   // any of which can be staged in the Review Room in one click. Without credentials the board

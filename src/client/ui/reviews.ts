@@ -63,9 +63,8 @@ function resolvedCard(item: ReviewItem) {
 
 /**
  * 🎬 Review Room: the quality loop, in one place. Workers finishing creative tasks stage their one
- * link here; you accept or reject with a one-line reason. Every verdict is appended to the
- * harness's review ratchet, so the next worker starts from what was learned, and a worker that
- * staged the link hears the verdict in its terminal (see server/reviews.ts).
+ * link here; you accept or reject with a one-line reason. Verdicts stay in review history, and
+ * the worker that staged the link hears the verdict in its terminal (see server/reviews.ts).
  */
 export function openReviews(net: Net) {
   const list = h('div.review-list');
@@ -95,7 +94,7 @@ export function openReviews(net: Net) {
     'div.modal.reviews',
     { role: 'dialog', 'aria-label': 'Review room' },
     h('header', {}, h('h2', {}, '🎬 Review room'), close),
-    h('p.review-intro', {}, 'One staged link per take. Your verdict — and its one-line reason — goes straight into the harness’s review ratchet, so every worker starts from what you taught it, and back to the worker that staged it.'),
+    h('p.review-intro', {}, 'One staged link per take. Your verdict and reason stay with this deliverable in review history and go back to the worker that staged it. They do not change other projects’ instructions.'),
     list,
     doneWrap,
     h('footer', {}, stageTitle, stageUrl, h('button.btn', { type: 'button', onclick: stage }, 'Stage a link')),
