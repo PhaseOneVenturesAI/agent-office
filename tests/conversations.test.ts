@@ -40,7 +40,7 @@ test('assistant feed deduplicates, bounds history, drops recognizable credential
 test('private subscription closes on floor exit; no broadcast or raw terminal path exists', () => {
   const f = fixture(), messages: any[] = [], client: any = { accountId: 'account', peer: { name: 'Jonathan' } };
   const floor: any = { workers: { conversations: f.service, get: () => f.worker.info, ownerOf: () => 'account' } };
-  const ctx: any = { workerFloor: () => floor, floorOf: () => floor, meOf: () => ({ admin: false }), stillIn: () => true, sendTo: (_c: unknown, m: unknown) => messages.push(m), warn: () => assert.fail('unexpected warning') };
+  const ctx: any = { signins: { officeRevoked: () => false, officeAllowed: () => false }, workerFloor: () => floor, floorOf: () => floor, meOf: () => ({ admin: false }), stillIn: () => true, sendTo: (_c: unknown, m: unknown) => messages.push(m), warn: () => assert.fail('unexpected warning') };
   conversationHandlers['conversation.open'](ctx, client, { t: 'conversation.open', workerId: 'w' });
   f.service.assistant('w', { id: 'a', text: 'Visible answer.' });
   assert.equal(messages.length, 2);

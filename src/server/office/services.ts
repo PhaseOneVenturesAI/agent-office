@@ -1,3 +1,4 @@
+import { officeCredentialGrant } from '../office-credential-grants.js';
 import path from 'node:path';
 import os from 'node:os';
 import { childEnv, resolveCommand } from '../workers.js';
@@ -67,7 +68,7 @@ export function createServices(ctx: Ctx): BuildingServices {
     resolveCommand('codex'),
     resolveCommand('gh'),
     childEnv,
-    (id) => accounts.get(id)?.role === 'admin',
+    (id, which) => accounts.get(id)?.role === 'admin' && officeCredentialGrant(cfg.dataDir, id, which),
     (id) => {
       for (const c of clients.values()) if (c.accountId === id && !c.out) ctx.sendTo(c, { t: 'signins', state: signins.state(id) });
     },
