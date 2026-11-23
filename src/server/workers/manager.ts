@@ -1,3 +1,4 @@
+import { prepareAutonomy, type AutonomyMode } from '../providers/autonomy.js';
 import { WorkerApprovals } from '../approvals/service.js';
 import { personalProviderError } from '../worker-ownership.js';
 import { WorkerRemovals } from './removal.js';
@@ -207,6 +208,14 @@ export class WorkerManager {
     return this.workers.get(id)?.info;
   }
 
+  /** Save a permission preference for the next process start; never changes a running turn. */
+  queueAutonomy(id: string, mode: AutonomyMode): string | undefined {
+    const w = this.workers.get(id); if (!w) return 'The role preference was saved; its worker is no longer seated.';
+    const before = w.info.autonomyRequested; w.info.autonomyRequested = mode;
+    if (!this.persist()) { w.info.autonomyRequested = before; return 'Role preference saved, but worker permission settings could not be saved. Retry before restarting.'; }
+    this.emitUpdate(w);
+  }
+
   /** The account a worker runs as (see RunAs), if not the office. */
   ownerOf(id: string): string | undefined {
     return this.workers.get(id)?.owner;
@@ -241,7 +250,7 @@ export class WorkerManager {
    * (see meetings.ts), in the meeting's own worktree, which everyone at the table shares. `repos` are
    * other floors' repositories a worker in its own worktree works in too (see makeWorkspace).
    */
-  spawn(deskId: string, by: string, prompt?: string, worktree = false, kind: WorkerKind = 'agent', provider?: AgentProvider, model?: string, effort?: AgentEffort, meeting?: { id: string; worktree?: WorkerInfo['worktree'] }, owner?: string, repos: RepoSource[] = [], via?: 'herald', name?: string): WorkerInfo | string {
+  spawn(deskId: string, by: string, prompt?: string, worktree = false, kind: WorkerKind = 'agent', provider?: AgentProvider, model?: string, effort?: AgentEffort, meeting?: { id: string; worktree?: WorkerInfo['worktree'] }, owner?: string, repos: RepoSource[] = [], via?: 'herald', name?: string, autonomy?: AutonomyMode): WorkerInfo | string {
     if (this.closing) return 'This floor is closing; no new workers can start.';
     // Nobody picked (a board agent, say): the office's default worker, model and effort included.
     if (kind === 'agent' && provider === undefined) ({ provider, model, effort } = this.officeDefault);
@@ -296,6 +305,7 @@ export class WorkerManager {
       id,
       kind,
       provider: selectedProvider,
+      autonomyRequested: autonomy,
       model: takesModel(selectedProvider) ? model : undefined,
       effort: takesEffort(selectedProvider) ? effort : undefined,
       deskId,
@@ -674,6 +684,8 @@ export class WorkerManager {
     const command = this.command(info);
     const commandPath = isShell ? undefined : configured ? this.agentPath : resolveCommand(command);
     const base = isShell ? (WIN && !process.env.SHELL ? [] : ['-l']) : configured ? [...this.agentArgs] : [];
+    const autonomyError = prepareAutonomy(info, commandPath ?? undefined, base);
+    if (autonomyError) return this.startFailed(w, autonomyError);
     // Its provider's command line, and anything it sets for this run (see ProviderAdapter.launch).
     const plan: LaunchPlan = adapter ? adapter.launch({ h: this.handleOf(w), args: base, prompt, resumeSessionId, station: DESK_BY_ID.get(info.deskId)?.station, cwd, setup: this.setups[adapter.id] }) : { args: base };
     const { args } = plan;

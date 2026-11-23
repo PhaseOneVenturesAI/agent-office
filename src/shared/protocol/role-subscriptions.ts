@@ -8,4 +8,4 @@ export interface RoleSubscriptionState {
 export type RoleSubscriptionClientMsg =
   | { t: 'role.subscription.get'; department: string }
   | { t: 'role.subscription.set'; department: string; configuration: string; allow: boolean; allowStaffQA?: boolean };
-export type RoleSubscriptionServerMsg = { t: 'role.subscription.state'; state: RoleSubscriptionState; error?: string };
+export type RoleSubscriptionServerMsg = { t: 'role.settings.result'; requestId: string; floor: string; id: string; error?: string } | { t: 'role.subscription.state'; state: RoleSubscriptionState; error?: string };

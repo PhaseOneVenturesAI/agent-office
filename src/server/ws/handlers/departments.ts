@@ -1,3 +1,4 @@
+import { isAutonomy } from '../../providers/autonomy.js';
 import { staffQaExecution } from '../../role-subscriptions/access.js';
 // Departments: the floor's corners of work (see server/departments.ts). Everything but launch is
 // paperwork on the floor's store; launch goes through the same spawn as every hire, after the
@@ -100,16 +101,22 @@ export const departmentsHandlers = {
   'departments.lead'(ctx, c, msg) {
     const floor = here(ctx, c);
     if (!floor) return;
+    const reply = (error?: string) => {
+      if (typeof msg.requestId === 'string') ctx.sendTo(c, { t: 'role.settings.result', requestId: msg.requestId, floor: floor.id, id: str(msg.id, 16), ...(error ? { error } : {}) });
+      else if (error) ctx.warn(c, error);
+    };
     const edit = canEditManager(ctx, floor, str(msg.id, 16), c.accountId);
-    if (!edit.ok) return ctx.warn(c, edit.why);
+    if (!edit.ok) return reply(edit.why);
     if (msg.provider !== undefined && (!isAgentProvider(msg.provider) || !floor.project.agentProviders.includes(msg.provider))) {
-      ctx.warn(c, 'Unknown agent provider');
+      reply('Unknown agent provider');
       return;
     }
-    if (msg.provider !== undefined) { const e = ctx.roleSubscriptions?.revoke(floor.id, str(msg.id, 16)); if (e) return ctx.warn(c, e); }
+    if (msg.provider !== undefined) { const e = ctx.roleSubscriptions?.revoke(floor.id, str(msg.id, 16)); if (e) return reply(e); }
     const model = msg.model === undefined ? undefined : str(msg.model, OPEN_CODE_MODEL_MAX + 1);
     const err = floor.departments.setLead(str(msg.id, 16), { name: str(msg.name, 60), ...(msg.provider !== undefined ? { provider: msg.provider } : {}), ...(model !== undefined ? { model } : {}), ...(isAgentEffort(msg.effort) ? { effort: msg.effort } : {}), ...(msg.autonomy !== undefined ? { autonomy: str(msg.autonomy, 40) } : {}) }, c.peer.name);
-    if (err) ctx.warn(c, err);
+    const live = floor.departments.get(str(msg.id, 16))?.lead?.workerId;
+    if (!err && live && isAutonomy(msg.autonomy)) return reply(floor.workers.queueAutonomy(live, msg.autonomy));
+    reply(err);
   },
   'departments.access'(ctx, c, msg) {
     const floor = here(ctx, c);
@@ -126,12 +133,7 @@ export const departmentsHandlers = {
     const id = str(msg.id, 16);
     const edit3 = canEditManager(ctx, floor, id, c.accountId);
     if (!edit3.ok) return ctx.warn(c, edit3.why);
-    const revoked = ctx.roleSubscriptions?.revoke(floor.id, id);
-    if (revoked) return ctx.warn(c, revoked);
-    const live = floor.departments.get(id)?.lead?.workerId;
     ctx.warn(c, floor.departments.clearLead(id));
-    // Retiring the manager sends their worker home: deleting the role is what frees the seat.
-    if (live && !floor.departments.get(id)?.lead?.workerId) void floor.sendHome(live);
   },
   'departments.policy'(ctx, c, msg) {
     const floor = here(ctx, c);

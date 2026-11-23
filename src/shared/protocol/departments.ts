@@ -72,8 +72,10 @@ export interface DeptLead {
   audience?: string[];
   /** Billing/credential custodian for this manager's runs (visible, never inferred). */
   custodian?: string;
-  /** Effective autonomy label ('off' when unset). Informational until the provider supports it. */
+  /** Saved autonomy preference; only explicitly confirmed choices configure future launches. */
   autonomy?: string;
+  /** Explicit choice since runtime autonomy support; legacy labels never enable it. */
+  autonomyConfirmed?: boolean;
   by: string;
   at: number;
 }
@@ -160,7 +162,7 @@ export type DepartmentsClientMsg =
   | { t: 'departments.release'; id: string; workerId: string }
   /** Name (or replace) the department's lead identity and its saved engine. Never launches. */
   /** Name (or replace) the lead identity and its saved engine; never launches. */
-  | { t: 'departments.lead'; id: string; name: string; provider?: AgentProvider; model?: string; effort?: AgentEffort; autonomy?: string }
+  | { t: 'departments.lead'; requestId?: string; id: string; name: string; provider?: AgentProvider; model?: string; effort?: AgentEffort; autonomy?: string }
   /** Admins: set who controls a manager, who may ask it read-only questions, and the billing custodian. */
   | { t: 'departments.access'; id: string; controllers?: string[]; audience?: string[]; custodian?: string }
   /** Take the lead identity away (a live lead worker keeps its desk). */

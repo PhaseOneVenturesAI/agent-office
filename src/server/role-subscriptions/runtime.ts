@@ -1,3 +1,4 @@
+import { confirmedAutonomy } from '../providers/autonomy.js';
 import type { Floor, FloorContext } from '../floor.js';
 import type { AgentProvider, AgentEffort, WorkerInfo } from '../../shared/protocol.js';
 import { nextFreeSeat } from '../../shared/layout.js';
@@ -21,7 +22,7 @@ export function startManager(floor: Floor, authorize: FloorContext['managerExecu
     const desk = fresh.desks.find((d) => !floor.workers.deskOccupied(d)) ?? nextFreeSeat((x) => floor.workers.deskOccupied(x), floor.plan.wing)?.id;
     if (!desk) return 'No free desk — knock the back office out a row first';
     // The lead orchestrates rather than writes: it takes a worktree only when every worker here has one.
-    const r = floor.workers.spawn(desk, by, composed.prompt, !!floor.project.branch, 'agent', provider, model, effort, undefined, owner, [], undefined, composed.lead.name);
+    const r = floor.workers.spawn(desk, by, composed.prompt, !!floor.project.branch, 'agent', provider, model, effort, undefined, owner, [], undefined, composed.lead.name, confirmedAutonomy(composed.lead));
     if (typeof r === 'string') return r;
     floor.departments.recordLeadHire(deptId, r.id, desk, by);
     return r;
