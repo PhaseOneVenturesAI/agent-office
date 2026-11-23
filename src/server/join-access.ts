@@ -18,6 +18,15 @@ export function nodeSocket(wsUrl: string, nodeToken: string, access: Record<stri
   return new WebSocket(`${wsUrl}/ws/node`, { handshakeTimeout: 10_000, followRedirects: false, headers: { Authorization: `Bearer ${nodeToken}`, ...access } });
 }
 
+/** Retry origin failures/timeouts, including Cloudflare's origin-unavailable equivalents.
+ * Unsupported protocols and TLS/certificate errors need attention, not indefinite retries. */
+export function handshakeFailure(status: number): 'retry' | 'auth' | 'redirect' | 'reject' {
+  if ([500, 502, 503, 504, 520, 521, 522, 523, 524].includes(status)) return 'retry';
+  if (status === 401 || status === 403) return 'auth';
+  if (status >= 300 && status < 400) return 'redirect';
+  return 'reject';
+}
+
 /** A user-scoped cached token, never a service credential. No login or silent refresh here. */
 export async function accessHeaders(origin: string, run: TokenRunner = cachedToken, now = Date.now()): Promise<{ headers: Record<string, string>; expiresAt: number }> {
   if (!origin.startsWith('https://') || officeOrigin(origin) !== origin) throw new Error('Cloudflare Access requires an HTTPS office origin');

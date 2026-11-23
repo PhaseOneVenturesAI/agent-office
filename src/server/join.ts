@@ -8,10 +8,11 @@ import os from 'node:os';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { setTimeout as delay } from 'node:timers/promises';
 import WebSocket from 'ws';
 import { AGENT_PROVIDERS, type AgentProvider } from '../shared/providers.js';
 import type { NodeFrame } from './nodes.js';
-import { accessHeaders, ACCESS_HELP, officeOrigin, nodeSocket } from './join-access.js';
+import { accessHeaders, ACCESS_HELP, officeOrigin, nodeSocket, handshakeFailure } from './join-access.js';
 import { addMapping, collectParadev } from './local-sessions/paradev.js';
 
 const HELP = `agent-office join — make this computer a satellite of an office
@@ -34,7 +35,7 @@ Options:
 `;
 
 const HELLO_MS = 15_000;
-/** Reconnect patience: right away, then doubling to half a minute. */
+/** Reconnect patience: one second, then doubling to half a minute. */
 const RETRY_MAX_MS = 30_000;
 
 /** The provider each agent CLI's binary stands for (a cursor-agent binary is a Cursor). */
@@ -153,26 +154,37 @@ export async function joinCommand(argv: string[]): Promise<number> {
   say('');
 
   let retry = 0;
-  let current: WebSocket | undefined;
+  const shutdown = new AbortController();
   let quit: (() => void) | undefined;
-  process.once('SIGINT', () => {
+  const interrupt = () => {
+    shutdown.abort();
     quit?.();
-    current?.close(1000, 'bye');
-  });
-  for (;;) {
-    if (access && Date.now() >= access.expiresAt - 1000) { say(ACCESS_HELP); return 1; }
-    const code = await once(ws, token, name, say);
-    if (code !== undefined) return code;
-    const wait = Math.min(1000 * 2 ** retry++, RETRY_MAX_MS);
-    say(`… reconnecting in ${Math.round(wait / 1000)}s`);
-    await new Promise((resolve) => setTimeout(resolve, wait));
+  };
+  process.once('SIGINT', interrupt);
+  try {
+    while (!shutdown.signal.aborted) {
+      if (access && Date.now() >= access.expiresAt - 1000) { say(ACCESS_HELP); return 1; }
+      const code = await once(ws, token, name, say);
+      if (code !== undefined) return code;
+      if (shutdown.signal.aborted) break;
+      const wait = Math.min(1000 * 2 ** retry, RETRY_MAX_MS);
+      retry = Math.min(retry + 1, 5);
+      say(`… reconnecting in ${Math.round(wait / 1000)}s`);
+      // Wake for expiry as well as Ctrl-C; retries never refresh the cached credential.
+      const untilExpiry = access ? Math.max(1, access.expiresAt - Date.now() - 1000) : wait;
+      try { await delay(Math.min(wait, untilExpiry), undefined, { signal: shutdown.signal }); }
+      catch (err) { if (!shutdown.signal.aborted) throw err; }
+    }
+    return 0;
+  } finally {
+    process.removeListener('SIGINT', interrupt);
+    quit?.();
   }
 
   /** One connection's whole life; undefined to retry, an exit code to stop. */
   function once(wsUrl: string, tok: string, nodeName: string | undefined, out: (line: string) => void): Promise<number | undefined> {
     return new Promise((resolve) => {
       const socket = nodeSocket(wsUrl, tok, access?.headers);
-      current = socket;
       let heartbeat: NodeJS.Timeout | undefined;
       let sampleTimer: NodeJS.Timeout | undefined;
       let expiry: NodeJS.Timeout | undefined;
@@ -183,50 +195,48 @@ export async function joinCommand(argv: string[]): Promise<number> {
         socket.send(JSON.stringify({ t: 'local.snapshot', snapshot } satisfies NodeFrame));
         sampleTimer = setTimeout(() => void sample(), 30_000);
       };
-      const stop = () => {
-        if (heartbeat) clearInterval(heartbeat);
-        heartbeat = undefined;
+      const finish = (code: number | undefined, message?: string) => {
+        if (ended) return;
         ended = true;
+        if (heartbeat) clearInterval(heartbeat);
         if (sampleTimer) clearTimeout(sampleTimer);
         if (expiry) clearTimeout(expiry);
+        if (quit === leave) quit = undefined;
+        if (message) out(message);
+        // Mark ended before terminating: a failed handshake also emits error/close.
+        if (socket.readyState !== WebSocket.CLOSED) socket.terminate();
+        resolve(code);
       };
-      quit = () => {
-        stop();
-        out('  closed');
-        resolve(0);
-      };
+      const leave = () => finish(0, '  closed');
+      quit = leave;
       socket.on('open', () => {
+        if (ended) return;
         retry = 0;
         socket.send(JSON.stringify(hello(nodeName)));
         out('✓ joined — this machine is on the office wall (☰ → 🛰️ Satellites). Leave this running; Ctrl-C leaves.');
         heartbeat = setInterval(() => socket.send(JSON.stringify({ t: 'ping' } satisfies NodeFrame)), HELLO_MS);
         if (mappings.size) void sample();
-        if (access) expiry = setTimeout(() => { stop(); out(ACCESS_HELP); socket.close(1000, 'Access session expired'); resolve(1); }, Math.min(2 ** 31 - 1, Math.max(1, access.expiresAt - Date.now() - 1000)));
+        if (access) expiry = setTimeout(() => finish(1, ACCESS_HELP), Math.min(2 ** 31 - 1, Math.max(1, access.expiresAt - Date.now() - 1000)));
       });
-      socket.on('close', (code, reason) => {
-        stop();
-        quit = undefined;
+      socket.on('close', (code) => {
         if (code === 4001 || code === 4000) {
-          out("✗ the office doesn't know this token — it was revoked, or it's mistyped. Mint a new one in ☰ → 🛰️ Satellites.");
-          resolve(1);
+          finish(1, "✗ the office doesn't know this token — it was revoked, or it's mistyped. Mint a new one in ☰ → 🛰️ Satellites.");
           return;
         }
-        if (code === 1000) { resolve(0); return; }
-        out(`… the connection dropped (${code})`);
-        resolve(undefined);
+        if (code === 1000) { finish(0); return; }
+        finish(undefined, `… the connection dropped (${code})`);
       });
       socket.on('unexpected-response', (_req, res) => {
-        res.resume();
-        stop();
-        socket.terminate();
-        out(access ? ACCESS_HELP : 'Satellite authentication failed. Check the node invite and whether this office requires --cloudflare-access.');
-        resolve(1);
+        const status = res.statusCode ?? 0;
+        const failure = handshakeFailure(status);
+        if (failure === 'retry') finish(undefined, `… the office is temporarily unavailable (HTTP ${status})`);
+        else if (failure === 'auth' || failure === 'redirect') {
+          finish(1, `Satellite handshake ${failure === 'redirect' ? 'redirect refused' : 'authorization rejected'} (HTTP ${status}). Check the node invite and ${access ? 'your Cloudflare Access login, then restart join --cloudflare-access.' : 'whether this office requires --cloudflare-access.'}`);
+        } else finish(1, `Satellite handshake rejected (HTTP ${status}). Check the office address and server configuration.`);
+        res.destroy();
       });
       socket.on('error', () => {
-        stop();
-        quit = undefined;
-        out("… couldn't reach the office");
-        resolve(undefined);
+        finish(undefined, "… couldn't reach the office");
       });
     });
   }
