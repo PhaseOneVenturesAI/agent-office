@@ -1,7 +1,6 @@
 // Departments: the floor's corners of work (see server/departments.ts). Everything but launch is
 // paperwork on the floor's store; launch goes through the same spawn as every hire, after the
 // department composed the worker's prompt.
-import { roomDeskIds } from '../../../shared/department-rooms.js';
 import { nextFreeSeat } from '../../../shared/layout.js';
 import { OPEN_CODE_MODEL_MAX } from '../../../shared/providers.js';
 import { isAgentEffort, isAgentProvider, type DepartmentsClientMsg } from '../../../shared/protocol.js';
@@ -76,7 +75,7 @@ export const departmentsHandlers = {
       if (typeof composed === 'string') return ctx.warn(c, composed);
       const dept = floor.departments.get(str(msg.id, 16))!;
       // A desk in the department's corner first; the office's next free seat when it's full.
-      const desk = [...roomDeskIds(dept.preset), ...dept.desks].find((d) => !floor.workers.deskOccupied(d)) ?? nextFreeSeat((id) => floor.workers.deskOccupied(id), floor.plan.wing)?.id;
+      const desk = dept.desks.find((d) => !floor.workers.deskOccupied(d)) ?? nextFreeSeat((id) => floor.workers.deskOccupied(id), floor.plan.wing)?.id;
       if (!desk) return ctx.warn(c, 'No free desk — knock the back office out a row first');
       // A writer works in a worktree of its own, always; a reviewer may work in the checkout.
       const worktree = composed.role.kind === 'implementation' || !!floor.project.branch;

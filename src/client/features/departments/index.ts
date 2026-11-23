@@ -1,5 +1,4 @@
-/** Department studios and the commons directory: E opens the relevant project workspace. */
-import type { DeptPreset } from '../../../shared/protocol';
+/** The department directory by the north wall: it lists the floor's departments, and E opens them. */
 import type { Ctx } from '../../core/context';
 import { aside, hintTitle, key, onE } from '../../core/hint';
 import { store } from '../../state';
@@ -21,20 +20,11 @@ export function installDepartments(ctx: Ctx) {
 
   ctx.interactions.define('departments', {
     reach: 5,
-    hint: (it) => {
-      const preset = roomPreset(it.label);
-      if (preset) {
-        const d = store.departments.departments.find((d) => d.preset === preset);
-        return { k: `department-${preset}`, parts: [hintTitle(d?.name ?? preset), key('E', 'Open this department')] };
-      }
+    hint: () => {
       const n = store.departments.departments.length;
       return { k: 'departments', parts: [hintTitle('🏬 Departments'), aside(n ? `${n} on this floor` : 'briefs, roles, brand assets'), key('E', 'Open the departments')] };
     },
     // ctx.net lazily: the socket is wired after the features install (see main.ts).
-    use: onE((it) => openDepartments(ctx.net, roomPreset(it.label))),
+    use: onE(() => openDepartments(ctx.net)),
   });
-}
-
-function roomPreset(label?: string): DeptPreset | undefined {
-  return label === 'marketing' || label === 'product' || label === 'review' ? label : undefined;
 }

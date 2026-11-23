@@ -1,4 +1,3 @@
-import { buildDepartmentRooms } from './rooms';
 import * as THREE from 'three';
 import { DEPARTMENTS } from '../../../shared/layout';
 import type { Department } from '../../../shared/protocol';
@@ -6,7 +5,7 @@ import { mesh, roundedBox, textPlane, toon } from '../../world/toon';
 import type { Collider, Interactable } from '../../world/types';
 import type { Fixture } from '../../world/office/fixture';
 
-// The department directory: a standing sign in the south commons.
+// The department directory: a standing sign by the north wall between the PR board and the gong.
 // Its face lists the floor's departments and their corners live; walk up and press E and the
 // Departments panel opens (see index.ts).
 
@@ -116,17 +115,13 @@ export function buildDepartmentsDirectory(): DepartmentsDirectory {
 
 declare module '../../world/types' {
   interface OfficeHandles {
-    /** The directory of the floor's departments, in the south commons. */
+    /** The directory of the floor's departments, by the north wall. */
     departments: DepartmentsDirectory;
   }
 }
 
-/** The department directory, in the south commons. */
+/** The department directory, by the north wall between the PR board and the gong. */
 export const departments: Fixture<'departments'> = () => {
   const built = buildDepartmentsDirectory();
-  const rooms = buildDepartmentRooms();
-  const group = new THREE.Group();
-  group.add(built.group, rooms.group);
-  const show = (departments: Department[]) => { built.show(departments); rooms.show(departments); };
-  return { group, colliders: [...built.colliders, ...rooms.colliders], interactables: [built.interactable, ...rooms.interactables], handle: { departments: { ...built, show } } };
+  return { group: built.group, colliders: built.colliders, interactables: [built.interactable], handle: { departments: built } };
 };
