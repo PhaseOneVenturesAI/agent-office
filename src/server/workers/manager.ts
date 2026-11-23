@@ -1,3 +1,4 @@
+import { AcpClosures } from '../acp-shutdown.js';
 import { WorkerConversations } from './conversations.js';
 import { makeWorkerHandle } from './handle.js';
 import { WorkerHandoffs } from './handoffs.js';
@@ -60,6 +61,8 @@ export class WorkerManager {
   private closing = false;
   /** Closing for good (Ctrl+C), not restarting: whatever the workers were doing is stopped on purpose. */
   private stopping = false;
+  private acpClosures = new AcpClosures();
+  private shutdownDone?: Promise<void>;
   /** What the workers' modules share of this manager (see WorkerContext). */
   private ctx: WorkerContext;
   private tasks: WorkerTasks;
@@ -388,10 +391,13 @@ export class WorkerManager {
     const session = w.dsh;
     w.dsh = undefined;
     try {
-      session?.close();
+      if (session) await this.acpClosures.close(session);
       proc?.kill();
-    } catch {
-      // already gone
+    } catch (error) {
+      if (session) {
+        w.dsh = session; this.workers.set(id, w); this.persist();
+        return { error: `ACP worker did not stop; its workspace was kept: ${error instanceof Error ? error.message : String(error)}` };
+      }
     }
     w.term?.dispose();
     this.scrollback.remove(id);
@@ -603,7 +609,8 @@ export class WorkerManager {
    * The office is closing. On a restart (`keep`), terminals in the host keep running for the next
    * office to pick back up; otherwise every worker stops.
    */
-  shutdown(keep = false) {
+  shutdown(keep = false): Promise<void> {
+    if (this.shutdownDone) return this.shutdownDone;
     this.closing = true;
     this.stopping = !keep;
     clearInterval(this.screenTimer);
@@ -619,11 +626,7 @@ export class WorkerManager {
       if (w.dsh) {
         const session = w.dsh;
         w.dsh = undefined;
-        try {
-          session.close();
-        } catch {
-          // already gone
-        }
+        void this.acpClosures.close(session);
       }
       if (keep && w.pty?.id) continue;
       // A restart only takes this one down because it runs in-process: the next office carries on its turn.
@@ -638,6 +641,7 @@ export class WorkerManager {
     this.persist();
     if (keep) this.host.detach();
     else this.host.stop();
+    return this.shutdownDone = this.acpClosures.wait();
   }
 
   // ---------------------------------------------------------------------------

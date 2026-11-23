@@ -418,6 +418,6 @@ export class Floor {
     this.meetings.shutdown();
     this.changes.stop();
     this.whiteboard.flush();
-    this.workers.shutdown(keep);
+    return this.workers.shutdown(keep);
   }
 }
