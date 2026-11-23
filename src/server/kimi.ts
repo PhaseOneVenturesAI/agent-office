@@ -1,3 +1,4 @@
+import { AssistantTurn } from './assistant-text.js';
 // Kimi as a provider, over ACP: the same wire DeepSeek Harness speaks (see dsh.ts and
 // docs/dsh-acp-integration.md), so this session shares DSH's renderer, permission card and config
 // plumbing. What differs is the brand on the lines the office writes, and which configuration
@@ -71,6 +72,7 @@ export class KimiSession {
   private permission?: { id: unknown; options: DshPermissionOption[] };
   private configOptions: Rec[] = [];
   private renderer = new DshRenderer();
+  private assistantTurn = new AssistantTurn();
   private prompting = false;
   private finished = false;
   private closing = false;
@@ -302,11 +304,14 @@ export class KimiSession {
       return;
     }
     this.prompting = true;
+    this.assistantTurn.reset();
     this.events.status('working');
     this.request('session/prompt', { sessionId: this.sessionId, prompt: [{ type: 'text', text: clean }] }, 0)
       .then((result) => {
         this.prompting = false;
         const stop = isRec(result) ? str(result.stopReason) : undefined;
+        const reply = this.assistantTurn.finish();
+        if (stop === 'end_turn' && reply) this.events.assistant?.(reply);
         this.events.output(this.renderer.endTurn(stop === 'cancelled' ? 'Stopped' : 'Worked'));
         this.events.action(undefined);
         if (stop && stop !== 'end_turn' && stop !== 'cancelled') this.events.output(notice('quiet', oneLine(stop, 80)));
@@ -372,6 +377,7 @@ export class KimiSession {
 
   private onUpdate(params: unknown): void {
     const update = isRec(params) ? params.update : undefined;
+    if (this.prompting && isRec(params) && params.sessionId === this.sessionId) this.assistantTurn.append(update);
     const rendered = this.renderer.render(update);
     if (rendered.text) this.events.output(rendered.text);
     if (rendered.usage) this.events.usage(rendered.usage);

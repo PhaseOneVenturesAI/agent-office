@@ -1,5 +1,6 @@
 // workers.json: every worker as the office last saw it, to pick them all back up after a restart.
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { savedHandoff } from './handoffs.js';
+import { existsSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 import type { AgentProvider, WorkerInfo, WorkerStatus, WorkerTask } from '../../shared/protocol.js';
 import { DESK_BY_ID } from '../../shared/layout.js';
 import { isAgentProvider, savedEffort, savedModel } from '../../shared/providers.js';
@@ -30,6 +31,7 @@ export function saveWorkers(file: string, workers: Iterable<Worker>, stopping: b
     createdBy: info.createdBy,
     createdAt: info.createdAt,
     prompt: info.prompt,
+    handoff: info.handoff,
     worktree: info.worktree,
     repos: info.repos,
     title: info.title,
@@ -50,9 +52,12 @@ export function saveWorkers(file: string, workers: Iterable<Worker>, stopping: b
     midTurn: !stopping && (!!interrupted || midTurn({ info, bootBlocked })),
   }));
   try {
-    writeFileSync(file, JSON.stringify(saved, null, 2), { mode: 0o600 });
+    const temp = `${file}.tmp-${process.pid}`;
+    writeFileSync(temp, JSON.stringify(saved, null, 2), { mode: 0o600 });
+    renameSync(temp, file);
+    return true;
   } catch {
-    // disk issues shouldn't take the office down
+    return false; // Do not dispatch a handoff unless its receipt reached disk.
   }
 }
 
@@ -86,6 +91,7 @@ export function restoreWorkers(file: string, workers: Map<string, Worker>, defau
         createdBy: s.createdBy ?? '?',
         createdAt: s.createdAt ?? Date.now(),
         prompt: s.prompt,
+        handoff: savedHandoff(s.handoff),
         worktree: s.worktree,
         repos: s.worktree ? validRepos(s.repos) : undefined,
         title: s.title,

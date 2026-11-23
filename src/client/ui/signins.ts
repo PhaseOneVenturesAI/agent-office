@@ -1,4 +1,5 @@
 import './signins.css';
+import { readinessPanel } from './provider-readiness';
 import type { ServerMsg, SignInKind, SignInState } from '../../shared/protocol';
 import type { Net } from '../net';
 import { store } from '../state';
@@ -22,6 +23,7 @@ export function openSignIns(net: Net, why?: string) {
   const close = h('button.btn.close', { 'aria-label': 'Close' }, '✕');
   const banner = h('p.team-status', { hidden: true });
   const cards = h('div.signins');
+  const readiness = readinessPanel(net);
   // The office harness row: pushed into your agent homes unless you run your own.
   let harnessOut = false;
   const harnessToggle = h('button.btn', { type: 'button' }, '…');
@@ -45,6 +47,7 @@ export function openSignIns(net: Net, why?: string) {
       h('p.note.lead', {}, 'Your workers run on your own Claude plan, Kimi account and ChatGPT account, and the office acts on GitHub as you: comments, merges and pull requests show up under your name. Only your workers use them.'),
       banner,
       cards,
+      readiness.el,
       h('p.note', {}, 'Or open a 🐚 shell at any desk: it runs as you, so ', h('code', {}, 'claude auth login'), ', ', h('code', {}, 'kimi login'), ', ', h('code', {}, 'codex login'), ' and ', h('code', {}, 'gh auth login'), ' typed there sign you in too.'),
       harnessRow,
     ),
@@ -187,6 +190,7 @@ export function openSignIns(net: Net, why?: string) {
   const modal = openModal(el, {
     onClose: () => {
       unsub();
+      readiness.drop();
       open = null;
     },
   });

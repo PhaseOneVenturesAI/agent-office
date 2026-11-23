@@ -1,5 +1,6 @@
 // Codex: its native lifecycle hooks (see ../codex.ts), set on its command line, report on
 // /hooks/codex; its usage is read from the root session's rollout (see codex-usage.ts).
+import { readAssistantReply } from '../assistant-text.js';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { codexHookArgs, codexModelArgs, normalizeCodexHook, writeCodexHook } from '../codex.js';
@@ -81,6 +82,10 @@ function codexHook(h: WorkerHandle<CodexState>, event: string, payload: unknown)
     onReport() {
       if (report.transcriptPath) s.transcript = report.transcriptPath;
       h.scheduleScan();
+      if (report.event === 'Stop') {
+        const reply = readAssistantReply('codex', s.transcript, h.info.sessionId, s.home);
+        if (reply) h.assistant?.(reply);
+      }
     },
     tools: tracker(s),
   });

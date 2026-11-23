@@ -1,4 +1,5 @@
 // The shapes the workers' modules and the provider adapters (server/providers/) share.
+import type { AssistantReply } from '../assistant-text.js';
 import type serialize from '@xterm/addon-serialize';
 import type { Run, SignInKind, WorkerInfo, WorkerStatus } from '../../shared/protocol.js';
 import type { DshSession } from '../dsh.js';
@@ -89,6 +90,7 @@ export interface Worker {
   taskEpoch: number;
   /** Where the session's tokens and cost are read from (see usage.ts). */
   tracker: UsageTracker;
+  assistantHome?: string;
   scanTimer?: NodeJS.Timeout;
   /** Its terminal in the host as of the last save, and how it was doing, to pick back up after a restart. */
   saved?: { ptyId: string; status: WorkerStatus; acked: boolean; waitingSince?: number };
@@ -119,6 +121,8 @@ export interface WorkerEvents {
  * never reaches into the manager.
  */
 export interface WorkerHandle<S = unknown> {
+  assistant?(reply: AssistantReply): void;
+  assistantHome?: string;
   readonly info: WorkerInfo;
   /** Its provider's own state on it (see ProviderAdapter.createState). */
   readonly state: S;
@@ -159,6 +163,7 @@ export interface WorkerHandle<S = unknown> {
  * project, its workers, and what they all do to one. Narrow on purpose: they never import the manager.
  */
 export interface WorkerContext {
+  assistant(w: Worker, reply: AssistantReply): void;
   /** The floor's project checkout. */
   readonly dir: string;
   /** Git plumbing for it. */
