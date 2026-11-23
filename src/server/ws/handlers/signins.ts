@@ -11,7 +11,7 @@ const accountOf = (ctx: Ctx, c: Client): string | undefined => {
   if (!id) ctx.warn(c, "On the shared office password, workers run on the office's own sign-ins");
   return id;
 };
-const whichOf = (msg: SignInsClientMsg): SignInKind => ('which' in msg && (msg.which === 'github' || msg.which === 'kimi') ? msg.which : 'claude');
+const whichOf = (msg: SignInsClientMsg): SignInKind => ('which' in msg && (msg.which === 'github' || msg.which === 'kimi' || msg.which === 'codex') ? msg.which : 'claude');
 
 export const signinsHandlers = {
   'signins.get'(ctx, c) {
