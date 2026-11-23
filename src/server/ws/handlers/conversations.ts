@@ -37,7 +37,7 @@ export const conversationHandlers = {
     }
     if (!wid || !floor) return;
     const service = floor.workers.conversations;
-    const isRole = !!floor.isRoleWorker(wid);
+    const isRole = !!floor.isRoleWorker?.(wid);
     ctx.sendTo(c, { t: 'conversation.state', workerId: wid, supported: conversationSupported(floor.workers.get(wid)?.provider), messages: service.snapshot(wid) });
     listening.set(c, service.subscribe(wid, (message) => {
       if (c.out || !ctx.stillIn(c) || ctx.floorOf(c) !== floor) return close(c);
