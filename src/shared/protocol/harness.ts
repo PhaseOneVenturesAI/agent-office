@@ -24,8 +24,8 @@ export type HarnessClientMsg =
   | { t: 'harness.get' }
   /** One file's text. */
   | { t: 'harness.read'; path: string }
-  /** Replace one file's text (admins only; the old text is kept as <file>.bak). */
-  | { t: 'harness.write'; path: string; text: string }
+  /** Replace one file's text (admins only; the old text is kept as <file>.bak). `base` is the mtime the editor saw: a mismatch is a conflict, not a silent overwrite. */
+  | { t: 'harness.write'; path: string; text: string; base?: number }
   /** Push the harness into the office's and every account's agent homes (admins only). */
   | { t: 'harness.apply' }
   /** Whether pushes skip you: you run a harness of your own (accounts only). */
@@ -36,7 +36,7 @@ export type HarnessClientMsg =
 export type HarnessServerMsg =
   /** The list of files, whenever it changes and when asked. */
   | { t: 'harness'; state: HarnessState }
-  /** One file's text, as asked. */
-  | { t: 'harness.file'; path: string; text?: string; error?: string }
+  /** One file's text, as asked; `mtime` is what a later write names as `base`. */
+  | { t: 'harness.file'; path: string; text?: string; mtime?: number; error?: string }
   /** Whether harness pushes skip you, when asked and whenever you change it. */
   | { t: 'harness.opt'; out: boolean };

@@ -20,11 +20,11 @@ export const harnessHandlers = {
   'harness.read'(ctx, c, msg) {
     const path = str(msg.path, 300);
     const r = ctx.harness.read(path);
-    ctx.sendTo(c, { t: 'harness.file', path, text: r.text, error: r.error });
+    ctx.sendTo(c, { t: 'harness.file', path, text: r.text, mtime: r.mtime, error: r.error });
   },
   'harness.write'(ctx, c, msg) {
     if (!admin(ctx, c)) return;
-    const err = ctx.harness.write(str(msg.path, 300), str(msg.text, 300_000));
+    const err = ctx.harness.write(str(msg.path, 300), str(msg.text, 300_000), typeof msg.base === 'number' ? msg.base : undefined);
     if (err) return ctx.warn(c, err);
     ctx.toastAll(`🧰 ${c.peer.name} updated the harness (${str(msg.path, 120)})`);
   },

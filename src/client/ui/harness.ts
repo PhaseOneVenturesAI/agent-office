@@ -7,6 +7,8 @@ import { h, openModal, timeAgo } from './dom';
 
 /** What you typed and haven't saved, by file: kept while the page is open. */
 const drafts = new Map<string, string>();
+/** The mtime the server reported per file: the `base` a save names, so a change in between is a conflict, not a silent overwrite. */
+const mtimes = new Map<string, number>();
 
 /** As the server keeps it: Windows line ends and outer whitespace don't count. */
 const norm = (text: string) => text.replace(/\r\n?/g, '\n').trim();
@@ -120,10 +122,9 @@ export function openHarness(net: Net) {
   });
   save.addEventListener('click', () => {
     if (!current || !dirty(current)) return;
-    net.send({ t: 'harness.write', path: current, text: norm(ta.value) });
-    saved.set(current, norm(ta.value));
-    drafts.delete(current);
-    paint();
+    // The draft stays until the re-read echoes the saved text: a conflict keeps your edit.
+    net.send({ t: 'harness.write', path: current, text: norm(ta.value), base: mtimes.get(current) });
+    net.send({ t: 'harness.read', path: current });
   });
   apply.addEventListener('click', () => net.send({ t: 'harness.apply' }));
 
@@ -135,7 +136,12 @@ export function openHarness(net: Net) {
       paint();
       if (!current && state.files.length) pick(state.files[0].path);
     } else if (msg.t === 'harness.file') {
-      if (msg.text !== undefined) saved.set(msg.path, msg.text);
+      if (msg.mtime !== undefined) mtimes.set(msg.path, msg.mtime);
+      if (msg.text !== undefined) {
+        saved.set(msg.path, msg.text);
+        // The re-read after a save echoes what landed: matching text means the save took.
+        if (norm(msg.text) === norm(drafts.get(msg.path) ?? '')) drafts.delete(msg.path);
+      }
       if (msg.path === current) {
         loading = false;
         if (msg.text !== undefined && !drafts.has(msg.path)) ta.value = msg.text;

@@ -14,6 +14,7 @@ import { openAccounts } from '../../ui/accounts';
 import { openBoard } from '../../ui/boards';
 import { openCharacter } from '../../ui/character';
 import { openCostwall } from '../../ui/costwall';
+import { openDepartments } from '../../ui/departments';
 import { openDeploys } from '../../ui/deploys';
 import { $ } from '../../ui/dom';
 import { toggleFloorMenu } from '../../ui/floormenu';
@@ -99,6 +100,16 @@ export function installHud(ctx: Ctx, core: CoreState, parts: HudParts) {
       { id: 'accounts', icon: '🔑', label: 'Accounts', section: 'Together', shown: () => store.me.admin, title: () => 'Invite people, see who has an account, revoke them', run: () => openAccounts(net) },
       { id: 'signins', icon: '🔐', label: 'Your sign-ins', section: 'Together', shown: () => !!store.me.account, tone: () => (needsSigningIn() ? 'danger' : undefined), status: needsSigningIn, chip: () => 'Sign in to Claude', title: () => 'The Claude plan and GitHub account your workers run on: your own', run: () => openSignIns(net) },
       { id: 'harness', icon: '🧰', label: 'Harness', section: 'Office', shown: () => store.me.admin, title: () => 'The instructions and skills every worker runs with: view, edit and push them', run: () => openHarness(net) },
+      {
+        id: 'departments',
+        icon: '🏬',
+        label: 'Departments',
+        section: 'Office',
+        shown: () => !!store.floor,
+        count: () => store.departments.departments.length,
+        title: () => 'The floor’s corners of work: briefs, roles, brand assets — hiring into a role seats a worker with all of it in the prompt',
+        run: () => openDepartments(net),
+      },
       { id: 'deploys', icon: '🚀', label: 'Deploy board', section: 'Office', title: () => 'The Cloudflare Pages and Workers projects, each one click from staging it for review', run: () => openDeploys(net) },
       { id: 'costwall', icon: '💸', label: 'Cost wall', section: 'Office', title: () => 'Who is spending what, per person and per provider, next to the office ledger', run: () => openCostwall(net) },
       {
@@ -142,7 +153,7 @@ export function installHud(ctx: Ctx, core: CoreState, parts: HudParts) {
         section: 'Open',
         count: () => store.reviews.pending,
         tone: () => (store.reviews.pending > 0 ? 'primary' : undefined),
-        title: () => 'Staged deliverables waiting for your verdict: accept or reject, and the reason goes into the harness so the next take learns from it',
+        title: () => 'Staged deliverables waiting for your verdict: accept or reject with a reason — the verdict stays with this take, scoped to this project',
         run: () => openReviews(net),
       },
       { id: 'settings', icon: '⚙️', label: 'Settings', section: 'Office', run: showSettings },

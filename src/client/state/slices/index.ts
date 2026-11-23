@@ -15,6 +15,7 @@ import { cabinet } from './cabinet';
 import { costwall } from './costwall';
 import { cars } from './cars';
 import { decor } from './decor';
+import { departments } from './departments';
 import { deploys } from './deploys';
 import { dog } from './dog';
 import { floorPlan } from './floor-plan';
@@ -71,4 +72,5 @@ export const SLICES: readonly Slice[] = [
   hygiene,
   costwall,
   nodes,
+  departments,
 ];

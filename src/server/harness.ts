@@ -101,25 +101,34 @@ export class Harness {
     return out.sort((a, b) => a.path.localeCompare(b.path));
   }
 
-  /** One file's text, or why not. */
-  read(rel: string): { text?: string; error?: string } {
+  /** One file's text and its mtime (the `base` a later write names), or why not. */
+  read(rel: string): { text?: string; mtime?: number; error?: string } {
     const file = this.jail(rel);
     if (typeof file !== 'string') return { error: file.error };
     try {
       const st = statSync(file);
       if (st.size > MAX_FILE) return { error: `That file is ${Math.ceil(st.size / 1024)} KB — too big to edit here` };
-      return { text: readFileSync(file, 'utf8') };
+      return { text: readFileSync(file, 'utf8'), mtime: st.mtimeMs };
     } catch {
       return { error: 'No such file' };
     }
   }
 
-  /** Replaces one file's text, keeping what it was as <file>.bak. Returns why it didn't. */
-  write(rel: string, text: string): string | undefined {
+  /**
+   * Replaces one file's text, keeping what it was as <file>.bak. `base` is the mtime the editor
+   * saw, and it fails closed: the file gone or changed since then is a conflict, not a silent
+   * overwrite (or a silent re-creation). An omitted base stays allowed for backward compatibility
+   * with callers that predate the check; the office UI always sends one.
+   */
+  write(rel: string, text: string, base?: number): string | undefined {
     const file = this.jail(rel);
     if (typeof file !== 'string') return file.error;
     if (text.length > MAX_FILE) return `That is over ${Math.ceil(MAX_FILE / 1024)} KB — too big for an instructions file`;
     try {
+      if (base !== undefined) {
+        if (!existsSync(file)) return 'It was deleted since you opened it — reload and try again';
+        if (statSync(file).mtimeMs !== base) return 'Someone changed it since you opened it — reload and try again';
+      }
       mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
       if (existsSync(file)) cpSync(file, `${file}.bak`);
       writeFileSync(file, text, { mode: 0o600 });

@@ -220,3 +220,30 @@ test('push reports and skips destination symlinks instead of overwriting their t
     cleanup();
   }
 });
+
+test('a write naming a stale base conflicts; a deleted file fails closed; a fresh base lands', () => {
+  const { root, harness, cleanup } = setup();
+  try {
+    writeFileSync(path.join(root, 'CLAUDE.md'), 'v1\n');
+    const first = harness.read('CLAUDE.md');
+    assert.ok(first.mtime !== undefined);
+    // A change behind the editor's back: the old base no longer matches.
+    writeFileSync(path.join(root, 'CLAUDE.md'), 'v2\n');
+    const stale = harness.write('CLAUDE.md', 'v3 from an old tab\n', first.mtime);
+    assert.match(stale!, /changed it since you opened it/);
+    assert.equal(readFileSync(path.join(root, 'CLAUDE.md'), 'utf8'), 'v2\n');
+    // The fresh base lands, and read reports the new mtime.
+    const second = harness.read('CLAUDE.md');
+    assert.equal(harness.write('CLAUDE.md', 'v3\n', second.mtime), undefined);
+    assert.equal(readFileSync(path.join(root, 'CLAUDE.md'), 'utf8'), 'v3\n');
+    // Deleted since the editor opened it: a conflict, not a silent re-creation.
+    const third = harness.read('CLAUDE.md');
+    rmSync(path.join(root, 'CLAUDE.md'));
+    assert.match(harness.write('CLAUDE.md', 'v4\n', third.mtime)!, /deleted since you opened it/);
+    assert.equal(existsSync(path.join(root, 'CLAUDE.md')), false);
+    // Backward compatibility: no base at all still writes (callers from before the check).
+    assert.equal(harness.write('CLAUDE.md', 'v5\n'), undefined);
+  } finally {
+    cleanup();
+  }
+});
