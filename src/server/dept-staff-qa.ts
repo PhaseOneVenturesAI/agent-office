@@ -10,7 +10,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import type { Department } from '../shared/protocol.js';
 import { buildQaHome, qaContext, qaLaunch, staffQaAsk, type QaOutcome } from './staff-qa.js';
-import { childEnv } from './workers/env.js';
+import { qaBaseEnv } from './staff-qa.js';
 import type { RunAs } from './workers/types.js';
 
 export interface StaffQaFloor {
@@ -33,19 +33,23 @@ export async function floorStaffQA(floor: StaffQaFloor, deptId: string, question
   if (!dept) return { ok: false, why: 'That department is gone' };
   const clean = question.replace(/\r\n?/g, '\n').trim().slice(0, 4000);
   if (!clean) return { ok: false, why: 'Ask a question first' };
-  const launch = launchOverride ?? qaLaunch(dept.lead?.provider);
+  const provider = dept.policy?.provider ?? dept.lead?.provider;
+  const model = dept.policy?.provider ? dept.policy.model : dept.lead?.model;
+  const effort = dept.policy?.provider ? dept.policy.effort : dept.lead?.effort;
+  const launch = launchOverride ?? qaLaunch(provider);
   if (typeof launch === 'string') return { ok: false, why: launch };
-  // The environment is account-scoped: the custodian's own Kimi sign-in, never the host's. childEnv
-  // already scrubs AGENT_OFFICE_* (no hook URL, no worker token, no office MCP), and session/new
-  // declares no MCP servers on top.
-  const env = childEnv();
+  // Start with runtime basics only; the selected account adds only its provider credentials.
+  if (provider !== 'kimi') return { ok: false, why: 'No verified tool-free Q&A adapter for this provider.' };
+  const env = qaBaseEnv();
   delete env.KIMI_CODE_HOME;
   delete env.KIMI_API_KEY;
   if (custodianId) {
     if (!floor.runAs) return { ok: false, why: 'This office has no account sign-ins to authorize a custodian.' };
-    if (!floor.runAs.ready(custodianId, 'kimi')) return { ok: false, why: `The custodian hasn't authorized a Kimi sign-in here (${floor.runAs.why('kimi')}).` };
-    floor.runAs.apply(custodianId, env, [floor.dir], 'kimi');
+    if (!floor.runAs.ready(custodianId, provider)) return { ok: false, why: `The custodian hasn't authorized a ${provider} sign-in here (${floor.runAs.why(provider)}).` };
+    floor.runAs.apply(custodianId, env, [], provider);
   }
+  const context = qaContext({ name: dept.name, brief: dept.brief as { rev: number; text: string }[], lead: dept.lead ? { objective: dept.lead.objective } : undefined, assets: dept.assets });
+  const prompt = ['You are the read-only department Q&A desk. Answer from the approved context; do not assign work or claim to be the manager.', context, `Question from ${by}: ${clean}`].join('\n\n');
   const sourceHome = env.KIMI_CODE_HOME ?? path.join(homedir(), '.kimi-code');
   const framing = [
     'You are a read-only Q&A desk inside Agent Office. You are not the department manager and never speak for them.',
@@ -54,21 +58,27 @@ export async function floorStaffQA(floor: StaffQaFloor, deptId: string, question
   const qaHome = buildQaHome(sourceHome, framing);
   if (typeof qaHome === 'string') return { ok: false, why: qaHome };
   env.KIMI_CODE_HOME = qaHome.home;
+  env.HOME = qaHome.home;
   // The session works in an EMPTY scratch directory, never the project: the CLI auto-loads
   // AGENTS.md and project files from the cwd, which would leak context the approved snapshot
   // didn't include.
-  const scratch = mkdtempSync(path.join(tmpdir(), 'agent-office-staff-qa-cwd-'));
-  const context = qaContext({ name: dept.name, brief: dept.brief as { rev: number; text: string }[], lead: dept.lead ? { objective: dept.lead.objective } : undefined, assets: dept.assets });
-  const prompt = [context, `Question from ${by}: ${clean}`].join('\n\n');
+  let scratch: string | undefined;
   let outcome: QaOutcome;
   try {
-    outcome = await staffQaAsk({ ...launch, cwd: scratch, env, prompt, model: dept.lead?.model, ...(dept.lead?.effort ? { effort: dept.lead.effort } : {}) });
+    scratch = mkdtempSync(path.join(tmpdir(), 'agent-office-staff-qa-cwd-'));
+    outcome = await staffQaAsk({ ...launch, cwd: scratch, env, prompt, model, ...(effort ? { effort } : {}) });
+  } catch {
+    outcome = { ok: false, why: 'The isolated Q&A session could not be prepared.' };
   } finally {
     qaHome.cleanup();
-    rmSync(scratch, { recursive: true, force: true });
+    if (scratch) rmSync(scratch, { recursive: true, force: true });
   }
+  recordAnswer(floor, deptId, clean, by, outcome);
+  return outcome;
+}
+
+function recordAnswer(floor: StaffQaFloor, deptId: string, clean: string, by: string, outcome: QaOutcome) {
   const at = Date.now();
   floor.roleChat.append(`qa-${deptId}`, { id: `q-${at}`, role: 'user', text: clean, at, by, scope: 'staff' });
   floor.roleChat.append(`qa-${deptId}`, { id: `a-${at}`, role: 'assistant', text: outcome.ok ? outcome.answer : `Unavailable: ${outcome.why}`, at: at + 1, scope: 'staff' });
-  return outcome;
 }

@@ -31,33 +31,31 @@ and no UI ever starts an agent by itself.
   prompt when the parent is idle, one coalesced notice held per child while it works, never injected
   into a busy terminal, never replayed.
 
-## Staff Q&A — a separate, provider-enforced tool-free session
+## Staff Q&A — isolated from the manager
 
-Staff (any signed-in account in a manager's Q&A audience) can ask the department questions, but the
-question **never enters the manager's provider session**: the manager chat refuses staff outright,
-and the Ask box answers on a **separate one-shot ACP session** that is restricted by the provider,
-not by prompt text:
+Questions use the approved brief/objective/reference labels, never the manager's native history.
+The effective engine matches execution policy (`policy.provider ?? lead.provider`), with the
+custodian's selected-provider sign-in. Accounts mode refuses missing custody. Each invocation
+uses an empty cwd, temporary home, and environment allowlist; Office tokens, other providers'
+credentials, project settings and user skills are not inherited.
 
-- It runs on the **department's configured engine only** (Kimi ACP today), and only on CLI versions
-  whose tool-free behavior was **verified on the actual installed binary** (2.7.2) — never an
-  arbitrary binary from PATH, never an unverified version (the wildcard disable-all is an
-  implementation detail, not a stable API, and the deployed provider may differ).
-- The session boots from a **dedicated tool-free home**: the global tool switch removes every tool
-  (verified against the installed Kimi's documented config), `session/new` declares no MCP servers,
-  the office **additionally** auto-rejects any permission request that still fires, and the
-  read-only framing lives in the home's SYSTEM.md.
-- The environment is **account-scoped to the department's billing custodian** (its custodian email's
-  account sign-in) — never the host's credentials; in accounts mode a missing or unknown custodian
-  is refused outright, no fallback. The session works in an **empty scratch directory**, so the CLI
-  cannot auto-load the project's AGENTS.md — only the approved snapshot reaches the prompt.
-- The prompt carries only the approved context snapshot (current brief, objective, reference
-  labels), and the exchange is recorded under the staff scope.
+- **Kimi 2.7.2:** verified embedded tool-policy implementation; an isolated config disables all
+  tools, ACP declares no MCP servers, and additional approval requests are rejected.
+- **Claude Code 2.1.330:** unavailable. Empty tools and strict MCP flags were verified, but
+  safe/restricted mode does not disable administrator-managed hooks or integrations. A local
+  file check cannot establish effective remote policy. No unverified native adapter is enabled.
+- **Codex 0.171.0-alpha.13:** unavailable. Read-only sandboxing and individual tool flags do not
+  establish a global text-only tool boundary. Office never silently switches providers.
 
-Engines whose tool-free mode is not verified fail closed with a truthful unavailable status —
-tracked honestly rather than approximated. Staff personal agents on their own subscriptions remain
-possible and remain unable to commandeer the team queue or the generic hire path: only department
-managers (and board agents through office-queue) may spawn workers from agent land; people still
-hire their own standalone agents at a desk.
+Unsupported-provider messages direct staff to a manager controller. A separate Q&A provider
+choice needs explicit owner authorization and is not implemented. Version checks are refreshed
+at launch, including prerelease suffixes. Temporary Kimi homes are removed on setup failures;
+closure errors return a failure instead of leaving the caller waiting indefinitely.
+
+Only source/help inspection and fake executable tests were used; no paid provider turn or native
+authentication change was performed. Capability references: [Claude CLI](https://code.claude.com/docs/en/cli-reference),
+[managed hook scope](https://code.claude.com/docs/en/settings-reference#disableallhooks), and
+[Codex tool composition](https://github.com/openai/codex/blob/main/codex-rs/core/src/tools/spec_plan.rs).
 
 ## Talking to the characters
 
