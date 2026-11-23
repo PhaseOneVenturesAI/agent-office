@@ -1,6 +1,6 @@
 // The office's harness: the instruction and skill files every worker runs with (see
 // server/harness.ts). Admins read and edit them from the office, then push them into every
-// account's sign-in home, so a taste lock or a skill change reaches everyone's agents at once.
+// account's sign-in home. Only explicit shared defaults and skill files are pushed.
 
 export interface HarnessFile {
   /** Its path inside the harness root, POSIX style. */
