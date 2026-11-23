@@ -16,6 +16,7 @@ import { harnessHandlers } from './harness.js';
 import { hygieneHandlers } from './hygiene.js';
 import { jukeboxHandlers, jukeboxView } from './jukebox.js';
 import { meetingHandlers, meetingView } from './meetings.js';
+import { nodesHandlers } from './nodes.js';
 import { planHandlers, planView } from './plan.js';
 import { presenceHandlers } from './presence.js';
 import { queueHandlers, queueView } from './queue.js';
@@ -46,6 +47,7 @@ export const handlers: HandlerMap<ClientMsg> = {
   ...hygieneHandlers,
   ...jukeboxHandlers,
   ...meetingHandlers,
+  ...nodesHandlers,
   ...planHandlers,
   ...presenceHandlers,
   ...queueHandlers,

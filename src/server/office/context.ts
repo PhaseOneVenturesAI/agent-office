@@ -11,6 +11,7 @@ import type { Reviews } from '../reviews.js';
 import type { Deploys } from '../deploys.js';
 import type { Costwall } from '../costwall.js';
 import type { Hygiene } from '../hygiene.js';
+import type { Nodes } from '../nodes.js';
 import type { CloudflareAccess } from '../cloudflare.js';
 import type { ModelCatalogue } from '../models.js';
 import type { Tailnet } from '../tailnet.js';
@@ -79,6 +80,8 @@ export interface BuildingServices {
   hygiene: Hygiene;
   /** Who is spending what, per person and per provider (☰ → 💸 Cost wall). */
   costwall: Costwall;
+  /** The team's joined computers (☰ → 🛰️ Satellites). */
+  nodes: Nodes;
   /** Cloudflare Access sign-in, when the office runs behind it (see server/cloudflare.ts). */
   cloudflare?: CloudflareAccess;
   /** The office's own Claude plan limits. */

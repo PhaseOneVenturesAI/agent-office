@@ -22,6 +22,10 @@ if (argv[0] === 'tunnel') {
   const { tunnelCommand } = await import('./tunnel/index.js');
   process.exit(await tunnelCommand(argv.slice(1)));
 }
+if (argv[0] === 'join') {
+  const { joinCommand } = await import('./join.js');
+  process.exit(await joinCommand(argv.slice(1)));
+}
 
 const cfg = loadConfig(argv);
 await ensureSelfSigned(cfg);

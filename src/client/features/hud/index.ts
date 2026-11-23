@@ -25,6 +25,7 @@ import { needsSigningIn, openSignIns } from '../../ui/signins';
 import { openHarness } from '../../ui/harness';
 import { openHygiene } from '../../ui/hygiene';
 import { openInbox } from '../../ui/inbox';
+import { openNodes } from '../../ui/nodes';
 import { openReviews } from '../../ui/reviews';
 import { openTeam } from '../../ui/team';
 import { openUpgrade } from '../../ui/upgrade';
@@ -100,6 +101,15 @@ export function installHud(ctx: Ctx, core: CoreState, parts: HudParts) {
       { id: 'harness', icon: '🧰', label: 'Harness', section: 'Office', shown: () => store.me.admin, title: () => 'The instructions and skills every worker runs with: view, edit and push them', run: () => openHarness(net) },
       { id: 'deploys', icon: '🚀', label: 'Deploy board', section: 'Office', title: () => 'The Cloudflare Pages and Workers projects, each one click from staging it for review', run: () => openDeploys(net) },
       { id: 'costwall', icon: '💸', label: 'Cost wall', section: 'Office', title: () => 'Who is spending what, per person and per provider, next to the office ledger', run: () => openCostwall(net) },
+      {
+        id: 'nodes',
+        icon: '🛰️',
+        label: 'Satellites',
+        section: 'Office',
+        count: () => store.nodes.nodes.filter((n) => n.online).length,
+        title: () => "The team's own computers, joined with agent-office join — who could run work here",
+        run: () => openNodes(net),
+      },
       {
         id: 'hygiene',
         icon: '🧹',

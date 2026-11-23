@@ -1,0 +1,130 @@
+/* 🛰️ Satellites */
+.modal.nodes {
+  width: min(620px, 94vw);
+  max-height: 84vh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.modal.nodes .nd-status {
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+.modal.nodes .nd-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+.modal.nodes .nd-node {
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.modal.nodes .nd-node h3 {
+  margin: 0;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modal.nodes .nd-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.modal.nodes .nd-dot.on {
+  background: #2fbf71;
+  box-shadow: 0 0 6px color-mix(in srgb, #2fbf71 70%, transparent);
+}
+
+.modal.nodes .nd-dot.off {
+  background: color-mix(in srgb, currentColor 30%, transparent);
+}
+
+.modal.nodes .nd-host {
+  font-size: 12px;
+  font-weight: 400;
+  opacity: 0.6;
+}
+
+.modal.nodes .nd-seen {
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.55;
+}
+
+.modal.nodes .nd-spec {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.modal.nodes .nd-providers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.modal.nodes .nd-chip {
+  font-size: 11px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #4f86f7 16%, transparent);
+  color: #4f86f7;
+}
+
+.modal.nodes .nd-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.modal.nodes .nd-invite {
+  border: 1px dashed color-mix(in srgb, currentColor 30%, transparent);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.modal.nodes .nd-invite p {
+  margin: 0;
+}
+
+.modal.nodes .nd-once {
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.modal.nodes .nd-command {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modal.nodes .nd-command code {
+  flex: 1;
+  overflow-x: auto;
+  white-space: nowrap;
+  font-size: 12px;
+  background: color-mix(in srgb, currentColor 7%, transparent);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.modal.nodes .grow {
+  flex: 1;
+}
