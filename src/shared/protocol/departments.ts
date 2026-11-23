@@ -164,7 +164,7 @@ export type DepartmentsClientMsg =
   /** Name (or replace) the lead identity and its saved engine; never launches. */
   | { t: 'departments.lead'; requestId?: string; id: string; name: string; provider?: AgentProvider; model?: string; effort?: AgentEffort; autonomy?: string }
   /** Admins: set who controls a manager, who may ask it read-only questions, and the billing custodian. */
-  | { t: 'departments.access'; id: string; controllers?: string[]; audience?: string[]; custodian?: string }
+  | { t: 'departments.access'; requestId?: string; id: string; controllers?: string[]; audience?: string[]; custodian?: string }
   /** Take the lead identity away (a live lead worker keeps its desk). */
   | { t: 'departments.lead.clear'; id: string }
   /** Start the lead's shift explicitly: seats its worker with the lead prompt on the policy engine. */
@@ -178,11 +178,11 @@ export type DepartmentsClientMsg =
   /** Reject a pending engine request: the delegation is dropped. */
   | { t: 'departments.request.reject'; id: string; request: string }
   /** A read-only staff question about the department: answered on a separate no-tools session. */
-  | { t: 'departments.ask'; id: string; question: string };
+  | { t: 'departments.ask'; requestId?: string; id: string; question: string };
 
 export type DepartmentsServerMsg =
   | { t: 'departments'; state: DepartmentsState }
   /** The archived brief revisions of one department, as asked (newest first). */
   | { t: 'departments.brief.history'; id: string; revs: DeptBriefRev[]; archived: number; next?: number }
   /** The answer to a read-only staff question (separate no-tools session), or why it's unavailable. */
-  | { t: 'departments.qa'; id: string; question: string; answer: string; at: number };
+  | { t: 'departments.qa'; requestId?: string; error?: string; id: string; question: string; answer: string; at: number };

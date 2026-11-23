@@ -163,3 +163,11 @@ Automatic permissions do not grant account access, another person's subscription
 publication, or deployment authority. Existing role and subscription checks still gate Office
 actions. Validation uses fake providers, CLI help/source inspection, and focused tests; it does not
 require spending tokens or changing live accounts.
+
+### Conversation and live Roles editing
+
+For agents, desk **E**, the workers sidebar and waiting notifications open Conversation first, including Claude, Codex and Kimi. Shells and explicit terminal/search actions keep their terminal behavior. Conversation retains its Terminal fallback and native approval choices.
+
+Roles settings are saved explicitly and confirmed by a correlated server response. Rejected saves retain the entered values and show an inline error; typing a newer draft while a save is pending does not make that draft “saved.” Worker and department updates preserve the mounted editors, focus, pending staff question and unsubmitted consent choice. A changed consent scope is fetched again for review rather than silently authorizing its new people/provider. Ask refusals and provider failures end the pending indicator with an inline reason and retain the question for retry.
+
+Requested autonomy and current-session launch settings are displayed separately. Saving a preference does not claim to change an existing process. Legacy unconfirmed labels are identified as such and need an explicit save. Runtime launch details come from the provider adapter; missing details remain “not reported,” not an inferred effective permission mode.

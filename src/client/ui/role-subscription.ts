@@ -5,6 +5,8 @@ import { h } from './dom';
 export function roleSubscription(net: Net, department: string) {
   const floor = store.floor;
   const el = h('div.dept-lead-form', {}, h('p.dept-hint', {}, 'Checking subscription consent…'));
+  let draft: { configuration: string; checked: boolean } | undefined;
+  let submitted: boolean | undefined;
   const off = net.onMessage(msg => {
     if (msg.t !== 'role.subscription.state' || msg.state.floor !== floor || msg.state.department !== department) return;
     const s = msg.state;
@@ -12,13 +14,18 @@ export function roleSubscription(net: Net, department: string) {
     const people = h('p.dept-hint', {}, `Controllers allowed to use this subscription: ${s.controllers.join(', ') || 'none'}.`);
     const status = h('p.dept-hint', { role: 'status' }, msg.error ?? (s.active ? 'Subscription consent active.' : s.reason ?? 'Subscription consent pending.'));
     const qa = h('input', { type: 'checkbox', 'aria-label': 'Allow paid read-only staff Q&A' });
-    qa.checked = s.allowStaffQA;
+    const confirmed = submitted !== undefined && s.active === submitted && !msg.error;
+    qa.checked = !s.active && draft?.configuration === s.configuration && !confirmed ? draft.checked : s.allowStaffQA;
+    if (confirmed) draft = undefined;
+    if (confirmed || msg.error) submitted = undefined;
+    qa.onchange = () => { draft = { configuration: s.configuration, checked: qa.checked }; };
     qa.disabled = !s.canConsent || s.active;
     const qaLabel = h('label.dept-hint', {}, qa, ` Also allow paid read-only Q&A for ${s.audience.length ? s.audience.join(', ') : 'all signed-in colleagues'}. This uses a separate session, never the manager’s conversation.`);
     const button = h('button.btn.small', { type: 'button' }, s.active ? 'Revoke shared subscription use' : 'Allow these controllers to use my subscription');
     button.disabled = !s.canConsent || !net.up;
     button.addEventListener('click', () => {
       button.disabled = true;
+      submitted = !s.active;
       status.textContent = 'Saving consent…';
       net.send({ t: 'role.subscription.set', department, configuration: s.configuration, allow: !s.active, allowStaffQA: qa.checked });
     });
