@@ -15,7 +15,8 @@ import { ownedWorker } from './worker-access.js';
 export const handoffHandlers = {
   'handoff.cancel'(ctx, c, msg) {
     const source = ownedWorker(ctx, c, msg.workerId);
-    if (!source) return;
+    const reply = (error?: string) => ctx.sendTo(c, { t: 'handoff.result', workerId: msg.workerId, handoffId: msg.handoffId, action: 'cancel', ok: !error, error });
+    if (!source) return reply('Access changed; cancellation was not confirmed.');
     const err = source.floor.workers.handoffs.cancel(source.wid, msg.handoffId);
     ctx.warn(c, err);
     // A cancelled swap takes its still-idle replacement with it: no orphan agents.
@@ -24,6 +25,7 @@ export const handoffHandlers = {
       source.floor.workers.handoffs.clearSwap(source.wid);
       if (replacement) void source.floor.sendHome(replacement);
     }
+    reply(err);
   },
   'handoff.prepare'(ctx, c, msg) {
     const source = ownedWorker(ctx, c, msg.workerId), target = ownedWorker(ctx, c, msg.targetId);
@@ -34,15 +36,16 @@ export const handoffHandlers = {
   },
   'handoff.ack'(ctx, c, msg) {
     const source = ownedWorker(ctx, c, msg.workerId);
-    if (!source) return;
+    const reply = (error?: string, includeState = false) => ctx.sendTo(c, { t: 'handoff.result', workerId: msg.workerId, handoffId: msg.handoffId, action: 'ack', ok: !error, error, ...(includeState && source?.info.handoff ? { handoff: source.info.handoff } : {}) });
+    if (!source) return reply('Access changed; the swap was not completed.');
     if (source.floor.isRoleWorker?.(source.wid)) {
       const access = roleAccess(ctx, source.floor, source.wid, c.accountId);
-      if (access.kind !== 'owner' && access.kind !== 'controller') return ctx.warn(c, 'Role access changed; the swap was not completed.');
+      if (access.kind !== 'owner' && access.kind !== 'controller') return reply('Role access changed; the swap was not completed.');
     }
     const handoff = source.info.handoff;
-    if (!handoff || !ownedWorker(ctx, c, handoff.to)) return;
+    if (!handoff || !ownedWorker(ctx, c, handoff.to)) return reply('The handoff or replacement is no longer available to this account.');
     const privacyError = protectRoleHandoff(source.floor, source.wid, handoff.to);
-    if (privacyError) return ctx.warn(c, privacyError);
+    if (privacyError) return reply(privacyError);
     // A delivered swap can retry its seat persistence without sending the handoff twice.
     const retrySeat = source.info.swap && handoff.id === msg.handoffId && handoff.state === 'acknowledged';
     const err = retrySeat ? undefined : source.floor.workers.handoffs.acknowledge(source.wid, msg.handoffId, c.peer.name);
@@ -52,7 +55,7 @@ export const handoffHandlers = {
       // the source's reservation clears. The source keeps its own session, transcript and branch.
       const engine = source.info.swap.engine;
       const seatError = source.floor.relinkEverywhere(source.wid, handoff.to);
-      if (seatError) return ctx.warn(c, seatError);
+      if (seatError) return reply(seatError, true);
       source.floor.workers.handoffs.clearSwap(source.wid);
       ctx.toastFloor(source.floor, `🔁 ${handoff.toName} took over ${source.info.name}'s work on ${engine} — ${source.info.name} keeps its own session and branch; send it home when you're done with it`);
     } else if (err && source.info.swap && source.info.handoff?.state === 'delivery-failed') {
@@ -60,6 +63,7 @@ export const handoffHandlers = {
       source.floor.workers.handoffs.clearSwap(source.wid);
       ctx.toastFloor(source.floor, `🔁 The swap handoff failed to deliver — its replacement sits idle at a desk; send it home or stage a fresh swap.`, 'warn');
     }
+    reply(err, true);
   },
   'handoff.swap'(ctx, c, msg) {
     const source = ownedWorker(ctx, c, msg.workerId);
