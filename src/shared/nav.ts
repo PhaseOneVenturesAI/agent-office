@@ -5,6 +5,7 @@
 // helpers take how many rows it's built out (`wing`), and each level gets a grid of its own.
 
 import { BALCONY, BALCONY_DOOR, BEANBAGS, BOOKSHELF, CABINET, DESK_SIZE, ELEVATOR, ELEVATOR_FRONT, EXIT_DOOR, EXIT_STAIRS, FLOOR, GONG, JUKEBOX, KIOSK, LADDER, LOFT, MEETING_ROOM, MEETING_SEATS, MEETING_TABLE, PARACHUTE, POLE, POLES, ROAD, STAIRS, STATIONS, WHITEBOARD, WING, builtDesks, plantsAt, wingLevel, wingMinZ, type DeskDef } from './layout.js';
+import { STUDIO_DOOR_HALF, STUDIO_WING, STUDIO_WING_PROPS, STUDIO_WING_ROOMS } from './studio-wing.js';
 
 
 export type Pt = [number, number];
@@ -106,6 +107,18 @@ function obstacles(wing: number): Obstacles {
     const [cx, cz] = deskPoint(d, 0, 0.85);
     circles.push([cx, cz, 0.18]);
   }
+  // The studio wing behind the north wall: its studios' glass wall (with the doorways left open), the
+  // glass partitions between them, and the props inside each one, as world/office/studio-wing.ts
+  // puts them. The hallway and the doorways through the glass stay clear.
+  const S = STUDIO_WING;
+  let glass: number = S.minX;
+  for (const r of STUDIO_WING_ROOMS) {
+    rects.push([glass, r.doorX - STUDIO_DOOR_HALF, S.glassZ - G, S.glassZ + G]);
+    rects.push([r.doorX + STUDIO_DOOR_HALF, r.maxX, S.glassZ - G, S.glassZ + G]);
+    glass = r.maxX;
+  }
+  for (const b of STUDIO_WING_ROOMS.slice(1)) rects.push([b.minX - G, b.minX + G, S.backZ, S.glassZ]);
+  for (const [x0, x1, z0, z1] of STUDIO_WING_PROPS) rects.push([x0, x1, z0, z1]);
   return { rects, circles };
 }
 
@@ -311,11 +324,23 @@ export const pathLength = (pts: Pt[]) => pts.reduce((n, p, i) => (i ? n + Math.h
 const OFFICE_NAVS: NavGrid[] = [];
 export function officeNav(wing = 0): NavGrid {
   const level = wingLevel(wing);
+  const S = STUDIO_WING;
+  // The grid stays anchored where the back office put it, so every existing row keeps its cells;
+  // it only reaches far enough north to take in the studio wing.
+  const base = wingMinZ(level);
+  const minZ = base <= S.backZ ? base : base - 0.5 * Math.ceil((base - S.backZ) / 0.5);
   // Through where the north wall was, into the back office: between its walls, short of its back one.
+  // And through the studio doorway, into the studio wing behind the north wall: its hallway and
+  // studios, and the open seam through the wall where the doorway is cut (see STUDIO_DOOR). The seam
+  // reaches a little past the wall's faces and takes the threshold inclusively, so a walker on the
+  // exact doorway line is inside the open hole, and every grid anchor (each wing level re-anchors the
+  // grid) finds the seam overlapping both the office floor and the annex.
   const on: Floorplan = (x, z, m) =>
     (x > FLOOR.minX + m && x < FLOOR.maxX - m && z > FLOOR.minZ + m && z < FLOOR.maxZ - m) ||
-    (level > 0 && x > WING.minX + m && x < WING.maxX - m && z > wingMinZ(level) + m && z < FLOOR.maxZ - m);
-  return (OFFICE_NAVS[level] ??= new NavGrid({ ...FLOOR, minZ: wingMinZ(level) }, obstacles(level), on));
+    (level > 0 && x > WING.minX + m && x < WING.maxX - m && z > wingMinZ(level) + m && z < FLOOR.maxZ - m) ||
+    (x > S.minX + m && x < S.maxX - m && z > S.backZ + m && z < S.frontZ - m) ||
+    (Math.abs(x - S.door.x) < S.door.width / 2 - m && z > S.frontZ - 0.35 && z <= FLOOR.minZ + m);
+  return (OFFICE_NAVS[level] ??= new NavGrid({ ...FLOOR, minZ }, obstacles(level), on));
 }
 
 /** The office floor as it is until it's built out. */

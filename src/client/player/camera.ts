@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { FLOOR, SLAB, STREET_Y, WING, inWing, wingMinZ } from '../../shared/layout';
+import { STUDIO_WING, inStudioWing } from '../../shared/studio-wing';
 import type { ViewMode } from '../state';
 import type { Collider } from '../world/types';
 import { ceilingAt, groundAt } from './collide';
@@ -65,7 +66,9 @@ export function aimCamera(camera: THREE.PerspectiveCamera, p: Followed, bob: num
   const under = p.pos.x > R.minX && p.pos.x < R.maxX && p.pos.z > R.minZ && p.pos.z < R.maxZ;
   // In the office's back office, between its walls, and out through where the north wall was into the room.
   const back = !R.enclosed && p.pos.y > -SLAB - 0.5 && inWing(p.pos.x, p.pos.z, p.wing);
-  const indoors = ((rigged || p.pos.y > -SLAB - 0.5) && under) || back;
+  // In the studio wing annex behind the north wall: its own walls and ceiling, like the back office.
+  const annex = !R.enclosed && p.pos.y > -SLAB - 0.5 && inStudioWing(p.pos.x, p.pos.z);
+  const indoors = ((rigged || p.pos.y > -SLAB - 0.5) && under) || back || annex;
   // Down in a room under the floor (the castle's dungeon): the camera keeps inside that.
   const V = R.vault;
   if (V && p.pos.y < V.top - 0.5 && p.pos.x > V.minX && p.pos.x < V.maxX && p.pos.z > V.minZ && p.pos.z < V.maxZ) {
@@ -74,6 +77,9 @@ export function aimCamera(camera: THREE.PerspectiveCamera, p: Followed, bob: num
   } else if (back) {
     cam.x = THREE.MathUtils.clamp(cam.x, WING.minX + m, WING.maxX - m);
     cam.z = THREE.MathUtils.clamp(cam.z, wingMinZ(p.wing) + m, FLOOR.maxZ - m);
+  } else if (annex) {
+    cam.x = THREE.MathUtils.clamp(cam.x, STUDIO_WING.minX + m, STUDIO_WING.maxX - m);
+    cam.z = THREE.MathUtils.clamp(cam.z, STUDIO_WING.backZ + m, STUDIO_WING.frontZ - m);
   } else if (indoors) {
     cam.x = THREE.MathUtils.clamp(cam.x, R.minX + m, R.maxX - m);
     cam.z = THREE.MathUtils.clamp(cam.z, R.minZ + m, R.maxZ - m);

@@ -25,6 +25,7 @@ import { plug, walls, type Door } from './shell';
 import { balcony } from './balcony';
 import { downstairs } from './ground';
 import { wing } from './wing';
+import { studioWing } from './studio-wing';
 import { beanbags, desks, kiosks } from './seats';
 import { meetingRoom } from './meeting-room';
 import { loft } from './loft';
@@ -64,6 +65,7 @@ function floorPlan() {
     plants,
     lamps,
     wing,
+    studioWing,
     signs,
     loft,
     meetingRoom,

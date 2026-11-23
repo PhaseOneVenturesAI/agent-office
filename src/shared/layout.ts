@@ -146,8 +146,9 @@ export type StationKind = 'issues' | 'pulls' | 'queue';
 export const STATIONS: DeskDef[] = [
   // Between the plant in the north-west corner and the Issues board.
   { id: 'station-issues', station: 'issues', x: -15.6, z: FLOOR.minZ + 1.3, rotY: Math.PI, label: 'Issues board' },
-  // Between the task queue and the PR board.
-  { id: 'station-pulls', station: 'pulls', x: 0, z: FLOOR.minZ + 1.3, rotY: Math.PI, label: 'PR board' },
+  // East of the studio wing's doorway, in front of the PR board's west end (the doorway takes the
+  // gap between the task queue and the PR board, see STUDIO_DOOR in shared/studio-wing.ts).
+  { id: 'station-pulls', station: 'pulls', x: 2.3, z: FLOOR.minZ + 1.3, rotY: Math.PI, label: 'PR board' },
   // Between the Issues board and the task queue.
   { id: 'station-queue', station: 'queue', x: -7.8, z: FLOOR.minZ + 1.3, rotY: Math.PI, label: 'Task queue' },
 ];

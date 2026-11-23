@@ -97,6 +97,8 @@ test('the back office is only floor once it is built out, and only as far as it 
     const [ex, ez] = way[way.length - 1];
     assert.ok(Math.hypot(ex - back[0], ez - back[1]) < 0.6, `built out ${wing}, the route gets to the back of it`);
   }
-  // Nowhere else through the north wall.
-  assert.equal(walkable(0, FLOOR.minZ - 1, WING.rows), false);
+  // Nowhere else through the north wall: the studio wing's doorway is the only other way through it.
+  assert.equal(walkable(0, FLOOR.minZ - 1, WING.rows), true, 'the studio wing hallway is floor');
+  assert.equal(walkable(WING.minX - 1.2, FLOOR.minZ - 1, WING.rows), false, 'the slot west of the wing bay is not');
+  assert.equal(walkable(-14, FLOOR.minZ - 1, WING.rows), false, 'west of the annex is not');
 });
