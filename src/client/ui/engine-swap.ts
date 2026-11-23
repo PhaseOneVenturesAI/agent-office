@@ -2,6 +2,7 @@
 // another engine. The person picks the engine, the office seats an idle replacement in its own
 // worktree and prepares the existing one-shot handoff; the exact prompt is reviewed here and
 // acknowledged once. The source worker is untouched — session, transcript and branch stay its own.
+import type { WorkerHandoff } from '../../shared/protocol';
 import type { Net } from '../net';
 import { store } from '../state';
 import { h, openModal, toast } from './dom';
@@ -25,32 +26,71 @@ export function openEngineSwap(net: Net, workerId: string) {
     h('div.dept-row', {}, stage),
     review,
   );
-  const modal = openModal(el, { doing: `🔁 replacing ${worker.name}’s engine`, onClose: () => offMsg() });
+  let current: WorkerHandoff | undefined;
+  let pending: 'ack' | 'cancel' | undefined;
+  const status = h('p.dept-hint', { role: 'status' });
+  review.after(status);
+  const modal = openModal(el, { doing: `🔁 replacing ${worker.name}’s engine`, onClose: () => { offMsg(); offStatus(); } });
 
   stage.addEventListener('click', () => {
     if (!fields.valid()) return;
     net.send({ t: 'handoff.swap', workerId, provider: fields.value(), model: fields.model(), effort: fields.effort(), note: note.value.trim() || undefined });
   });
 
-  // The server's review: the exact handoff prompt, acknowledged once or cancelled.
-  const onMessage = (msg: import('../../shared/protocol').ServerMsg) => {
-    if (!el.isConnected) return;
-    if (msg.t !== 'handoff.preview' || msg.workerId !== workerId) return;
-    const prompt = h('pre.dept-swap-prompt', {}, msg.handoff.prompt);
-    const ack = h('button.btn.primary', { type: 'button' }, 'Acknowledge context and send once');
-    ack.addEventListener('click', () => {
-      ack.disabled = true;
-      net.send({ t: 'handoff.ack', workerId, handoffId: msg.handoff.id });
-      toast(`Handoff to the replacement sent — ${worker.name} keeps its own session and branch.`);
-      modal.close();
-    });
+  function render(handoff: WorkerHandoff) {
+    current = handoff;
+    stage.disabled = true;
+    fields.element.style.display = 'none';
+    note.hidden = true;
+    stage.style.display = 'none';
+    const delivered = handoff.state === 'acknowledged';
+    const prompt = h('pre.dept-swap-prompt', {}, handoff.prompt);
+    const ack = h('button.btn.primary', { type: 'button' }, delivered ? 'Finish role swap' : 'Acknowledge context and send once');
     const cancel = h('button.btn', { type: 'button' }, 'Cancel the swap');
-    cancel.addEventListener('click', () => {
-      net.send({ t: 'handoff.cancel', workerId, handoffId: msg.handoff.id });
-      review.replaceChildren(h('p.dept-hint', {}, 'Swap cancelled — the idle replacement can be sent home from the floor.'));
-    });
-    review.replaceChildren(h('h4', {}, 'Review the handoff'), prompt, h('div.dept-row', {}, ack, cancel));
-  };
-  const offMsg = net.onMessage(onMessage);
+    ack.disabled = !!pending || !net.up || handoff.state === 'delivery-failed';
+    cancel.disabled = !!pending || !net.up || delivered;
+    const submit = (action: 'ack' | 'cancel') => {
+      if (pending || !net.up) return;
+      pending = action;
+      status.textContent = action === 'ack' ? 'Waiting for the server to confirm the swap…' : 'Waiting for cancellation…';
+      render(handoff);
+      net.send({ t: action === 'ack' ? 'handoff.ack' : 'handoff.cancel', workerId, handoffId: handoff.id });
+    };
+    ack.addEventListener('click', () => submit('ack'));
+    cancel.addEventListener('click', () => submit('cancel'));
+    review.replaceChildren(h('h4', {}, delivered ? 'Handoff sent — finish the role swap' : 'Review the handoff'),
+      h('p.dept-hint', {}, delivered ? 'The handoff was already delivered. Finishing retries the role update without sending it again.' : ''),
+      prompt, h('div.dept-row', {}, ack, cancel));
+  }
+  const offMsg = net.onMessage((msg) => {
+    if (!el.isConnected) return;
+    if (msg.t === 'handoff.preview' && msg.workerId === workerId) render(msg.handoff);
+    if (msg.t === 'worker.update' && msg.worker.id === workerId && msg.worker.handoff && msg.worker.swap) render(msg.worker.handoff);
+    if (msg.t !== 'handoff.result' || msg.workerId !== workerId || msg.handoffId !== current?.id || msg.action !== pending) return;
+    pending = undefined;
+    if (!msg.ok) {
+      status.textContent = msg.error ?? 'The swap was not completed. Review and retry.';
+      render(msg.handoff ?? current);
+      return;
+    }
+    if (msg.action === 'ack') {
+      toast(`Swap confirmed — ${worker.name} keeps its own session and branch.`);
+      modal.close();
+    } else {
+      current = undefined;
+      stage.disabled = false;
+      fields.element.style.display = '';
+      note.hidden = false;
+      stage.style.display = '';
+      review.replaceChildren();
+      status.textContent = 'Swap cancelled.';
+    }
+  });
+  const offStatus = net.onStatus((up) => {
+    pending = undefined;
+    status.textContent = up ? 'Connection restored. Retry to confirm the pending swap; the handoff will not be sent twice.' : 'Disconnected. The swap is not confirmed. Reconnect to retry.';
+    if (current) render(current);
+  });
+  if (worker.handoff && worker.swap) render(worker.handoff);
   close.addEventListener('click', () => modal.close());
 }

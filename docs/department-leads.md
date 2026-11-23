@@ -116,3 +116,5 @@ are the front door.
 - Worker discovery applies the same private-role redaction as the game. An ordinary worker's token does not expose the CEO's prompt or activity.
 - Swap history is copied and deduplicated before the role seat is saved; the source record is retained for recovery. A failed history or identity save leaves the swap reservation available to retry. A retry of a delivered handoff saves the seat without sending a second prompt. Ordinary worker swaps need no role record.
 - Manager completion reports fire once per observed transition, with remembered status across restarts. Removing a child also removes its held notice from durable storage. A project owner may create the first manager; only an unowned project falls back to office-admin setup.
+
+Engine-swap confirmation stays open until the server confirms completion. If the handoff was delivered but saving the role failed, reopen the swap and choose **Finish role swap**: this retries the role update without delivering the handoff again. Disconnects and server errors leave the swap unconfirmed and retryable.

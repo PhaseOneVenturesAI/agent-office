@@ -27,4 +27,6 @@ export type HandoffClientMsg =
   | { t: 'handoff.cancel'; workerId: string; handoffId: string }
   | { t: 'handoff.ack'; workerId: string; handoffId: string }
   | { t: 'handoff.swap'; workerId: string; provider: AgentProvider; model?: string; effort?: AgentEffort; note?: string };
-export type HandoffServerMsg = { t: 'handoff.preview'; workerId: string; handoff: WorkerHandoff };
+export type HandoffServerMsg =
+  | { t: 'handoff.preview'; workerId: string; handoff: WorkerHandoff }
+  | { t: 'handoff.result'; workerId: string; handoffId: string; action: 'ack' | 'cancel'; ok: boolean; error?: string; handoff?: WorkerHandoff };

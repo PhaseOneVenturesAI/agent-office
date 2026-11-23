@@ -474,3 +474,5 @@ The native server integration needs its own private OAuth app; a chat plugin con
 is separate. See [Linear setup and task permissions](docs/linear.md).
 
 Role conversations and approvals both require role authority **and** access to the worker's signed-in account. Selecting a manager's billing custodian does not share that person's subscription. Worker discovery hides private role tasks from other accounts. If an engine swap cannot save the role/history, the existing seat and source record are retained and the swap can be retried without sending its handoff twice. See [department leads](docs/department-leads.md).
+
+Engine swaps wait for server confirmation; an interrupted role update can be retried with **Finish role swap** without repeating its handoff.
