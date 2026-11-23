@@ -456,3 +456,11 @@ On a service restart, hosted PTY workers continue in their terminal host. Kimi a
 ### Inspect project instructions and memory
 
 **☰ → 📖 Project context** (or **📖 Context** on `/lite`) opens actual project Markdown, including conventional ignored local instructions. Inspect its source, host and revision; admins can edit with content-hash conflict checks, archive/supersede explicitly, inspect retained prior text and restore it. Existing agent context is labeled unknown; project edits do not prompt agents, synchronize worktrees, commit or push. The shared Harness stays separate. See [project context and history](docs/project-context.md).
+
+### Linear tasks on the office board
+
+The 📋 task board can link a floor to a Linear team/project. Employees can do assigned
+work manually or explicitly start their own connected agent. Importing an issue never
+starts an agent, and an agent ending its turn does not complete the business task.
+The native server integration needs its own private OAuth app; a chat plugin connection
+is separate. See [Linear setup and task permissions](docs/linear.md).

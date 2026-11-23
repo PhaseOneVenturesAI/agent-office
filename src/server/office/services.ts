@@ -1,3 +1,5 @@
+import { LinearService } from '../linear/service.js';
+import { linearConfig } from '../linear/client.js';
 import { officeCredentialGrant } from '../office-credential-grants.js';
 import path from 'node:path';
 import os from 'node:os';
@@ -35,6 +37,7 @@ import type { Client } from './client.js';
 /** What the whole building shares, made before any floor opens: the sky, ⚙️ Settings, spend, sign-ins, limits. */
 export function createServices(ctx: Ctx): BuildingServices {
   const { cfg, accounts, clients, floors } = ctx;
+  const linear = new LinearService(cfg.dataDir, linearConfig(), () => floors.values(), () => accounts.state(new Set()).accounts.map(({ id, name }) => ({ id, name })));
   // Day, night and the weather outside the windows, the same for everyone.
   const sky = new Sky({ city: cfg.city, weather: cfg.weather, realTime: cfg.realTimeSky, placeFile: path.join(cfg.dataDir, 'sky-place.json'), clockFile: path.join(cfg.dataDir, 'sky-clock.json') }, (state) => ctx.broadcast({ t: 'sky', state }));
   sky.start();
@@ -184,7 +187,7 @@ export function createServices(ctx: Ctx): BuildingServices {
     });
   };
 
-  return { sky, themes, maps, prompts, leaveOnMerge, ledger, signins, harness, personalHarness, reviews, deploys, hygiene, costwall, nodes, deliveries, cloudflare, limits, accountLimits, webhook, machine, limitsOf, pumpQueues };
+  return { linear, sky, themes, maps, prompts, leaveOnMerge, ledger, signins, harness, personalHarness, reviews, deploys, hygiene, costwall, nodes, deliveries, cloudflare, limits, accountLimits, webhook, machine, limitsOf, pumpQueues };
 }
 
 /** What's made once the floors are open: the SSH team, the tailnet, workers' web servers, pictures and upgrades. */

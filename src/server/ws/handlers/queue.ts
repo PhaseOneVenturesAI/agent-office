@@ -59,4 +59,4 @@ export const queueHandlers = {
     if (!ctx.meOf(c.accountId).admin) return ctx.warn(c, 'Only an admin can change the shared queue limit');
     ctx.floorOf(c)?.queue.setLimit(num(msg.maxWorkers));
   },
-} satisfies HandlerMap<QueueClientMsg>;
+} satisfies HandlerMap<Exclude<QueueClientMsg, { t: 'queue.startOwn' }>>;

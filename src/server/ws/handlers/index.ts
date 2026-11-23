@@ -1,5 +1,6 @@
 // Every message a browser can send, by type, and the features that keep something per person on a
 // floor. A new feature adds its handler file and a line here.
+import { linearTaskHandlers } from './linear.js';
 import type { ClientMsg } from '../../../shared/protocol.js';
 import { conversationHandlers, conversationHooks } from './conversations.js';
 import { handoffHandlers } from './handoffs.js';
@@ -63,6 +64,7 @@ export const handlers: HandlerMap<ClientMsg> = {
   ...planHandlers,
   ...presenceHandlers,
   ...queueHandlers,
+  ...linearTaskHandlers,
   ...reviewsHandlers,
   ...rooftopHandlers,
   ...settingsHandlers,
