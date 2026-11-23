@@ -22,6 +22,7 @@ import { jukeboxHandlers, jukeboxView } from './jukebox.js';
 import { meetingHandlers, meetingView } from './meetings.js';
 import { deliveryHandlers, deliveryHooks } from './delivery.js';
 import { nodesHandlers } from './nodes.js';
+import { personalHarnessHandlers } from './personal-harness.js';
 import { planHandlers, planView } from './plan.js';
 import { presenceHandlers } from './presence.js';
 import { queueHandlers, queueView } from './queue.js';
@@ -57,6 +58,7 @@ export const handlers: HandlerMap<ClientMsg> = {
   ...jukeboxHandlers,
   ...meetingHandlers,
   ...nodesHandlers,
+  ...personalHarnessHandlers,
   ...deliveryHandlers,
   ...planHandlers,
   ...presenceHandlers,
