@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Building, type FloorDef } from '../src/server/building.js';
@@ -195,4 +195,91 @@ test("a clone that was cut off isn't taken for a checkout", async (t) => {
   const building = new Building(dataDir, projects, fast);
   assert.match(String(await building.add('acme/game', 'Sam', () => {})), /didn't finish/);
   assert.deepEqual(building.list(), []);
+});
+
+function missingFloor(root: string, dataDir: string): FloorDef {
+  const def = { id: 'old-game', name: 'Our game', repo: 'acme/game', dir: path.join(root, 'old-host', 'game'), palette: 3, addedBy: 'Original owner', addedAt: 123 };
+  writeFileSync(path.join(dataDir, 'floors.json'), JSON.stringify([def]));
+  return def;
+}
+
+test('re-adding a floor whose old host path is missing recovers it without changing its identity', async (t) => {
+  const { root, dataDir, projects } = office(t);
+  const old = missingFloor(root, dataDir);
+  const building = new Building(dataDir, projects, fast);
+  const result = await building.add('acme/game', 'New owner', () => {});
+  const recovered = { ...old, dir: path.join(projects, 'acme', 'game') };
+  assert.deepEqual(result, recovered);
+  assert.deepEqual(building.list(), [recovered]);
+  assert.deepEqual(new Building(dataDir, projects).list(), [recovered]);
+  assert.ok(!existsSync(old.dir), 'the old host path is not recreated');
+  assert.match(String(await building.add('acme/game', 'Sam', () => {})), /already has a floor/);
+});
+
+test('floor recovery reuses a matching checkout and preserves its uncommitted work', async (t) => {
+  const { root, dataDir, projects } = office(t);
+  const old = missingFloor(root, dataDir);
+  const dest = path.join(projects, 'acme', 'game');
+  execFileSync('git', ['clone', '-q', path.join(root, 'work'), dest]);
+  execFileSync('git', ['-C', dest, 'remote', 'set-url', 'origin', 'https://github.com/acme/game.git']);
+  writeFileSync(path.join(dest, 'index.html'), 'Uncommitted work');
+  process.env.FAKE_GH_FAIL = 'must reuse this checkout';
+  const building = new Building(dataDir, projects, fast);
+  assert.deepEqual(await building.add('acme/game', 'Sam', () => {}), { ...old, dir: dest });
+  assert.equal(readFileSync(path.join(dest, 'index.html'), 'utf8'), 'Uncommitted work');
+});
+
+test('a failed recovery retains the old floor record and refuses an unrelated destination', async (t) => {
+  const { root, dataDir, projects } = office(t);
+  const old = missingFloor(root, dataDir);
+  const dest = path.join(projects, 'acme', 'game');
+  mkdirSync(dest, { recursive: true });
+  writeFileSync(path.join(dest, 'keep.txt'), 'Existing work');
+  const building = new Building(dataDir, projects, fast);
+  assert.match(String(await building.add('acme/game', 'Sam', () => {})), /isn't a checkout/);
+  assert.deepEqual(building.list(), [old]);
+  assert.deepEqual(new Building(dataDir, projects).list(), [old]);
+  assert.equal(readFileSync(path.join(dest, 'keep.txt'), 'utf8'), 'Existing work');
+});
+
+test('a restart during floor recovery preserves the original identity and finishes once', async (t) => {
+  const { root, dataDir, projects, running } = office(t);
+  const old = missingFloor(root, dataDir);
+  process.env.FAKE_GH_DELAY = '0.5';
+  const first = new Building(dataDir, projects, fast);
+  void first.add('acme/game', 'Sam', () => {});
+  await running();
+  assert.deepEqual(first.list(), [old], 'the old registration stays until recovery succeeds');
+  assert.match(String(first.remove(old.id)), /still being cloned/);
+  first.shutdown(true);
+  const second = new Building(dataDir, projects, fast);
+  const done: (FloorDef | string)[] = [];
+  second.resumeClones((result) => done.push(result));
+  assert.deepEqual(second.pending().map((d) => d.id), [old.id]);
+  await until(() => done.length > 0);
+  const recovered = { ...old, dir: path.join(projects, 'acme', 'game') };
+  assert.deepEqual(done, [recovered]);
+  assert.deepEqual(new Building(dataDir, projects).list(), [recovered]);
+});
+
+test('a dangling registered path is not treated as permission to relocate its floor', async (t) => {
+  const { root, dataDir, projects } = office(t);
+  const old = missingFloor(root, dataDir);
+  mkdirSync(path.dirname(old.dir), { recursive: true });
+  symlinkSync(path.join(root, 'unavailable-volume'), old.dir);
+  const building = new Building(dataDir, projects, fast);
+  assert.match(String(await building.add('acme/game', 'Sam', () => {})), /already has a floor/);
+  assert.deepEqual(building.list(), [old]);
+  assert.ok(!existsSync(projects), 'no alternative checkout is created');
+});
+
+test('a missing checkout already at the current destination requires recovery in place', async (t) => {
+  const { root, dataDir, projects } = office(t);
+  const old = { ...missingFloor(root, dataDir), dir: path.join(projects, 'acme', 'game') };
+  writeFileSync(path.join(dataDir, 'floors.json'), JSON.stringify([old]));
+  const building = new Building(dataDir, projects, fast);
+  assert.match(String(await building.add('acme/game', 'Sam', () => {})), /is missing — restore it/);
+  assert.deepEqual(building.list(), [old]);
+  assert.deepEqual(building.pending(), []);
+  assert.ok(!existsSync(old.dir), 'no partial checkout is created at the registered path');
 });
