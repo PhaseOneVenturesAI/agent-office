@@ -451,6 +451,8 @@ Open an existing agent’s terminal and choose **Conversation**. Claude, Kimi an
 
 On a service restart, hosted PTY workers continue in their terminal host. Kimi and DeepSeek ACP children stop with Office: shutdown now waits for their actual exit before the parent exits. A child gets a graceful close request, then scoped termination/escalation if needed; a cleanup failure exits nonzero so a release cannot mistake it for success. Floor removal, worker removal, meeting cleanup, and recovery also wait for child stop; occupied seats and ownership records stay reserved if it fails. See [ACP shutdown](docs/agents.md#acp-shutdown-and-restarts).
 
+Harness Apply now retires removed instructions/skills only when Office previously managed the unchanged destination, with retained backups. Existing untracked files and local edits are preserved as conflicts; older installations need explicit review before adopting their copies. Shared and personal harnesses both exclude retired global review blocks. See [managed harness updates](docs/agents.md#the-shared-harness).
+
 ### Inspect project instructions and memory
 
 **☰ → 📖 Project context** (or **📖 Context** on `/lite`) opens actual project Markdown, including conventional ignored local instructions. Inspect its source, host and revision; admins can edit with content-hash conflict checks, archive/supersede explicitly, inspect retained prior text and restore it. Existing agent context is labeled unknown; project edits do not prompt agents, synchronize worktrees, commit or push. The shared Harness stays separate. See [project context and history](docs/project-context.md).
