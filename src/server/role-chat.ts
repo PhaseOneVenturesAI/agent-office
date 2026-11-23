@@ -5,7 +5,8 @@
 // under its own scope so it never becomes part of the controller-facing record (see
 // docs/department-leads.md).
 
-import { appendFileSync, existsSync, readFileSync, renameSync, rmSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 
 export interface ChatMessage {
@@ -39,20 +40,38 @@ export class RoleChat {
     }
   }
 
-  /** Moves a worker's record to a replacement (a landed engine swap): history follows the seat. */
-  migrate(fromId: string, toId: string): void {
+  /**
+   * Moves a worker's record to a replacement (a landed engine swap): history follows the seat.
+   * Transactional and chronological: all messages from both files are merged by timestamp into a
+   * temp file, which replaces the target only after the whole merge is on disk; a failure leaves
+   * both originals intact. Resolves true when the record now lives at `toId`.
+   */
+  migrate(fromId: string, toId: string): boolean {
     const from = this.file(fromId), to = this.file(toId);
-    if (from === to || !existsSync(from)) return;
+    if (from === to) return true;
+    if (!existsSync(from)) return existsSync(to);
+    const temp = `${to}.${randomBytes(4).toString('hex')}.tmp`;
     try {
-      if (existsSync(to)) {
-        const lines = readFileSync(from, 'utf8');
-        appendFileSync(to, lines.endsWith('\n') || !lines.trim() ? lines : `${lines}\n`, { mode: 0o600 });
-        rmSync(from);
-      } else {
-        renameSync(from, to);
-      }
+      const parse = (file: string) =>
+        readFileSync(file, 'utf8')
+          .split('\n')
+          .filter((l) => l.trim())
+          .map((line) => {
+            try {
+              return JSON.parse(line) as ChatMessage;
+            } catch {
+              return undefined;
+            }
+          })
+          .filter((m): m is ChatMessage => !!m && (m.role === 'user' || m.role === 'assistant') && typeof m.text === 'string' && Number.isFinite(m.at));
+      const merged = [...parse(from), ...(existsSync(to) ? parse(to) : [])].sort((a, b) => a.at - b.at);
+      writeFileSync(temp, merged.map((m) => JSON.stringify(m)).join('\n') + '\n', { mode: 0o600 });
+      renameSync(temp, to);
+      rmSync(from);
+      return true;
     } catch {
-      // A failed move leaves the source file intact; nothing is lost.
+      rmSync(temp, { force: true });
+      return false;
     }
   }
 

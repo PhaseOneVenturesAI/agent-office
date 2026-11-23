@@ -21,7 +21,7 @@ export const conversationHandlers = {
     close(c);
     const role = workerOf(ctx, msg.workerId);
     let wid: string | undefined, floor = role?.floor;
-    if (role && role.floor.isRoleWorker?.(role.wid)) {
+    if (role && role.floor.isRoleWorker(role.wid)) {
       // Role characters: only the owner/controllers talk to them — staff Q&A never enters the
       // manager's own session (see staff-qa.ts); it runs on a separate read-only session.
       const access = roleAccess(ctx, role.floor, role.wid, c.accountId);
@@ -37,7 +37,7 @@ export const conversationHandlers = {
     }
     if (!wid || !floor) return;
     const service = floor.workers.conversations;
-    const isRole = !!floor.isRoleWorker?.(wid);
+    const isRole = !!floor.isRoleWorker(wid);
     ctx.sendTo(c, { t: 'conversation.state', workerId: wid, supported: conversationSupported(floor.workers.get(wid)?.provider), messages: service.snapshot(wid) });
     listening.set(c, service.subscribe(wid, (message) => {
       if (c.out || !ctx.stillIn(c) || ctx.floorOf(c) !== floor) return close(c);
@@ -52,7 +52,7 @@ export const conversationHandlers = {
   'conversation.close'(_ctx, c) { close(c); },
   'conversation.send'(ctx, c, msg) {
     const role = workerOf(ctx, msg.workerId);
-    if (role && role.floor.isRoleWorker?.(role.wid)) {
+    if (role && role.floor.isRoleWorker(role.wid)) {
       const access = roleAccess(ctx, role.floor, role.wid, c.accountId);
       if (access.kind === 'staff') return ctx.warn(c, 'Read-only questions go in the Ask box on the manager’s card — they never enter this conversation.');
       if (access.kind === 'none') return ctx.warn(c, access.why || 'Not available.');
@@ -64,7 +64,7 @@ export const conversationHandlers = {
   },
   'conversation.page'(ctx, c, msg) {
     const role = workerOf(ctx, msg.workerId);
-    if (role && role.floor.isRoleWorker?.(role.wid)) {
+    if (role && role.floor.isRoleWorker(role.wid)) {
       const access = roleAccess(ctx, role.floor, role.wid, c.accountId);
       if (access.kind !== 'owner' && access.kind !== 'controller') return;
     } else {

@@ -6,6 +6,8 @@
 
 import path from 'node:path';
 import { homedir } from 'node:os';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import type { Department } from '../shared/protocol.js';
 import { buildQaHome, qaContext, qaLaunch, staffQaAsk, type QaOutcome } from './staff-qa.js';
 import { childEnv } from './workers/env.js';
@@ -22,7 +24,7 @@ export interface StaffQaFloor {
 /**
  * Answers one staff question. `custodianId` is the authorized billing custodian's account (from
  * the department's custodian email); without one in an accounts office this fails closed rather
- * than silently spending the host's credentials. `launch` overrides the CLI (tests only).
+ * enforces it; without accounts the office's own login is the custodian.
  */
 export async function floorStaffQA(floor: StaffQaFloor, deptId: string, question: string, by: string, custodianId?: string, launchOverride?: { file: string; args: string[] }): Promise<QaOutcome> {
   const dept = floor.departments.get(deptId);
@@ -50,13 +52,18 @@ export async function floorStaffQA(floor: StaffQaFloor, deptId: string, question
   const qaHome = buildQaHome(sourceHome, framing);
   if (typeof qaHome === 'string') return { ok: false, why: qaHome };
   env.KIMI_CODE_HOME = qaHome.home;
+  // The session works in an EMPTY scratch directory, never the project: the CLI auto-loads
+  // AGENTS.md and project files from the cwd, which would leak context the approved snapshot
+  // didn't include.
+  const scratch = mkdtempSync(path.join(tmpdir(), 'agent-office-staff-qa-cwd-'));
   const context = qaContext({ name: dept.name, brief: dept.brief as { rev: number; text: string }[], lead: dept.lead ? { objective: dept.lead.objective } : undefined, assets: dept.assets });
   const prompt = [context, `Question from ${by}: ${clean}`].join('\n\n');
   let outcome: QaOutcome;
   try {
-    outcome = await staffQaAsk({ ...launch, cwd: floor.dir, env, prompt, model: dept.lead?.model, ...(dept.lead?.effort ? { effort: dept.lead.effort } : {}) });
+    outcome = await staffQaAsk({ ...launch, cwd: scratch, env, prompt, model: dept.lead?.model, ...(dept.lead?.effort ? { effort: dept.lead.effort } : {}) });
   } finally {
     qaHome.cleanup();
+    rmSync(scratch, { recursive: true, force: true });
   }
   const at = Date.now();
   floor.roleChat.append(`qa-${deptId}`, { id: `q-${at}`, role: 'user', text: clean, at, by, scope: 'staff' });

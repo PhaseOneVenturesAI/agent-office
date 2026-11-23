@@ -251,7 +251,16 @@ export const departmentsHandlers = {
     // Read-only Q&A is for staff; controllers and the owner talk to the manager directly.
     const access = roleAccessForManager(ctx, floor, id, c.accountId);
     if (access.kind === 'none') return ctx.warn(c, access.why);
-    const custodian = dept.lead?.custodian ? ctx.accounts.byEmail(dept.lead.custodian)?.id : undefined;
+    // Billing custody is explicit: in an accounts office the department's custodian must resolve to
+    // a real account — there is no silent fallback to the host's own credentials.
+    let custodian: string | undefined;
+    if (ctx.accounts.any) {
+      const email = dept.lead?.custodian;
+      if (!email) return ctx.warn(c, 'Set a billing custodian for this manager first (☰ → 🛡️ Roles) — read-only Q&A never runs on the office’s own credentials.');
+      const account = ctx.accounts.byEmail(email);
+      if (!account) return ctx.warn(c, `The custodian ${email} isn’t an account on this office.`);
+      custodian = account.id;
+    }
     void floor.staffQA(id, str(msg.question, 4000), c.peer.name, custodian).then((outcome) => {
       if (c.out || !ctx.stillIn(c)) return;
       ctx.sendTo(c, { t: 'departments.qa', id, question: str(msg.question, 4000), answer: outcome.ok ? outcome.answer : `Unavailable: ${outcome.why}`, at: Date.now() });

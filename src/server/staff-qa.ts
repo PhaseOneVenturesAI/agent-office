@@ -8,6 +8,7 @@
 // the answer is a truthful "unavailable" — staff content is never passed into a manager session,
 // never run on an arbitrary binary from PATH, and never on host credentials.
 
+import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -19,6 +20,35 @@ export type QaOutcome = { ok: true; answer: string } | { ok: false; why: string 
 
 /** Providers whose tool-free mode the office can actually enforce today. Others fail closed. */
 export const QA_SUPPORTED: ReadonlySet<AgentProvider> = new Set(['kimi']);
+
+/**
+ * Kimi versions whose tool-free behavior was VERIFIED on the actual installed binary (the reviewer's
+ * source inspection of 2.7.2's toolPolicy). The wildcard disable-all is an implementation detail,
+ * not a stable API, and the deployed provider version may differ — anything outside this pin fails
+ * closed rather than assuming.
+ */
+export const QA_VERIFIED_VERSIONS: ReadonlySet<string> = new Set(['2.7.2']);
+
+const versionCache = new Map<string, string | undefined>();
+/** The CLI's reported version, cached; undefined when it can't be read. */
+export function cliVersion(file: string): string | undefined {
+  if (versionCache.has(file)) return versionCache.get(file);
+  let found: string | undefined;
+  try {
+    const out = execFileSync(file, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] });
+    found = /(\d+\.\d+\.\d+)/.exec(out)?.[1];
+  } catch {
+    found = undefined;
+  }
+  versionCache.set(file, found);
+  return found;
+}
+
+/** Is this exact binary's tool-free mode verified? */
+export function toolFreeVerified(file: string): boolean {
+  const v = cliVersion(file);
+  return !!v && QA_VERIFIED_VERSIONS.has(v);
+}
 
 /** The dedicated Q&A home: the source home's credentials, a tool-free config, the framing prompt. */
 export function buildQaHome(sourceHome: string, framing: string): { home: string; cleanup: () => void } | string {
@@ -56,6 +86,10 @@ export function qaLaunch(provider: AgentProvider | undefined): { file: string; a
   }
   const file = resolveCommand('kimi');
   if (!file) return 'The Kimi CLI is not installed on this office machine.';
+  if (!toolFreeVerified(file)) {
+    const v = cliVersion(file);
+    return `Read-only Q&A is withheld: this office's Kimi is ${v ?? 'unversioned'}, and its tool-free mode is only verified on ${[...QA_VERIFIED_VERSIONS].join(', ')}. The deployed provider version may differ, so the office fails closed rather than assuming.`;
+  }
   return { file, args: ['acp'] };
 }
 

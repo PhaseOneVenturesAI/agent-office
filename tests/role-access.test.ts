@@ -5,20 +5,31 @@
 // runs on a separate no-tools ACP session that auto-rejects every tool request.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { accessSync, chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ceoHandlers } from '../src/server/ws/handlers/ceo.js';
 import { departmentsHandlers } from '../src/server/ws/handlers/departments.js';
 import { conversationHandlers } from '../src/server/ws/handlers/conversations.js';
-import { buildQaHome, qaLaunch, staffQaAsk } from '../src/server/staff-qa.js';
+import { buildQaHome, qaLaunch, staffQaAsk, toolFreeVerified } from '../src/server/staff-qa.js';
 import { floorStaffQA } from '../src/server/dept-staff-qa.js';
-import { publicRoleWorker } from '../src/server/role-access.js';
+import { publicRoleWorker, redactWorkersFor } from '../src/server/role-access.js';
+import { RoleChat } from '../src/server/role-chat.js';
 import { mkdtempSync, readFileSync, mkdirSync } from 'node:fs';
 import type { Ctx } from '../src/server/office/context.js';
 import type { Client } from '../src/server/office/client.js';
 
 const OWNER = 'info@jdiaz.com';
+const resolveCommandShim = (cmd: string): string | undefined => {
+  for (const dir of (process.env.PATH ?? '').split(':')) {
+    try {
+      const p = path.join(dir, cmd);
+      accessSync(p);
+      return p;
+    } catch { /* keep looking */ }
+  }
+  return undefined;
+};
 const IVAN = 'ivanv@phaseoneventures.com';
 
 /** An accounts office with a CEO (owned by info@jdiaz.com) and a marketing manager (Ivan controls). */
@@ -27,7 +38,7 @@ function fixture(actor: string | undefined, admin = false) {
   const warnings: string[] = [];
   const sent: unknown[] = [];
   const ceo = { name: 'Avery', owner: OWNER, workerId: 'ceo-w', by: 'root', at: 0 };
-  const lead = { name: 'Maya', workerId: 'mgr-w', controllers: [IVAN], audience: [], by: 'root', at: 0 };
+  const lead = { name: 'Maya', workerId: 'mgr-w', controllers: [IVAN], audience: [], custodian: 'ivan@example.com', by: 'root', at: 0 };
   const dept = { id: 'dept-1', preset: 'marketing', name: 'Marketing', lead, roles: [] };
   const qaCalls: { deptId: string; question: string }[] = [];
   const floor = {
@@ -73,7 +84,7 @@ function fixture(actor: string | undefined, admin = false) {
     accounts: {
       any: true,
       get: (id: string) => ({ name: id.split('@')[0], email: id }),
-      byEmail: (email: string) => ({ id: email, name: email.split('@')[0], email }),
+      byEmail: (email: string) => (email.endsWith('@example.com') ? { id: email, name: email.split('@')[0], email } : undefined),
     },
     meOf: () => (admin ? { admin: true } : { admin: false }),
     workerFloor: () => floor,
@@ -282,4 +293,70 @@ test('floor staff Q&A uses the authorized custodian env, never the host credenti
   // the office path also refuses to run on host credentials when the engine is unsupported.
   const off = await floorStaffQA({ ...floor, departments: { get: () => ({ ...floor.departments.get('dept-1'), lead: { name: 'Maya', provider: 'claude', by: 'Kim', at: 0 } }) } } as never, 'dept-1', 'Q', 'Pat', 'acct-ivan');
   assert.match(off.why!, /only available on a Kimi-backed manager/);
+});
+
+test('accounts-mode ask refuses a missing or unknown custodian — no host fallback', () => {
+  // No custodian configured: refused, and staffQA is never called.
+  const none = fixture('pat@example.com');
+  const deptNone = (none.ctx as unknown as { workerFloor: () => { departments: { get: (id: string) => { lead?: { custodian?: string } } } } }).workerFloor().departments.get('dept-1')!;
+  deptNone.lead = { ...deptNone.lead!, custodian: undefined };
+  (departmentsHandlers['departments.ask'] as Function)(none.ctx, none.client, { t: 'departments.ask', id: 'dept-1', question: 'Q' });
+  assert.deepEqual(none.qaCalls, [], 'nothing ran without billing custody');
+  assert.match(none.warnings[0]!, /billing custodian/);
+  // Unknown custodian email: refused.
+  const unknown = fixture('pat@example.com');
+  const dept = (unknown.ctx as unknown as { workerFloor: () => { departments: { get: (id: string) => { lead?: { custodian?: string } } } } }).workerFloor().departments.get('dept-1')!;
+  dept.lead = { ...dept.lead!, custodian: 'ghost@nowhere.org' };
+  (departmentsHandlers['departments.ask'] as Function)(unknown.ctx, unknown.client, { t: 'departments.ask', id: 'dept-1', question: 'Q' });
+  assert.deepEqual(unknown.qaCalls, []);
+  assert.match(unknown.warnings[0]!, /isn’t an account/);
+});
+
+test('the tool-free mode is pinned to verified CLI versions; anything else fails closed', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'agent-office-qa-ver-'));
+  try {
+    const fake = path.join(dir, 'kimi-fake');
+    writeFileSync(fake, '#!/bin/sh\necho "kimi-cli 9.9.9"\n');
+    chmodSync(fake, 0o755);
+    assert.equal(toolFreeVerified(fake), false, 'an unverified version never runs read-only Q&A');
+    const real = resolveCommandShim('kimi');
+    if (real) assert.equal(toolFreeVerified(real), true, 'the reviewed 2.7.2 binary stays verified');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('initial-view redaction is recipient-aware, and migration is chronological and transactional', () => {
+  const w = { id: 'mgr-w', kind: 'agent', provider: 'kimi', deskId: 'desk-2', name: 'Maya', color: '#fff', status: 'working', acked: true, createdBy: 'Kim', createdAt: 1, cols: 80, rows: 24, viewers: [], viewerIds: [], prompt: 'SECRET', activity: 'SECRET' } as import('../src/shared/protocol.js').WorkerInfo;
+  const plain = { ...w, id: 'w9', prompt: 'open' };
+  const ctx = { accounts: { any: true, get: (id: string) => ({ name: id, email: id }) } } as never;
+  const floor = { ceo: { get: () => undefined }, departments: { leadDeptOfWorker: (id: string) => (id === 'mgr-w' ? { lead: { controllers: [IVAN] } } : undefined) }, isRoleWorker: (id: string) => (id === 'mgr-w' ? { role: 'Marketing manager', name: 'Maya' } : undefined) } as never;
+  const redacted = redactWorkersFor(ctx, floor, [w, plain], 'pat@example.com');
+  assert.equal((redacted[0] as { prompt?: string }).prompt, undefined, 'staff gets the shell');
+  assert.equal((redacted[1] as { prompt?: string }).prompt, 'open', 'plain workers keep their card');
+  const kept = redactWorkersFor(ctx, floor, [w], IVAN);
+  assert.equal((kept[0] as { prompt?: string }).prompt, 'SECRET', 'controllers keep the full card');
+  // migrate: interleaved timestamps merge chronologically; a failed merge leaves both intact.
+  const dir = mkdtempSync(path.join(tmpdir(), 'agent-office-migrate2-'));
+  try {
+    const chat = new RoleChat(dir);
+    chat.append('old-w', { id: 'o1', role: 'user', text: 'one', at: 10 });
+    chat.append('old-w', { id: 'o2', role: 'assistant', text: 'three', at: 30 });
+    chat.append('new-w', { id: 'n1', role: 'assistant', text: 'two', at: 20 });
+    assert.equal(chat.migrate('old-w', 'new-w'), true);
+    assert.deepEqual(chat.tail('new-w').map((m) => m.text), ['three', 'two', 'one'], 'newest first, chronology preserved');
+    assert.equal(chat.tail('old-w').length, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  const dir2 = mkdtempSync(path.join(tmpdir(), 'agent-office-migrate3-'));
+  try {
+    const chat2 = new RoleChat(dir2);
+    chat2.append('old-w', { id: 'o1', role: 'user', text: 'precious', at: 1 });
+    mkdirSync(path.join(dir2, 'role-chat-new-w.jsonl'), { recursive: true }); // target is a directory: rename fails
+    assert.equal(chat2.migrate('old-w', 'new-w'), false);
+    assert.deepEqual(chat2.tail('old-w').map((m) => m.text), ['precious'], 'the original survives a failed merge');
+  } finally {
+    rmSync(dir2, { recursive: true, force: true });
+  }
 });
