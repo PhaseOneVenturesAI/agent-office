@@ -130,3 +130,12 @@ Consent is stored without credential secrets in `role-subscription-grants.json`.
 Existing seated managers are never silently rebound to a different payer. A mismatched runtime must be replaced explicitly. Changing provider invalidates the old consent; the existing credential owner may need to finish the explicit swap before other controllers can use the newly consented runtime. Pending swaps retain their normal one-shot handoff and recovery behavior. Human-initiated personal child workers continue to use the initiating human’s subscription.
 
 This is application-level credential routing and consent, not an OS tenant sandbox: approving a coding agent’s tool access still authorizes code execution within the existing host environment. No live grants are created by installing this feature.
+
+
+### Conversation and live Roles editing
+
+For agents, desk **E**, the workers sidebar and waiting notifications open Conversation first, including Claude, Codex and Kimi. Shells and explicit terminal/search actions keep their terminal behavior. Conversation retains its Terminal fallback and native approval choices.
+
+Roles settings are saved explicitly and confirmed by a correlated server response. Rejected saves retain the entered values and show an inline error; typing a newer draft while a save is pending does not make that draft “saved.” Worker and department updates preserve the mounted editors, focus, pending staff question and unsubmitted consent choice. A changed consent scope is fetched again for review rather than silently authorizing its new people/provider. Ask refusals and provider failures end the pending indicator with an inline reason and retain the question for retry.
+
+Requested autonomy and current-session launch settings are displayed separately. Saving a preference does not claim to change an existing process. Legacy unconfirmed labels are identified as such and need an explicit save. Runtime launch details come from the provider adapter; missing details remain “not reported,” not an inferred effective permission mode.

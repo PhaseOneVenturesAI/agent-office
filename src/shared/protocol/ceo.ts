@@ -31,7 +31,7 @@ export interface CeoState {
 
 export type CeoClientMsg =
   /** Name (or replace) the CEO identity and its saved engine. Never launches. */
-  | { t: 'ceo.set'; name: string; provider?: AgentProvider; model?: string; effort?: AgentEffort; autonomy?: string; /** Admins only: who privately owns the CEO. */ owner?: string }
+  | { t: 'ceo.set'; requestId?: string; name: string; provider?: AgentProvider; model?: string; effort?: AgentEffort; autonomy?: string; /** Admins only: who privately owns the CEO. */ owner?: string }
   /** Take the CEO identity away (a live CEO worker keeps its desk as a normal worker). */
   | { t: 'ceo.clear' }
   /** Start the CEO's shift explicitly: seats their worker at a desk with the CEO prompt. */

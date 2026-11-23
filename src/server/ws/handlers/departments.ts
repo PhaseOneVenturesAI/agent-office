@@ -114,11 +114,12 @@ export const departmentsHandlers = {
   'departments.access'(ctx, c, msg) {
     const floor = here(ctx, c);
     if (!floor) return;
+    const reply = (error?: string) => { if (msg.requestId) ctx.sendTo(c, { t: 'role.settings.result', requestId: msg.requestId, floor: floor.id, id: msg.id, error }); else ctx.warn(c, error); };
     const edit = canDelegateManager(ctx, floor, str(msg.id, 16), c.accountId);
-    if (!edit.ok) return ctx.warn(c, edit.why);
+    if (!edit.ok) return reply(edit.why);
     const ask = msg as { controllers?: unknown; audience?: unknown; custodian?: unknown };
-    if (ask.controllers !== undefined || ask.custodian !== undefined || ask.audience !== undefined) { const e = ctx.roleSubscriptions?.revoke(floor.id, str(msg.id, 16)); if (e) return ctx.warn(c, e); }
-    ctx.warn(c, floor.departments.setAccess(str(msg.id, 16), { ...(ask.controllers !== undefined ? { controllers: ask.controllers } : {}), ...(ask.audience !== undefined ? { audience: ask.audience } : {}), ...(ask.custodian !== undefined ? { custodian: ask.custodian } : {}) }));
+    if (ask.controllers !== undefined || ask.custodian !== undefined || ask.audience !== undefined) { const e = ctx.roleSubscriptions?.revoke(floor.id, str(msg.id, 16)); if (e) return reply(e); }
+    reply(floor.departments.setAccess(str(msg.id, 16), { ...(ask.controllers !== undefined ? { controllers: ask.controllers } : {}), ...(ask.audience !== undefined ? { audience: ask.audience } : {}), ...(ask.custodian !== undefined ? { custodian: ask.custodian } : {}) }));
   },
   'departments.lead.clear'(ctx, c, msg) {
     const floor = here(ctx, c);
@@ -252,18 +253,20 @@ export const departmentsHandlers = {
   'departments.ask'(ctx, c, msg) {
     const floor = here(ctx, c);
     if (!floor) return;
-    const id = str(msg.id, 16);
+    const id = str(msg.id, 16), question = str(msg.question, 4000);
+    const reply = (answer: string, error?: string) => {
+      if (c.out || !ctx.stillIn(c) || ctx.floorOf(c) !== floor) return;
+      ctx.sendTo(c, { t: 'departments.qa', id, requestId: msg.requestId, question, answer, error, at: Date.now() });
+      if (error && !msg.requestId) ctx.warn(c, error);
+    };
     const dept = floor.departments.get(id);
-    if (!dept?.lead) return ctx.warn(c, 'Name the manager first');
-    // Read-only Q&A is for staff; controllers and the owner talk to the manager directly.
+    if (!dept?.lead) return reply('', 'Name the manager first');
     const access = roleAccessForManager(ctx, floor, id, c.accountId);
-    if (access.kind === 'none') return ctx.warn(c, access.why);
+    if (access.kind === 'none') return reply('', access.why);
     const consent = staffQaExecution(ctx, floor, id, c.accountId);
-    if (consent.error) return ctx.warn(c, consent.error);
-    const custodian = consent.owner;
-    void floor.staffQA(id, str(msg.question, 4000), c.peer.name, custodian).then((outcome) => {
-      if (c.out || !ctx.stillIn(c)) return;
-      ctx.sendTo(c, { t: 'departments.qa', id, question: str(msg.question, 4000), answer: outcome.ok ? outcome.answer : `Unavailable: ${outcome.why}`, at: Date.now() });
-    });
+    if (consent.error) return reply('', consent.error);
+    void floor.staffQA(id, question, c.peer.name, consent.owner).then(outcome => {
+      reply(outcome.ok ? outcome.answer : `Unavailable: ${outcome.why}`, outcome.ok ? undefined : outcome.why);
+    }).catch(() => reply('', 'The read-only session failed. Your question is kept; try again.'));
   },
 } satisfies HandlerMap<DepartmentsClientMsg>;

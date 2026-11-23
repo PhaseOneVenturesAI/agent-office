@@ -187,8 +187,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
     const info = STATION_INFO[kind];
     // A prompt typed into a question it's asking would answer it.
     if (w?.status === 'needs_input') {
-      toast(`The ${name} is waiting on an answer — here's its terminal`, 'warn');
-      return openWorkerTerminal(w.id);
+      return parts.waiting.openWorker(w.id);
     }
     // Nobody there yet: asking hires the agent.
     if (!w && officeIsFull()) return;
@@ -388,7 +387,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
     const spent = w.kind === 'agent' && w.usage ? usageLabel(w.usage, workerProvider) : '';
     const shell = w.kind === 'shell';
     // A department manager's or the CEO's character is approachable as themselves: T talks to
-    // them, E stays the terminal.
+    // them through the role chooser; E opens Conversation directly.
     const leadDept = w.kind === 'agent' ? store.departments.departments.find((d) => d.lead?.workerId === w.id) : undefined;
     const isCeo = w.kind === 'agent' && !!store.ceo.ceo && store.ceo.ceo.workerId === w.id;
     const role = isCeo || !!leadDept;
@@ -399,7 +398,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
         h('span.title', {}, `${sign ? `🪧 ${sign} · ` : ''}${isCeo ? '👔 ' : leadDept ? '🎖️ ' : ''}${w.name} · ${STATUS_LABEL[w.status]}`),
         doing ? aside(doing) : '',
         spent ? h('span.cost', { title: usageTitle(w.usage!, workerProvider) }, spent) : '',
-        key('E', 'Open terminal'),
+        key('E', w.kind === 'agent' ? 'Conversation' : 'Open terminal'),
         talkName ? key('T', `Talk to ${talkName}`) : '',
         key('C', 'Changes'),
         isAsleep(w.status) ? key('R', shell ? 'Restart' : 'Resume') : key('P', shell ? 'Run command' : 'Prompt'),
@@ -463,7 +462,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
       if (!w && plan().byId.get(it.deskId)?.room) return key === 'E' ? parts.meeting.showMeeting() : undefined;
       if (key === 'B' && !w) return openShell(it.deskId);
       if (key === 'P') return promptAtDesk(it.deskId);
-      if (key === 'E') return w ? openWorkerTerminal(w.id) : hireAtDesk(it.deskId);
+      if (key === 'E') return w ? parts.waiting.openWorker(w.id) : hireAtDesk(it.deskId);
       if (key === 'T' && w?.kind === 'agent') {
         if (store.ceo.ceo?.workerId === w.id) return openCeoChooser(net, w.id);
         const dept = store.departments.departments.find((d) => d.lead?.workerId === w.id);
@@ -472,7 +471,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
       if (key === 'C' && w) return openWorkerChanges(w.id);
       if (key === 'R' && w && isAsleep(w.status)) return resumeWorker(w);
       if (key === 'X' && w) {
-        if (store.ceo.ceo?.workerId === w.id || store.departments.departments.some((d) => d.lead?.workerId === w.id)) return toast(`${w.name} is a permanent project character — retire the role in the Roles view instead`, 'warn');
+        if (store.ceo.ceo?.workerId === w.id || store.departments.departments.some((d) => d.lead?.workerId === w.id)) return toast(`${w.name} is a permanent project character — pause its turn from Conversation instead`, 'warn');
         return killWorker(w.id);
       }
       if (key === 'O' && w) return pullRequestFor(w);
