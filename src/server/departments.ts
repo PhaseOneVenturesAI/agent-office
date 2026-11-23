@@ -453,6 +453,36 @@ export class Departments {
     return this.commit(this.departments.map((d) => (d.id === id ? next : d)));
   }
 
+  /**
+   * The CEO's scoped objective for this manager; results and blockers roll up to it. The returned
+   * context block binds what the manager may hand workers: the current brief, the current brand
+   * references, and the role skills that actually exist at the harness root (available is not
+   * confirmed-read — the worker still has to read them).
+   */
+  contextNote(id: string, harnessRoot: string): { note: string; brief: number } | string {
+    const dept = this.get(id);
+    if (!dept) return 'That department is gone';
+    const brief = dept.brief[0];
+    const current = dept.assets.filter((a) => a.status === 'current' && (a.kind === 'link' || !this.referenceError(a.ref))).slice(0, 10);
+    const skills = [...new Set(dept.roles.flatMap((r) => r.skills))];
+    const available = skills.filter((s) => {
+      try {
+        return statSync(path.join(harnessRoot, s)).isFile();
+      } catch {
+        return false;
+      }
+    });
+    const missing = skills.filter((s) => !available.includes(s));
+    const lines = [
+      `Approved context for delegated work (bound by the office, brief rev ${dept.rev}):`,
+      brief ? `Brief rev ${brief.rev} (current): ${brief.text}` : 'No brief is written yet — ask what "good" means.',
+      current.length ? `Current brand & asset references (labels only): ${current.map((a) => `- ${a.label}: ${a.kind === 'file' ? a.ref : a.ref}`).join('; ')}` : '',
+      available.length ? `Skill references present at this office's harness (the worker must still read them): ${available.join(', ')}` : '',
+      missing.length ? `Intended skills NOT present here (do not claim to have read them): ${missing.join(', ')}` : '',
+    ].filter(Boolean);
+    return { note: lines.join('\n'), brief: dept.rev };
+  }
+
   /** An orchestration-scoped objective from the CEO (or an authorized person). */
   setObjective(id: string, text: unknown, by: string): string | undefined {
     const dept = this.get(id);

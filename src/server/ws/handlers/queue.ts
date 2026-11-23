@@ -48,7 +48,7 @@ export const queueHandlers = {
   },
   'queue.retry'(ctx, c, msg) {
     const floor = ownTask(ctx, c, str(msg.taskId, 32));
-    if (floor) ctx.warn(c, floor.queue.retry(str(msg.taskId, 32)));
+    if (floor) ctx.warn(c, floor.queue.retry(str(msg.taskId, 32), (task) => floor.rebindContext(task)));
   },
   'queue.clear'(ctx, c) {
     const floor = here(ctx, c);

@@ -5,6 +5,7 @@ import type { ChangesState, FloorInfo, PeerInfo, ProjectInfo, ServerMsg, WorkerI
 import { isBusy } from '../shared/status.js';
 import { DESK_BY_ID, nextFreeSeat } from '../shared/layout.js';
 import type { AgentEffort, AgentProvider } from '../shared/providers.js';
+import type { QueueTask } from '../shared/protocol.js';
 import type { FloorDef } from './building.js';
 import { excludeFromGit } from './config.js';
 import { agentProviders, configuredProvider } from './agents.js';
@@ -12,6 +13,7 @@ import { WorkerManager, workedMs, type HookEnv, type RunAs } from './workers.js'
 import { GitHub, MergeWatch } from './github.js';
 import type { GhAs } from './signins.js';
 import { TaskQueue } from './queue.js';
+import { harnessRoot } from './harness.js';
 import { Changes } from './changes.js';
 import { Decor } from './decor.js';
 import { FloorPlanStore } from './floorplan.js';
@@ -119,6 +121,7 @@ const WRITING = new Set(['starting', 'idle', 'working', 'needs_input']);
 export class Floor {
   readonly id: string;
   readonly dir: string;
+  readonly dataDir: string;
   readonly project: ProjectInfo;
   readonly workers: WorkerManager;
   readonly github: GitHub;
@@ -165,6 +168,7 @@ export class Floor {
     this.id = def.id;
     this.dir = def.dir;
     const dataDir = path.join(def.dir, '.agent-office');
+    this.dataDir = dataDir;
     mkdirSync(dataDir, { recursive: true, mode: 0o700 });
     excludeFromGit(def.dir);
     this.project = projectInfo(def.dir, def.name, ctx.agentCmd, ctx.agentArgs);
@@ -282,6 +286,7 @@ export class Floor {
       tasks: () => this.queue.state().tasks,
       departments: () => this.departments.state().departments,
       ceo: () => this.ceo.get(),
+      lastReply: (id) => this.workers.conversations.lastReply(id),
     });
     // Role characters keep a durable, paged conversation record (see role-chat.ts).
     this.roleChat = new RoleChat(dataDir);
@@ -399,6 +404,31 @@ export class Floor {
    */
   landed(worker: WorkerInfo): Landed | undefined {
     return landedWork(worker, this.github.pulls.items, this.queue.state().tasks, (id) => this.ctx.floor(id)?.github.pulls.items);
+  }
+
+  /**
+   * A delegation into the one task source, with the approved context bound server-side: the queued
+   * worker starts from the current brief, the current brand references, and the role skills that
+   * actually exist here — and the task records the brief revision it started from.
+   */
+  delegate(deptId: string, title: string, task: string, by: string, owner: string | undefined, parentId: string | undefined, engine?: { provider?: AgentProvider; model?: string; effort?: AgentEffort }): string | undefined {
+    const dept = this.departments.get(deptId);
+    if (!dept) return 'That department is gone';
+    const bound = this.departments.contextNote(deptId, harnessRoot(this.dataDir));
+    const prompt = typeof bound === 'string' ? task : `${bound.note}\n\nThe delegated job:\n${task}`;
+    return this.queue.add(prompt, by, title, undefined, engine?.provider, engine?.model, engine?.effort, owner, deptId, parentId, typeof bound === 'string' ? undefined : { brief: bound.brief, at: Date.now() });
+  }
+
+  /** Re-binds a retried delegation to the current approved context; the caller flags drift. */
+  rebindContext(task: QueueTask): { prompt: string; contextRev: { brief: number; at: number } } | undefined {
+    if (!task.dept) return undefined;
+    const bound = this.departments.contextNote(task.dept, harnessRoot(this.dataDir));
+    if (typeof bound === 'string') return undefined;
+    const stale = task.contextRev && task.contextRev.brief !== bound.brief;
+    return {
+      prompt: `${bound.note}\n\n${stale ? `⚠️ The brief moved from rev ${task.contextRev!.brief} to rev ${bound.brief} after this job was first attempted — read the current brief before continuing.\n\n` : ''}The delegated job:\n${task.prompt}`,
+      contextRev: { brief: bound.brief, at: Date.now() },
+    };
   }
 
   /**

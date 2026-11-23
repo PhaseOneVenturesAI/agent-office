@@ -286,11 +286,13 @@ test('user → CEO → manager → worker, and results back up the chain', async
     await inbox(mgrWorker.id, /sent home mid-job on “Footer polish”/, 25000);
     await inbox(ceoWorker.id, /Maya \(Marketing\): .*sent home mid-job on “Footer polish”/, 25000);
 
-    // …and the retry keeps the same owner: the chain is intact after a failure.
+    // …and the retry keeps the same owner on a NEW task: the original record stays as the audit.
     ada.send({ t: 'queue.retry', taskId: task2Id });
-    const q3 = await ada.take('queue', (m) => m.state.tasks.some((t) => t.id === task2Id && t.status === 'running'));
-    const task3 = q3.state.tasks.find((t) => t.id === task2Id)!;
+    const q3 = await ada.take('queue', (m) => m.state.tasks.some((t) => t.supersedes === task2Id && t.status === 'running'));
+    const task3 = q3.state.tasks.find((t) => t.supersedes === task2Id)!;
     assert.equal(task3.parentId, mgrWorker.id, 'the retried job still reports to the manager');
+    const done2 = q3.state.tasks.find((t) => t.id === task2Id)!;
+    assert.equal(done2.outcome, 'killed', 'the original attempt stays in the audit with its outcome');
   } finally {
     await ada.close();
   }

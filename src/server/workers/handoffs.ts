@@ -127,7 +127,17 @@ const clipSwap = (s: string, max: number) => (s.length > max ? `${s.slice(0, max
  * reviews the exact prompt and acknowledges once — evidence is explicitly unverified until they
  * (or the replacement) checks the source branch and its CI.
  */
-export function swapBrief(source: WorkerInfo, engine: string, note?: string): HandoffBrief {  const task = (source.task ? `${source.task.name}: ${source.task.summary}` : source.prompt)?.replace(/\s+/g, ' ').trim();
+export function swapBrief(source: WorkerInfo, engine: string, note?: string, role?: { role: string; name: string; objective?: string; lastReply?: string }): HandoffBrief {
+  if (role) {
+    const brief = [
+      note?.trim() || `Take over as ${role.name}, the ${role.role}, continuing on ${engine}.`,
+      role.objective ? `Current objective (maintained — this, not a task label, is the assignment):\n${role.objective}` : 'No objective is active: ask the office what this character is driving before doing anything.',
+      role.lastReply ? `Their last reviewed reply (context, not a decision to repeat blindly):\n${role.lastReply.slice(0, 600)}` : '',
+      'The source keeps its own session, transcript and branch: read the durable conversation record and the branch before acting. You become the character on acknowledgment — the routing identity moves to you.',
+    ].filter(Boolean).join('\n');
+    return { brief, evidence: 'Explicitly unverified: a swap moves the seat, not the proof. Check the durable record and the source branch before building on them.', next: role.objective ? `Continue the objective: ${role.objective.slice(0, 200)}` : 'Ask the office what this character was driving, then continue it.' };
+  }
+  const task = (source.task ? `${source.task.name}: ${source.task.summary}` : source.prompt)?.replace(/\s+/g, ' ').trim();
   const branch = source.worktree?.made ?? source.worktree?.branch;
   const brief = [
     note?.trim() || (task ? `Take over “${clipSwap(task, 300)}”, continuing it on ${engine}.` : `Take over this worker's current job on ${engine}.`),

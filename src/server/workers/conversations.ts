@@ -18,6 +18,7 @@ interface Feed { session?: string; messages: ConversationMessage[]; listeners: S
 export class WorkerConversations {
   private feeds = new Map<string, Feed>();
   private history?: RoleChat;
+  private lastAssistant = new Map<string, string>();
   private durable?: (id: string) => boolean;
   private hydrated = new Set<string>();
   constructor(private workers: Map<string, Worker>, private prompt: (id: string, text: string, by: string) => string | undefined,
@@ -47,9 +48,17 @@ export class WorkerConversations {
     const f = this.feed(id);
     if (f.messages.some((m) => m.id === message.id)) return;
     f.messages.push(message);
+    if (message.role === 'assistant') this.lastAssistant.set(id, message.text);
     while (f.messages.length > 30 || f.messages.reduce((n, m) => n + m.text.length, 0) > 100000) f.messages.shift();
     if (this.history && this.durable?.(id)) this.history.append(id, message as ChatMessage);
     for (const listener of f.listeners) listener(message);
+  }
+  /** The worker's latest complete assistant reply (durable record), for rollups to the CEO. */
+  lastReply(id: string): string | undefined {
+    const live = [...this.feed(id).messages].reverse().find((m) => m.role === 'assistant' && m.scope !== 'staff');
+    if (live) return live.text;
+    if (this.history && this.durable?.(id)) return this.history.tail(id, 30).find((m) => m.role === 'assistant' && m.scope !== 'staff')?.text;
+    return undefined;
   }
   /** Older messages from the durable record (role characters); empty for ordinary workers. */
   page(id: string, before: number): ChatMessage[] {

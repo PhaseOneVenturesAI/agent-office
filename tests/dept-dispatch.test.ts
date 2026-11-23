@@ -108,8 +108,11 @@ test('a manager with a CEO objective rolls results and blockers up, held while t
   assert.equal(f.prompted.length, 1, 'the manager got their line');
   ceo.status = 'done';
   f.dispatch.onWorker(ceo);
-  assert.equal(f.prompted.length, 2, 'the CEO rollup flushes when the CEO is free');
+  // The child's rollup flushes, and the manager's own finished turn reports up too (no lastReply in
+  // these deps, so it falls back to their activity — the text route is proven in its own test).
+  assert.equal(f.prompted.length, 3, 'the CEO rollup and the manager self-report flush when the CEO is free');
   assert.match(f.prompted[1].text, /Maya \(Marketing\): .*ended its turn on “Hero rebuild”/);
+  assert.match(f.prompted[2].text, /Maya \(Marketing\) reports:/);
   // A blocker rolls up too, condensed — the idle CEO hears it at once, while the manager's own
   // line waits out their turn:
   f.move(mgr, 'working');
@@ -118,12 +121,34 @@ test('a manager with a CEO objective rolls results and blockers up, held while t
   child.status = 'needs_input';
   child.activity = 'Which headline?';
   f.move(child, 'needs_input');
-  assert.equal(f.prompted.length, 3);
-  assert.match(f.prompted[2].text, /Maya \(Marketing\): .*stopped on “Hero rebuild” — Which headline\?/);
+  assert.equal(f.prompted.length, 4);
+  assert.match(f.prompted[3].text, /Maya \(Marketing\): .*stopped on “Hero rebuild” — Which headline\?/);
   mgr.status = 'done';
   f.dispatch.onWorker(mgr);
-  assert.equal(f.prompted.length, 4, 'the manager’s own held line follows when their turn ends');
-  assert.match(f.prompted[3].text, /stopped on “Hero rebuild” — Which headline\?/);
+  assert.equal(f.prompted.length, 6, 'the manager’s own held line and their self-report follow');
+  assert.match(f.prompted[4].text, /stopped on “Hero rebuild” — Which headline\?/);
+  assert.match(f.prompted[5].text, /Maya \(Marketing\) reports:/);
+});
+
+test("a manager's own finished turn rolls its last reply up to the CEO — the reviewed text, not a status", () => {
+  const f = fixture({ ceo: { name: 'Avery', workerId: 'ceo-1' }, objective: true });
+  f.dispatch = new LeadDispatch({
+    get: (id) => f.workers.get(id),
+    prompt: (id, text) => { f.prompted.push({ id, text }); return undefined; },
+    tasks: () => f.tasks,
+    departments: () => [f.d],
+    ceo: () => ({ name: 'Avery', workerId: 'ceo-1' }),
+    lastReply: (id) => (id === 'mgr-1' ? 'Shipped the hero v2; PR #12 awaits your review.' : undefined),
+  });
+  const ceo = worker('ceo-1', 'idle');
+  f.add(ceo);
+  const mgr = worker('mgr-1', 'working');
+  f.add(mgr);
+  mgr.status = 'done';
+  f.dispatch.onWorker(mgr);
+  assert.equal(f.prompted.length, 1);
+  assert.equal(f.prompted[0].id, 'ceo-1');
+  assert.match(f.prompted[0].text, /Maya \(Marketing\) reports: Shipped the hero v2; PR #12 awaits your review\./);
 });
 
 test('without a CEO or objective, nothing rolls up and nothing loops', () => {

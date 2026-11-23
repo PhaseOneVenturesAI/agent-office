@@ -3,7 +3,7 @@
 // dispatch, and the engine-swap guards and handoff brief.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Departments } from '../src/server/departments.js';
@@ -298,6 +298,67 @@ test('the dispatch is receipt-protected and bounded: gone leads drop, strangers 
   f.dispatch.onTaskFinished({ ...f.task, status: 'done', outcome: 'killed', workerName: 'Pip' });
   assert.equal(f.prompted.length, 1);
   assert.match(f.prompted[0], /sent home mid-job/);
+});
+
+test('delegation binds the approved context: current brief, current references, skills that actually exist here', () => {
+  const { project, departments, cleanup } = setup();
+  try {
+    mkdirSync(path.join(project, 'docs'), { recursive: true });
+    const harness = mkdtempSync(path.join(tmpdir(), 'agent-office-harness-'));
+    try {
+      mkdirSync(path.join(harness, 'skills', 'copywriting'), { recursive: true });
+      writeFileSync(path.join(harness, 'skills', 'copywriting', 'SKILL.md'), '# copy\n');
+      const d = departments.add('marketing', undefined, 'Kim');
+      assert.ok(typeof d !== 'string');
+      departments.brief(d.id, 'Clarity over cleverness', 0, 'Kim');
+      departments.addAsset(d.id, { label: 'Voice guide', kind: 'link', ref: 'https://example.com/voice', status: 'current' }, 'Kim');
+      departments.addAsset(d.id, { label: 'Old look', kind: 'link', ref: 'https://example.com/old', status: 'historical' }, 'Kim');
+      const bound = departments.contextNote(d.id, harness);
+      assert.ok(typeof bound !== 'string');
+      assert.equal(bound.brief, 1);
+      assert.match(bound.note, /Brief rev 1 \(current\): Clarity over cleverness/);
+      assert.match(bound.note, /Voice guide/);
+      assert.ok(!bound.note.includes('Old look'), 'historical references stay out of the approved context');
+      assert.match(bound.note, /skills\/copywriting\/SKILL\.md/);
+      assert.match(bound.note, /NOT present.*frontend-design\/SKILL\.md/s, 'absent skills are named as unavailable, never claimed');
+    } finally {
+      rmSync(harness, { recursive: true, force: true });
+    }
+  } finally {
+    cleanup();
+  }
+});
+
+test('a retry supersedes the original: new id, audit kept, context drift flagged', () => {
+  const f = queueFixture();
+  try {
+    assert.equal(f.queue.add('Do the thing', 'Maya (lead)', 'The thing', undefined, 'claude', undefined, undefined, undefined, 'dept-1', 'lead-1', { brief: 1, at: 1000 }), undefined);
+    const original = f.queue.state().tasks[0];
+    f.workers[0].status = 'done';
+    f.queue.onWorker(f.workers[0]);
+    // Same brief: no drift.
+    const same = f.queue.retry(original.id, () => ({ prompt: 'Do the thing', contextRev: { brief: 1, at: 2000 } }));
+    assert.equal(same, undefined);
+    const retried = f.queue.state().tasks[1];
+    assert.notEqual(retried.id, original.id);
+    assert.equal(retried.supersedes, original.id);
+    assert.equal(retried.staleContext, undefined);
+    assert.equal(f.queue.state().tasks[0].outcome, 'done', 'the original record stays in the audit');
+    // Brief moved: flagged, and the worker is told.
+    f.workers[1].status = 'done';
+    f.queue.onWorker(f.workers[1]);
+    const moved = f.queue.retry(retried.id, () => ({ prompt: 'Do the thing (v2 brief)', contextRev: { brief: 2, at: 3000 } }));
+    assert.equal(moved, undefined);
+    const third = f.queue.state().tasks[2];
+    assert.equal(third.staleContext, true);
+    assert.match(third.prompt, /v2 brief/, 'the retried prompt carries the refreshed context');
+    // The chain of custody is intact end to end.
+    assert.equal(f.queue.state().tasks[1].supersedes, original.id);
+    assert.equal(third.supersedes, retried.id);
+    assert.equal(third.parentId, 'lead-1', 'ownership survives the retry intact');
+  } finally {
+    f.close();
+  }
 });
 
 // --- Swap guards: every refusal fires before a replacement spawns ---------------------------------------------

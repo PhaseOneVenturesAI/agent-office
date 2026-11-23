@@ -37,6 +37,12 @@ export interface QueueTask {
   dept?: string;
   /** The lead worker that delegated it: the dispatch reports the child's results and blockers here. */
   parentId?: string;
+  /** The approved context snapshot this attempt started from (brief revision, time). */
+  contextRev?: { brief: number; at: number };
+  /** Set when the context changed between the original attempt and this retry — review before trusting. */
+  staleContext?: boolean;
+  /** The earlier task this one retries: the original record (and its outcome) stays in the audit. */
+  supersedes?: string;
 }
 
 export interface QueueState {

@@ -220,7 +220,7 @@ export async function officeWorkers(ctx: Ctx, req: http.IncomingMessage, res: ht
     }
     const cap = floor.writerCap();
     if (cap) return send(res, 409, { error: cap });
-    const err = floor.queue.add(task, `${dept.lead!.name} (lead)`, title, undefined, policy?.provider, policy?.model, policy?.effort, floor.workers.ownerOf(me.id), dept.id, me.id);
+    const err = floor.delegate(dept.id, title, task, `${dept.lead!.name} (lead)`, floor.workers.ownerOf(me.id), me.id, { provider: policy?.provider, model: policy?.model, effort: policy?.effort });
     if (err) return send(res, 400, { error: err });
     const queued = floor.queue.state().tasks.at(-1)!;
     ctx.toastFloor(floor, `📋 ${who} delegated “${queued.title}” to the floor queue`);

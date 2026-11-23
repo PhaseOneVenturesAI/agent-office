@@ -20,6 +20,8 @@ export interface DispatchDeps {
   departments(): Department[];
   /** The floor's CEO, when one is named: the top of the chain. */
   ceo?(): { name: string; workerId?: string } | undefined;
+  /** The worker's latest complete assistant reply (durable record), for rollups. */
+  lastReply?(id: string): string | undefined;
 }
 
 /** Transitions that wake a parent; everything else is the child's own business. */
@@ -48,16 +50,29 @@ export class LeadDispatch {
   onWorker(info: WorkerInfo) {
     const previous = this.last.get(info.id);
     this.last.set(info.id, info.status);
-    // A transition to idle/done on a manager or the CEO flushes whatever their children held.
+    // A transition to idle/done on a manager or the CEO flushes whatever their children held; a
+    // manager's own finished turn also reports upward, so its reviewed answer has a route to the CEO.
     const isManager = this.deps.departments().some((d) => d.lead?.workerId === info.id);
     const isCeo = this.deps.ceo?.()?.workerId === info.id;
     if ((isManager || isCeo) && IDLE.has(info.status)) this.flush(info.id);
+    if (isManager && info.status === 'done') this.selfRollup(info);
     if (previous === info.status || !NOTIFY.has(info.status)) return;
     const parent = this.parentOf(info.id);
     if (!parent || parent === info.id) return;
     const line = this.notice(info);
     this.deliver(parent, info.id, line);
     this.rollUpToCeo(parent, line);
+  }
+
+  /** A manager's own finished turn rolls up to the CEO: its last reply (the reviewed result), not just a status. */
+  private selfRollup(mgr: WorkerInfo) {
+    const dept = this.deps.departments().find((d) => d.lead?.workerId === mgr.id);
+    if (!dept?.lead?.objective) return;
+    const ceo = this.deps.ceo?.();
+    if (!ceo?.workerId || !this.deps.get(ceo.workerId)) return;
+    const reply = this.deps.lastReply?.(mgr.id);
+    const what = reply ? reply.replace(/\s+/g, ' ').trim().slice(0, 300) : (mgr.activity ?? 'see their terminal for the full answer.');
+    this.deliver(ceo.workerId, `rollup-self:${mgr.id}`, `📋 ${dept.lead.name} (${dept.name}) reports: ${what}`);
   }
 
   /** The task a worker is seated for: the live one when there is a choice — a retried or reused worker has older done tasks too. */

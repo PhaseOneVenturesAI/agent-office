@@ -69,6 +69,17 @@ export const handoffHandlers = {
     const effort = isAgentEffort(msg.effort) ? msg.effort : undefined;
     const note = str(msg.note, 4000) || undefined;
     const engine = `${msg.provider}${model ? ` · ${model}` : ''}`;
+    // Role characters hand over from the maintained objective and record, not a generated task label.
+    const roleInfo = floor.isRoleWorker(source.wid);
+    const roleDept = roleInfo ? floor.departments.leadDeptOfWorker(source.wid) : undefined;
+    const roleCtx = roleInfo
+      ? {
+          role: roleInfo.role,
+          name: roleInfo.name,
+          objective: floor.ceo.get()?.workerId === source.wid ? undefined : (roleDept?.lead?.objective?.text ?? undefined),
+          lastReply: floor.workers.conversations.lastReply(source.wid),
+        }
+      : undefined;
     // Every refusal that must fire before a replacement spawns, in one guard.
     const guard = swapGuard(info);
     if (guard) return ctx.warn(c, guard);
@@ -88,7 +99,7 @@ export const handoffHandlers = {
         floor.workers.handoffs.clearSwap(source.wid);
         return ctx.warn(c, r);
       }
-      const result = floor.workers.handoffs.prepare(source.wid, r.id, swapBrief(info, engine, note), c.peer.name);
+      const result = floor.workers.handoffs.prepare(source.wid, r.id, swapBrief(info, engine, note, roleCtx), c.peer.name);
       if (typeof result === 'string') {
         // The handoff wouldn't hold: roll everything back, replacement included.
         floor.workers.handoffs.clearSwap(source.wid);

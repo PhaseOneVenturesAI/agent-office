@@ -92,7 +92,7 @@ export class TaskQueue {
 
   /** Queues a task. With no `provider`, it runs on the office's default worker, model and effort included. */
   /** Queues a task; `owner` is the account adding it, whose sign-ins its worker will run on. */
-  add(prompt: string, by: string, title?: string, issue?: number, provider?: AgentProvider, model?: string, effort?: AgentEffort, owner?: string, dept?: string, parentId?: string): string | undefined {
+  add(prompt: string, by: string, title?: string, issue?: number, provider?: AgentProvider, model?: string, effort?: AgentEffort, owner?: string, dept?: string, parentId?: string, contextRev?: QueueTask['contextRev']): string | undefined {
     if (provider === undefined) ({ provider, model, effort } = this.workers.officeDefault ?? { provider: this.workers.defaultProvider });
     if (!isAgentProvider(provider) || (provider === 'custom' && this.workers.defaultProvider !== 'custom')) return 'Unknown agent provider';
     const unsupported = personalProviderError(owner, 'agent', provider);
@@ -122,6 +122,7 @@ export class TaskQueue {
       ...(owner ? { owner } : {}),
       ...(dept ? { dept } : {}),
       ...(parentId ? { parentId } : {}),
+      ...(contextRev ? { contextRev } : {}),
       addedAt: Date.now(),
       status: 'queued',
     };
@@ -163,14 +164,37 @@ export class TaskQueue {
     this.pump();
   }
 
-  /** Puts a finished task back at the end of the queue. */
-  retry(taskId: string): string | undefined {
+  /**
+   * Puts a finished task back at the end of the queue as a NEW task: the original record (and its
+   * outcome) stays as the audit. `refresh` re-binds the approved context — when the referenced
+   * sources changed, the new task is marked staleContext so nobody trusts it blindly.
+   */
+  retry(taskId: string, refresh?: (task: QueueTask) => { prompt: string; contextRev?: QueueTask['contextRev'] } | undefined): string | undefined {
     const t = this.tasks.find((x) => x.id === taskId);
     if (!t) return 'No such task';
     if (t.status !== 'done') return 'That task is still on the queue';
     if (t.issue !== undefined && this.tasks.some((x) => x !== t && x.issue === t.issue && x.status !== 'done')) return `Issue #${t.issue} is already on the queue`;
-    this.tasks.splice(this.tasks.indexOf(t), 1);
-    const fresh: QueueTask = { id: t.id, provider: t.provider, model: t.model, effort: t.effort, issue: t.issue, title: t.title, prompt: t.prompt, addedBy: t.addedBy, owner: t.owner, dept: t.dept, parentId: t.parentId, addedAt: Date.now(), status: 'queued' };
+    if (t.issue !== undefined && this.tasks.some((x) => x !== t && x.issue === t.issue && x.supersedes === t.id)) return `That task is already retried`;
+    const rebound = refresh?.(t);
+    const stale = !!rebound && !!t.contextRev && !!rebound.contextRev && rebound.contextRev.brief !== t.contextRev.brief;
+    const fresh: QueueTask = {
+      id: randomBytes(6).toString('hex'),
+      provider: t.provider,
+      model: t.model,
+      effort: t.effort,
+      issue: t.issue,
+      title: t.title,
+      prompt: rebound?.prompt ?? t.prompt,
+      addedBy: t.addedBy,
+      owner: t.owner,
+      dept: t.dept,
+      parentId: t.parentId,
+      contextRev: rebound?.contextRev ?? t.contextRev,
+      ...(stale ? { staleContext: true } : {}),
+      supersedes: t.id,
+      addedAt: Date.now(),
+      status: 'queued',
+    };
     this.tasks.push(fresh);
     this.changed();
     this.pump();
@@ -428,6 +452,9 @@ export class TaskQueue {
           pr: s.pr,
           dept: typeof s.dept === 'string' ? s.dept : undefined,
           parentId: typeof s.parentId === 'string' ? s.parentId : undefined,
+          contextRev: s.contextRev && typeof s.contextRev.brief === 'number' && Number.isFinite(s.contextRev.at) ? { brief: s.contextRev.brief, at: s.contextRev.at } : undefined,
+          staleContext: s.staleContext === true ? true : undefined,
+          supersedes: typeof s.supersedes === 'string' ? s.supersedes : undefined,
         };
         // Whatever was running died with the old office process; its worker comes back asleep at best.
         if (t.status === 'running') {

@@ -188,7 +188,7 @@ export const departmentsHandlers = {
     if (cap) return ctx.warn(c, cap);
     const parentId = dept.lead?.workerId && floor.workers.get(dept.lead.workerId) ? dept.lead.workerId : undefined;
     ctx.withSignIn(c, ctx.signInFor(provider ?? floor.workers.officeDefault.provider), () => {
-      const err = floor.queue.add(task, by, title, undefined, provider, chosenModel, chosenEffort, c.accountId, id, parentId);
+      const err = floor.delegate(id, title, task, by, c.accountId, parentId, { provider, model: chosenModel, effort: chosenEffort });
       if (err) ctx.warn(c, err);
       else ctx.toastFloor(floor, `📋 ${by} delegated “${title}” to the floor queue`);
     });
@@ -211,7 +211,7 @@ export const departmentsHandlers = {
     const by = dept.lead ? `${dept.lead.name} (lead)` : c.peer.name;
     const parentId = dept.lead?.workerId && floor.workers.get(dept.lead.workerId) ? dept.lead.workerId : undefined;
     ctx.withSignIn(c, ctx.signInFor(provider ?? floor.workers.officeDefault.provider), () => {
-      const err = floor.queue.add(taken.task, by, taken.title, undefined, provider, model, effort, c.accountId, id, parentId);
+      const err = floor.delegate(id, taken.title, taken.task, by, c.accountId, parentId, { provider, model, effort });
       if (err) ctx.warn(c, `${err} — the request is cleared; the job is claimed elsewhere or the queue refused it`);
       else ctx.toastFloor(floor, `📋 ${by}'s “${taken.title}” approved and queued`);
     });
