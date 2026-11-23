@@ -25,6 +25,7 @@ import { leaveOnMerge } from './leave-on-merge';
 import { machine } from './machine';
 import { map } from './map';
 import { meeting } from './meeting';
+import { nodes } from './nodes';
 import { notify } from './notify';
 import { prompts } from './prompts';
 import { reviews } from './reviews';
@@ -69,4 +70,5 @@ export const SLICES: readonly Slice[] = [
   deploys,
   hygiene,
   costwall,
+  nodes,
 ];
