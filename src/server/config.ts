@@ -1,3 +1,4 @@
+import { turnConfig, type TurnConfig } from './turn.js';
 import { randomBytes, scryptSync } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs';
 import os from 'node:os';
@@ -40,6 +41,7 @@ export interface Config {
   tls?: { cert: string; key: string };
   trustProxy: boolean;
   iceServers: RTCIceServerLike[];
+  turn?: TurnConfig;
   /** How to run the script that deployed the office, e.g. "deploy/azure.sh --name team2" (set by deploy/provision.sh), for the commands it suggests. */
   deployScript?: string;
   /** Address teammates SSH-tunnel to (set by deploy/provision.sh); enables invites from the office. */
@@ -504,6 +506,7 @@ export function loadConfig(argv: string[]): Config {
     tls,
     trustProxy,
     iceServers,
+    turn: turnConfig(),
     deployScript: process.env.AGENT_OFFICE_DEPLOY_SCRIPT || undefined,
     publicHost: process.env.AGENT_OFFICE_PUBLIC_HOST || undefined,
     tailnet: process.env.AGENT_OFFICE_TAILSCALE_HOST?.toLowerCase().replace(/\.$/, '') || undefined,

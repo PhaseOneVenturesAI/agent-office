@@ -1,3 +1,5 @@
+import type { VoiceIceClientMsg, VoiceIceServerMsg } from './protocol/voice-ice.js';
+export * from './protocol/voice-ice.js';
 import type { RoleSubscriptionClientMsg, RoleSubscriptionServerMsg } from './protocol/role-subscriptions.js';
 export * from './protocol/role-subscriptions.js';
 // Wire protocol between browser and server. Every WebSocket frame is one JSON object.
@@ -62,6 +64,7 @@ export * from './protocol/usage.js';
 export * from './protocol/workers.js';
 
 export type ClientMsg =
+  | VoiceIceClientMsg
   | RoleSubscriptionClientMsg
   | ApprovalClientMsg
   | DeliveryClientMsg
@@ -100,6 +103,7 @@ export type ClientMsg =
   | DogClientMsg;
 
 export type ServerMsg =
+  | VoiceIceServerMsg
   | RoleSubscriptionServerMsg
   | ApprovalServerMsg
   | DeliveryServerMsg
