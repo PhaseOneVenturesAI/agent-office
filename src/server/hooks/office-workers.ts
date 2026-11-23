@@ -1,3 +1,4 @@
+import { departmentWorkerError, roleDispatchError } from '../role-subscriptions/access.js';
 import { publicRoleWorker, roleAccess, roleOrigin, canAccessRoleWorker } from '../role-access.js';
 import { canUseWorker, OWN_WORKER } from '../worker-ownership.js';
 import type http from 'node:http';
@@ -76,6 +77,9 @@ export async function officeWorkers(ctx: Ctx, req: http.IncomingMessage, res: ht
   } catch {
     return send(res, 400, { error: 'Send JSON' });
   }
+
+  const consentError = roleDispatchError(ctx, floor, me.id);
+  if (consentError) return send(res, 403, { error: consentError });
 
   if (action === '/home') {
     const ask = readHomeRequest(body);
@@ -220,6 +224,8 @@ export async function officeWorkers(ctx: Ctx, req: http.IncomingMessage, res: ht
       ctx.toastFloor(floor, `🙋 ${who} asked for an engine decision on “${title}”`);
       return send(res, 200, { ok: true, pending: true, message: 'The team policy asks each time: a person will pick the engine and approve it. The job is not queued yet.' });
     }
+    const childConsent = departmentWorkerError(ctx, floor, me.id, policy?.provider ?? floor.workers.officeDefault.provider);
+    if (childConsent) return send(res, 403, { error: childConsent });
     const cap = floor.writerCap();
     if (cap) return send(res, 409, { error: cap });
     const err = floor.delegate(dept.id, title, task, `${dept.lead!.name} (lead)`, floor.workers.ownerOf(me.id), me.id, { provider: policy?.provider, model: policy?.model, effort: policy?.effort });
@@ -247,6 +253,8 @@ export async function officeWorkers(ctx: Ctx, req: http.IncomingMessage, res: ht
   if (!ctx.floors.has(floor.id)) return send(res, 410, { error: 'This floor closed' });
   // It runs as whoever the asking worker runs as.
   const owner = floor.workers.ownerOf(me.id);
+  const childConsent = departmentWorkerError(ctx, floor, me.id, provider ?? floor.workers.officeDefault.provider);
+  if (childConsent) return send(res, 403, { error: childConsent });
   const r = floor.workers.spawn(desk, who, ask.prompt, worktree, 'agent', provider, ask.model, ask.effort, undefined, owner);
   if (typeof r === 'string') return send(res, 400, { error: r });
   ctx.toastFloor(floor, `${who} hired ${r.name}${ask.issue ? ` for issue #${ask.issue}` : ' with a task'}`);

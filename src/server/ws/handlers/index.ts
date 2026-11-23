@@ -1,3 +1,4 @@
+import { roleSubscriptionHandlers } from '../../role-subscriptions/handlers.js';
 // Every message a browser can send, by type, and the features that keep something per person on a
 // floor. A new feature adds its handler file and a line here.
 import { approvalHandlers, approvalHooks } from './approvals.js';
@@ -42,6 +43,7 @@ import type { FeatureHooks, HandlerMap, ViewPieces } from './types.js';
 
 /** Each domain's handlers put together, in alphabetical order. */
 export const handlers: HandlerMap<ClientMsg> = {
+  ...roleSubscriptionHandlers,
   ...conversationHandlers,
   ...approvalHandlers,
   ...handoffHandlers,

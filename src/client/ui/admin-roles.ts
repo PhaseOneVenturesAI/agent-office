@@ -1,3 +1,4 @@
+import { roleSubscription } from './role-subscription';
 // The Roles view (see docs/department-leads.md): one place to see who the project's characters
 // are and who controls them — the CEO (private to its owner) and each department manager (its
 // controllers, Q&A audience, billing custodian, engine, effective autonomy). Everyday talking
@@ -85,8 +86,10 @@ export function openRoles(net: Net) {
   const el = h('div.modal.roles', { role: 'dialog', 'aria-label': 'Roles' }, h('header', {}, h('h2', {}, '🛡️ Roles'), close), list);
 
   const qaBoxes = new Map<string, HTMLElement>();
+  const consentOffs: (() => void)[] = [];
   const paint = () => {
     qaBoxes.clear();
+    consentOffs.splice(0).forEach(off => off());
     const parts: HTMLElement[] = [];
     const ceo = store.ceo.ceo;
     // --- the CEO ---------------------------------------------------------------------------
@@ -111,6 +114,8 @@ export function openRoles(net: Net) {
     // --- the managers ----------------------------------------------------------------------
     for (const d of store.departments.departments) {
       const ask = askBox(net, d);
+      const consent = d.lead ? roleSubscription(net, d.id) : undefined;
+      if (consent) consentOffs.push(consent.close);
       qaBoxes.set(d.id, ask.answer);
       const block = h(
         'section.dept',
@@ -125,6 +130,7 @@ export function openRoles(net: Net) {
               emailsRow('Controllers', d.lead.controllers, 'ivanv@…, eduardo@…', (emails) => net.send({ t: 'departments.access', id: d.id, controllers: emails })),
               emailsRow('Q&A audience', d.lead.audience, 'empty = any signed-in colleague', (emails) => net.send({ t: 'departments.access', id: d.id, audience: emails })),
               h('div.dept-row', {}, h('span.dept-meta', { style: 'min-width:120px' }, 'Custodian'), h('input.dept-task', { type: 'text', placeholder: 'billing/credential custodian email', maxlength: '120', 'aria-label': 'Custodian', value: d.lead.custodian ?? '', onchange: (e) => net.send({ t: 'departments.access', id: d.id, custodian: (e.target as HTMLInputElement).value.trim() }) })),
+              consent!.element,
               ask.element,
             ]
           : [h('p.empty', {}, 'No manager named yet.')]),
@@ -141,7 +147,7 @@ export function openRoles(net: Net) {
     }
   };
   const offs = [net.onMessage(onMessage), store.on('departments', paint), store.on('ceo', paint), store.on('workers', paint)];
-  const modal = openModal(el, { doing: '🛡️ reviewing roles', onClose: () => offs.forEach((o) => o()) });
+  const modal = openModal(el, { doing: '🛡️ reviewing roles', onClose: () => { offs.forEach((o) => o()); consentOffs.splice(0).forEach(off => off()); } });
   close.addEventListener('click', () => modal.close());
   offs.push(store.on('floor', () => modal.close()));
   paint();

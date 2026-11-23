@@ -1,4 +1,5 @@
-import { canUseWorker, OWN_WORKER } from '../../worker-ownership.js';
+import { canUseRoleWorker } from '../../role-subscriptions/access.js';
+import { OWN_WORKER } from '../../worker-ownership.js';
 import type { ConversationClientMsg } from '../../../shared/protocol.js';
 import type { Client } from '../../office/client.js';
 import { conversationSupported } from '../../workers/conversations.js';
@@ -28,7 +29,7 @@ export const conversationHandlers = {
       if (access.kind === 'staff') return ctx.warn(c, 'Read-only questions go in the Ask box on the manager’s card — they never enter this conversation.');
       if (access.kind === 'none') return ctx.warn(c, access.why || 'Not available.');
       if (role.floor !== ctx.floorOf(c)) return ctx.warn(c, 'Choose your own existing worker on this floor.');
-      if (!canUseWorker(ctx, c.accountId, role.floor.workers.ownerOf(role.wid), role.info.provider)) return ctx.warn(c, OWN_WORKER);
+      if (!canUseRoleWorker(ctx, c.accountId, role.floor, role.wid)) return ctx.warn(c, OWN_WORKER);
       wid = role.wid;
     } else {
       const w = ownedWorker(ctx, c, msg.workerId);
@@ -46,7 +47,7 @@ export const conversationHandlers = {
         const access = roleAccess(ctx, floor, wid, c.accountId);
         if (access.kind !== 'owner' && access.kind !== 'controller') return close(c);
       }
-      if (!canUseWorker(ctx, c.accountId, floor.workers.ownerOf(wid), floor.workers.get(wid)?.provider)) return close(c);
+      if (!canUseRoleWorker(ctx, c.accountId, floor, wid)) return close(c);
       if (message.scope !== 'staff') ctx.sendTo(c, { t: 'conversation.message', workerId: wid, message });
     }));
   },
@@ -58,7 +59,7 @@ export const conversationHandlers = {
       if (access.kind === 'staff') return ctx.warn(c, 'Read-only questions go in the Ask box on the manager’s card — they never enter this conversation.');
       if (access.kind === 'none') return ctx.warn(c, access.why || 'Not available.');
       if (role.floor !== ctx.floorOf(c)) return ctx.warn(c, 'Choose your own existing worker on this floor.');
-      if (!canUseWorker(ctx, c.accountId, role.floor.workers.ownerOf(role.wid), role.info.provider)) return ctx.warn(c, OWN_WORKER);
+      if (!canUseRoleWorker(ctx, c.accountId, role.floor, role.wid)) return ctx.warn(c, OWN_WORKER);
       return ctx.warn(c, role.floor.workers.conversations.send(role.wid, msg.text, c.peer.name));
     }
     const w = ownedWorker(ctx, c, msg.workerId);
@@ -69,7 +70,7 @@ export const conversationHandlers = {
     if (role && roleOrigin(role.floor, role.wid)) {
       const access = roleAccess(ctx, role.floor, role.wid, c.accountId);
       if (access.kind !== 'owner' && access.kind !== 'controller') return;
-      if (role.floor !== ctx.floorOf(c) || !canUseWorker(ctx, c.accountId, role.floor.workers.ownerOf(role.wid), role.info.provider)) return;
+      if (role.floor !== ctx.floorOf(c) || !canUseRoleWorker(ctx, c.accountId, role.floor, role.wid)) return;
     } else {
       const w = ownedWorker(ctx, c, msg.workerId);
       if (!w) return;

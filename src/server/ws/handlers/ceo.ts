@@ -25,6 +25,8 @@ export const ceoHandlers = {
     if (msg.owner !== undefined) {
       const editOwner = canEditCeo(ctx, floor, c.accountId);
       if (!editOwner.ok) return ctx.warn(c, editOwner.why);
+      const revoked = ctx.roleSubscriptions?.revokeFloor(floor.id);
+      if (revoked) return ctx.warn(c, revoked);
     }
     const edit = canEditCeo(ctx, floor, c.accountId);
     if (!edit.ok) return ctx.warn(c, edit.why);
@@ -37,6 +39,8 @@ export const ceoHandlers = {
     if (!floor) return;
     const edit = canEditCeo(ctx, floor, c.accountId);
     if (!edit.ok) return ctx.warn(c, edit.why);
+    const revoked = ctx.roleSubscriptions?.revokeFloor(floor.id);
+    if (revoked) return ctx.warn(c, revoked);
     const live = floor.ceo.get()?.workerId;
     ctx.warn(c, floor.ceo.clear());
     // Retiring the role sends its worker home: deleting the role is what frees the seat.

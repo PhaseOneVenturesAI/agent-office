@@ -1,3 +1,4 @@
+import { staffQaExecution } from '../../role-subscriptions/access.js';
 // Departments: the floor's corners of work (see server/departments.ts). Everything but launch is
 // paperwork on the floor's store; launch goes through the same spawn as every hire, after the
 // department composed the worker's prompt.
@@ -105,6 +106,7 @@ export const departmentsHandlers = {
       ctx.warn(c, 'Unknown agent provider');
       return;
     }
+    if (msg.provider !== undefined) { const e = ctx.roleSubscriptions?.revoke(floor.id, str(msg.id, 16)); if (e) return ctx.warn(c, e); }
     const model = msg.model === undefined ? undefined : str(msg.model, OPEN_CODE_MODEL_MAX + 1);
     const err = floor.departments.setLead(str(msg.id, 16), { name: str(msg.name, 60), ...(msg.provider !== undefined ? { provider: msg.provider } : {}), ...(model !== undefined ? { model } : {}), ...(isAgentEffort(msg.effort) ? { effort: msg.effort } : {}), ...(msg.autonomy !== undefined ? { autonomy: str(msg.autonomy, 40) } : {}) }, c.peer.name);
     if (err) ctx.warn(c, err);
@@ -115,6 +117,7 @@ export const departmentsHandlers = {
     const edit = canDelegateManager(ctx, floor, str(msg.id, 16), c.accountId);
     if (!edit.ok) return ctx.warn(c, edit.why);
     const ask = msg as { controllers?: unknown; audience?: unknown; custodian?: unknown };
+    if (ask.controllers !== undefined || ask.custodian !== undefined || ask.audience !== undefined) { const e = ctx.roleSubscriptions?.revoke(floor.id, str(msg.id, 16)); if (e) return ctx.warn(c, e); }
     ctx.warn(c, floor.departments.setAccess(str(msg.id, 16), { ...(ask.controllers !== undefined ? { controllers: ask.controllers } : {}), ...(ask.audience !== undefined ? { audience: ask.audience } : {}), ...(ask.custodian !== undefined ? { custodian: ask.custodian } : {}) }));
   },
   'departments.lead.clear'(ctx, c, msg) {
@@ -123,6 +126,8 @@ export const departmentsHandlers = {
     const id = str(msg.id, 16);
     const edit3 = canEditManager(ctx, floor, id, c.accountId);
     if (!edit3.ok) return ctx.warn(c, edit3.why);
+    const revoked = ctx.roleSubscriptions?.revoke(floor.id, id);
+    if (revoked) return ctx.warn(c, revoked);
     const live = floor.departments.get(id)?.lead?.workerId;
     ctx.warn(c, floor.departments.clearLead(id));
     // Retiring the manager sends their worker home: deleting the role is what frees the seat.
@@ -138,6 +143,8 @@ export const departmentsHandlers = {
       return;
     }
     const model = msg.model === undefined ? undefined : str(msg.model, OPEN_CODE_MODEL_MAX + 1);
+    const revoked = ctx.roleSubscriptions?.revoke(floor.id, str(msg.id, 16));
+    if (revoked) return ctx.warn(c, revoked);
     const err = floor.departments.setPolicy(str(msg.id, 16), { provider: msg.provider, ...(model !== undefined ? { model } : {}), ...(isAgentEffort(msg.effort) ? { effort: msg.effort } : {}), mode: msg.mode === 'ask' ? 'ask' : 'policy' }, c.peer.name);
     if (err) ctx.warn(c, err);
   },
@@ -163,7 +170,7 @@ export const departmentsHandlers = {
       const dept = floor.departments.get(id)!;
       ctx.toastFloor(floor, `🎖️ ${who} started ${r.name}'s shift as the ${dept.name} manager`);
     };
-    ctx.withSignIn(c, ctx.signInFor((ask ? msg.provider : undefined) ?? engine ?? floor.workers.officeDefault.provider), () => ctx.withFreshBase(c, [floor], hire));
+    ctx.withFreshBase(c, [floor], hire);
   },
   'departments.delegate'(ctx, c, msg) {
     const who = c.peer.name;
@@ -251,16 +258,9 @@ export const departmentsHandlers = {
     // Read-only Q&A is for staff; controllers and the owner talk to the manager directly.
     const access = roleAccessForManager(ctx, floor, id, c.accountId);
     if (access.kind === 'none') return ctx.warn(c, access.why);
-    // Billing custody is explicit: in an accounts office the department's custodian must resolve to
-    // a real account — there is no silent fallback to the host's own credentials.
-    let custodian: string | undefined;
-    if (ctx.accounts.any) {
-      const email = dept.lead?.custodian;
-      if (!email) return ctx.warn(c, 'Set a billing custodian for this manager first (☰ → 🛡️ Roles) — read-only Q&A never runs on the office’s own credentials.');
-      const account = ctx.accounts.byEmail(email);
-      if (!account) return ctx.warn(c, `The custodian ${email} isn’t an account on this office.`);
-      custodian = account.id;
-    }
+    const consent = staffQaExecution(ctx, floor, id, c.accountId);
+    if (consent.error) return ctx.warn(c, consent.error);
+    const custodian = consent.owner;
     void floor.staffQA(id, str(msg.question, 4000), c.peer.name, custodian).then((outcome) => {
       if (c.out || !ctx.stillIn(c)) return;
       ctx.sendTo(c, { t: 'departments.qa', id, question: str(msg.question, 4000), answer: outcome.ok ? outcome.answer : `Unavailable: ${outcome.why}`, at: Date.now() });

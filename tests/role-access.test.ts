@@ -1,3 +1,4 @@
+import { subscriptionScope } from '../src/server/role-subscriptions/access.js';
 // Role access and the staff-Q&A boundary (see src/server/role-access.ts and staff-qa.ts), tested
 // at the handler level like PR37's ownership tests: the CEO is private to its owner — an unrelated
 // OFFICE ADMIN cannot seize ownership, edit the CEO, or chat with it. Staff questions never enter
@@ -139,6 +140,12 @@ test('staff Q&A never enters the manager session; the Ask runs separately and re
   assert.ok(!staff.calls.some((c) => c.startsWith('conv.send')), 'the manager session is untouched');
   assert.match(staff.warnings[0]!, /Ask box/);
   // The Ask box answers on a separate session; the manager conversation still never runs.
+  // The payer explicitly opted into staff Q&A for this exact controller/audience scope.
+  const consentCtx = staff.ctx as any;
+  consentCtx.accounts.byEmail = (email: string) => ({ id: email, email });
+  Object.assign(consentCtx.signins, { ready: () => true, state: () => ({ kimi: { how: 'login' } }) });
+  const scope = subscriptionScope(staff.ctx, staff.floor as any, 'dept-1');
+  consentCtx.roleSubscriptions = { get: () => ({ configuration: scope.configuration, custodian: 'ivan@example.com', provider: 'kimi', controllers: scope.controllers, allowStaffQA: true }) };
   (departmentsHandlers['departments.ask'] as Function)(staff.ctx, staff.client, { t: 'departments.ask', id: 'dept-1', question: 'What is the brand color?' });
   assert.deepEqual(staff.qaCalls, [{ deptId: 'dept-1', question: 'What is the brand color?' }]);
   assert.ok(!staff.calls.some((c) => c.startsWith('conv.send') || c.startsWith('spawn')), 'no manager session, no new manager process');

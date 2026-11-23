@@ -1,8 +1,8 @@
+import { canUseRoleWorker } from '../../role-subscriptions/access.js';
 import { createApprovalHandlers, type ApprovalAuthority } from '../../approvals/handlers.js';
 import { roleAccess, roleOrigin } from '../../role-access.js';
-import { canUseWorker } from '../../worker-ownership.js';
 /** Role authority and runtime credential ownership are separate checks. Editable custodian
- * metadata is not a subscription-sharing grant. No generic admin or controller bypass. */
+ * metadata alone is not consent. Shared manager use requires the scoped custodian grant. */
 export const approvalAuthority: ApprovalAuthority = (ctx, c, workerId) => {
   const floor = ctx.workerFloor(workerId), worker = floor?.workers.get(workerId);
   if (!floor || !worker) return false;
@@ -10,7 +10,7 @@ export const approvalAuthority: ApprovalAuthority = (ctx, c, workerId) => {
     const access = roleAccess(ctx, floor, workerId, c.accountId);
     if (access.kind !== 'owner' && access.kind !== 'controller') return false;
   }
-  return canUseWorker(ctx, c.accountId, floor.workers.ownerOf(workerId), worker.provider);
+  return canUseRoleWorker(ctx, c.accountId, floor, workerId);
 };
 const feature = createApprovalHandlers(approvalAuthority);
 export const approvalHandlers = feature.handlers;

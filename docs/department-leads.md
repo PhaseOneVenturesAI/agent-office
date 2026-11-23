@@ -117,3 +117,16 @@ are the front door.
 
 Private role provenance survives engine swaps. Before delivering a role handoff, Office durably marks both workers with the originating CEO/department identity. The source remains removable and keeps its work/history, but its card, discovery entry, terminal and Conversation retain the role's current access restrictions as well as credential ownership checks after restart. A damaged provenance file fails closed for that worker. Ordinary personal workers are unchanged; these are Office API/UI access checks, not operating-system isolation between local processes.
 Engine-swap confirmation stays open until the server confirms completion. If the handoff was delivered but saving the role failed, reopen the swap and choose **Finish role swap**: this retries the role update without delivering the handoff again. Disconnects and server errors leave the swap unconfirmed and retryable.
+
+
+### Department subscription consent
+
+In **Roles**, designate the manager’s custodian, provider and human controllers. The custodian signs into their own Office account, connects a personal Claude/Kimi/Codex sign-in, and reviews the named project, department, provider and controllers before choosing **Allow these controllers to use my subscription**. This explicitly permits the manager and its same-provider department child workers to use that subscription. Office-host credentials cannot be re-granted this way. Merely editing the custodian field grants nothing; administrators and controllers cannot consent for someone else.
+
+The optional staff Q&A checkbox separately authorizes a separate read-only session for the displayed audience. An empty audience explicitly means all signed-in colleagues. It never opens the manager’s conversation to staff. Provider capability restrictions still apply independently of consent.
+
+Consent is stored without credential secrets in `role-subscription-grants.json`. Controller, audience, custodian and provider-setting edits invalidate it, including removing and re-adding a controller. Authority, current provider sign-in and exact runtime custody are checked again for shared conversations, terminal access, approvals, manager launches, CEO assignments, automatic notices, agent delegation and actual queued execution. Other providers require their own newly reviewed consent. Revocation blocks future shared actions and queued starts; already-running turns are not forcibly terminated or moved onto someone else’s credentials. The payer can still use their own personal workers.
+
+Existing seated managers are never silently rebound to a different payer. A mismatched runtime must be replaced explicitly. Changing provider invalidates the old consent; the existing credential owner may need to finish the explicit swap before other controllers can use the newly consented runtime. Pending swaps retain their normal one-shot handoff and recovery behavior. Human-initiated personal child workers continue to use the initiating human’s subscription.
+
+This is application-level credential routing and consent, not an OS tenant sandbox: approving a coding agent’s tool access still authorizes code execution within the existing host environment. No live grants are created by installing this feature.

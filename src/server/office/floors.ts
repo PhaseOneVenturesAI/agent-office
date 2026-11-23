@@ -1,3 +1,4 @@
+import { managerExecution, roleDispatchError, queuedDepartmentError } from '../role-subscriptions/access.js';
 import { canViewTerminal } from '../worker-ownership.js';
 import { existsSync } from 'node:fs';
 import { WebSocket } from 'ws';
@@ -133,6 +134,9 @@ export async function openFloors(ctx: Ctx, hookPort: number): Promise<FloorsOpen
     locksUp: () => !!ctx.maps.plan().sendHome?.keeps,
     runAs: ctx.signins,
     accountsEnabled: () => ctx.accounts.any,
+    managerExecution: (floor, department, actor, provider) => managerExecution(ctx, floor, department, actor, provider),
+    queuedDepartmentError: (floor, task) => queuedDepartmentError(ctx, floor, task),
+    roleDispatchError: (floor, workerId) => roleDispatchError(ctx, floor, workerId),
     ghAs: (owner) => (owner ? ctx.signins.ghAs(owner) : undefined),
   };
   /** Whether a worker on `from` works in `on`'s project too (see WorkerInfo.repos). */

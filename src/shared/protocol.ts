@@ -1,3 +1,5 @@
+import type { RoleSubscriptionClientMsg, RoleSubscriptionServerMsg } from './protocol/role-subscriptions.js';
+export * from './protocol/role-subscriptions.js';
 // Wire protocol between browser and server. Every WebSocket frame is one JSON object.
 //
 // Each part of the office keeps its state types and its messages in ./protocol/<domain>.ts; this
@@ -60,6 +62,7 @@ export * from './protocol/usage.js';
 export * from './protocol/workers.js';
 
 export type ClientMsg =
+  | RoleSubscriptionClientMsg
   | ApprovalClientMsg
   | DeliveryClientMsg
   | ConversationClientMsg
@@ -97,6 +100,7 @@ export type ClientMsg =
   | DogClientMsg;
 
 export type ServerMsg =
+  | RoleSubscriptionServerMsg
   | ApprovalServerMsg
   | DeliveryServerMsg
   | ConversationServerMsg

@@ -1,3 +1,4 @@
+import { managerExecution } from '../../role-subscriptions/access.js';
 import { protectRoleHandoff } from '../../role-seats.js';
 // Engine swaps (see docs/department-leads.md): an explicit handoff of a worker's task to a
 // replacement worker on another engine. The source is reserved before anything spawns, the
@@ -97,6 +98,9 @@ export const handoffHandlers = {
     const guard = swapGuard(info);
     if (guard) return ctx.warn(c, guard);
     const reserve = () => {
+      const department = floor.departments.leadDeptOfWorker(source.wid);
+      const execution = department ? managerExecution(ctx, floor, department.id, c.accountId, msg.provider) : { owner: c.accountId };
+      if (execution.error) return ctx.warn(c, execution.error);
       // The reservation marks the source first: a second swap, a prompt or a handoff sees it.
       const reserved = floor.workers.handoffs.reserve(source.wid, { engine, by: c.peer.name, at: Date.now() });
       if (reserved) return ctx.warn(c, reserved);
@@ -107,7 +111,7 @@ export const handoffHandlers = {
         floor.workers.handoffs.clearSwap(source.wid);
         return ctx.warn(c, 'No free desk for the replacement — send someone home first');
       }
-      const r = floor.workers.spawn(desk, c.peer.name, undefined, !!info.worktree || !!floor.project.branch, 'agent', msg.provider, model, effort, undefined, c.accountId);
+      const r = floor.workers.spawn(desk, c.peer.name, undefined, !!info.worktree || !!floor.project.branch, 'agent', msg.provider, model, effort, undefined, execution.owner);
       if (typeof r === 'string') {
         floor.workers.handoffs.clearSwap(source.wid);
         return ctx.warn(c, r);
@@ -124,6 +128,7 @@ export const handoffHandlers = {
       ctx.toastFloor(floor, `🔁 ${c.peer.name} staged an engine swap: ${info.name} → ${engine}`);
       ctx.sendTo(c, { t: 'handoff.preview', workerId: source.wid, handoff: result });
     };
-    ctx.withSignIn(c, ctx.signInFor(msg.provider), () => ctx.withFreshBase(c, [floor], reserve));
+    if (floor.departments.leadDeptOfWorker(source.wid)) ctx.withFreshBase(c, [floor], reserve);
+    else ctx.withSignIn(c, ctx.signInFor(msg.provider), () => ctx.withFreshBase(c, [floor], reserve));
   },
 } satisfies HandlerMap<HandoffClientMsg>;
