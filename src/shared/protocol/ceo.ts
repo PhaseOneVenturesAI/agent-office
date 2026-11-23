@@ -11,10 +11,14 @@ export interface CeoIdentity {
   name: string;
   /** The live worker speaking for the CEO, while their shift runs. */
   workerId?: string;
-  /** The engine the CEO last ran on; the next launch offers it as the saved default. */
+  /** The account email that privately owns this CEO; only they may talk to it or edit it. */
+  owner?: string;
+  /** Saved engine: the provider/model/effort the next shift starts on. */
   provider?: AgentProvider;
   model?: string;
   effort?: AgentEffort;
+  /** Effective autonomy label for this character ('off' when unset). Informational until the provider supports it. */
+  autonomy?: string;
   by: string;
   at: number;
 }
@@ -27,7 +31,7 @@ export interface CeoState {
 
 export type CeoClientMsg =
   /** Name (or replace) the CEO identity and its saved engine. Never launches. */
-  | { t: 'ceo.set'; name: string; provider?: AgentProvider; model?: string; effort?: AgentEffort }
+  | { t: 'ceo.set'; name: string; provider?: AgentProvider; model?: string; effort?: AgentEffort; autonomy?: string; /** Admins only: who privately owns the CEO. */ owner?: string }
   /** Take the CEO identity away (a live CEO worker keeps its desk as a normal worker). */
   | { t: 'ceo.clear' }
   /** Start the CEO's shift explicitly: seats their worker at a desk with the CEO prompt. */

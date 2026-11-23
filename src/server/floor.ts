@@ -19,6 +19,7 @@ import { Departments, MAX_WRITERS } from './departments.js';
 import { FloorCeo } from './ceo.js';
 import { LeadDispatch } from './dept-dispatch.js';
 import { RoleChat } from './role-chat.js';
+import { acpCommand, qaContext, staffQaAsk, type QaOutcome } from './staff-qa.js';
 import { Docs } from './docs.js';
 import { Dog } from './dog.js';
 import { Court } from './court.js';
@@ -129,6 +130,8 @@ export class Floor {
   readonly departments: Departments;
   /** The floor's CEO: one persistent identity per project, directing the managers (see ceo.ts). */
   readonly ceo: FloorCeo;
+  /** The durable conversation record for role characters (see role-chat.ts). */
+  readonly roleChat: RoleChat;
   /** The lead dispatch: child transitions become messages in the lead's own session. */
   readonly dispatch: LeadDispatch;
   readonly jukebox: Jukebox;
@@ -281,7 +284,8 @@ export class Floor {
       ceo: () => this.ceo.get(),
     });
     // Role characters keep a durable, paged conversation record (see role-chat.ts).
-    this.workers.conversations.attachHistory(new RoleChat(dataDir), (id) => !!this.isRoleWorker(id));
+    this.roleChat = new RoleChat(dataDir);
+    this.workers.conversations.attachHistory(this.roleChat, (id) => !!this.isRoleWorker(id));
 
     // Meetings seat their own workers round the meeting room's table and run them round by round.
     const workers = this.workers;
@@ -395,6 +399,34 @@ export class Floor {
    */
   landed(worker: WorkerInfo): Landed | undefined {
     return landedWork(worker, this.github.pulls.items, this.queue.state().tasks, (id) => this.ctx.floor(id)?.github.pulls.items);
+  }
+
+  /**
+   * A staff read-only question about a department (see staff-qa.ts): answered on a SEPARATE
+   * one-shot ACP session with no tools — never the manager's provider session — from an approved
+   * context snapshot. The exchange is recorded under the staff scope and returned to the asker.
+   */
+  async staffQA(deptId: string, question: string, by: string): Promise<QaOutcome> {
+    const dept = this.departments.get(deptId);
+    if (!dept) return { ok: false, why: 'That department is gone' };
+    const clean = question.replace(/\r\n?/g, '\n').trim().slice(0, 4000);
+    if (!clean) return { ok: false, why: 'Ask a question first' };
+    const command = acpCommand();
+    if (!command) {
+      return { ok: false, why: 'Read-only staff Q&A needs a Kimi or DeepSeek Harness CLI on this office machine. It never uses the manager’s own session, so it is unavailable here rather than pretending.' };
+    }
+    const context = qaContext({ name: dept.name, brief: dept.brief as { rev: number; text: string }[], lead: dept.lead ? { objective: dept.lead.objective } : undefined, assets: dept.assets });
+    const prompt = [
+      `You are the read-only Q&A desk for the ${dept.name} department. You are not the manager and never speak for them.`,
+      'You have no tools: the office denies every tool request, so answer only from the approved context below and general knowledge. Never claim to have read files, run commands, assigned work, or made decisions. Keep the answer short, and say plainly when the context does not cover something.',
+      context,
+      `Question from ${by}: ${clean}`,
+    ].join('\n\n');
+    const outcome = await staffQaAsk({ ...command, cwd: this.dir, prompt });
+    const at = Date.now();
+    this.roleChat.append(`qa-${deptId}`, { id: `q-${at}`, role: 'user', text: clean, at, by, scope: 'staff' });
+    this.roleChat.append(`qa-${deptId}`, { id: `a-${at}`, role: 'assistant', text: outcome.ok ? outcome.answer : `Unavailable: ${outcome.why}`, at: at + 1, scope: 'staff' });
+    return outcome;
   }
 
   /** A worker speaking for a role (the CEO or a department manager): protected from send-home. */

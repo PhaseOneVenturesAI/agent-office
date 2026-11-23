@@ -89,6 +89,9 @@ export class Departments {
         // the next real change, and a stale live link self-heals at launch time.
         if (d.lead && (typeof d.lead.name !== 'string' || !d.lead.name || typeof d.lead.by !== 'string' || !Number.isFinite(d.lead.at))) delete d.lead;
         if (d.lead?.objective && (typeof d.lead.objective.text !== 'string' || !d.lead.objective.text || typeof d.lead.objective.by !== 'string' || !Number.isFinite(d.lead.objective.at))) delete d.lead.objective;
+        if (d.lead?.controllers && (!Array.isArray(d.lead.controllers) || d.lead.controllers.some((e) => typeof e !== 'string'))) delete d.lead.controllers;
+        if (d.lead?.audience && (!Array.isArray(d.lead.audience) || d.lead.audience.some((e) => typeof e !== 'string'))) delete d.lead.audience;
+        if (d.lead?.custodian && typeof d.lead.custodian !== 'string') delete d.lead.custodian;
         if (d.policy && (typeof d.policy.provider !== 'string' || (d.policy.mode !== 'policy' && d.policy.mode !== 'ask'))) delete d.policy;
         if (d.requests && (!Array.isArray(d.requests) || d.requests.some((r) => !r || typeof r.id !== 'string' || typeof r.title !== 'string' || typeof r.task !== 'string' || typeof r.by !== 'string' || !Number.isFinite(r.at)))) delete d.requests;
       }
@@ -295,20 +298,22 @@ export class Departments {
     this.commit(this.departments.map((d) => (d.id === id ? next : d)));
   }
 
-  /** Names (or replaces) the lead identity and its saved engine; never launches anything. */
-  setLead(id: string, ask: { name: unknown; provider?: AgentProvider; model?: string; effort?: AgentEffort }, by: string): string | undefined {
+  /** Name (or replace) the lead identity and its saved engine; never launches anything. */
+  setLead(id: string, ask: { name: unknown; provider?: AgentProvider; model?: string; effort?: AgentEffort; autonomy?: string }, by: string): string | undefined {
     const dept = this.get(id);
     if (!dept) return 'That department is gone';
     const name = oneLine(String(ask.name ?? ''), MAX_NAME);
     if (!name) return 'Give the lead a name';
-    // Replacing the identity under a live worker is refused; refreshing the saved engine is not.
+    // Replacing the identity under a live worker is refused; refreshing the saved engine is not —
+    // and it must keep the live link, or a duplicate shift could be launched under the new save.
     if (dept.lead?.workerId && name !== dept.lead.name) return `${dept.lead.name} is on shift — send their worker home before replacing them`;
-    const lead: DeptLead = { name, by, at: Date.now() };
-    if (ask.provider !== undefined) lead.provider = ask.provider;
-    if (ask.model !== undefined) lead.model = ask.model;
-    if (ask.effort !== undefined) lead.effort = ask.effort;
-    const next: Department = { ...dept, lead };
-    return this.commit(this.departments.map((d) => (d.id === id ? next : d)));
+    const next: DeptLead = { ...(dept.lead ?? { name, by, at: Date.now() }), name, by, at: Date.now() };
+    if (ask.provider !== undefined) next.provider = ask.provider;
+    if (ask.model !== undefined) next.model = ask.model;
+    if (ask.effort !== undefined) next.effort = ask.effort;
+    if (ask.autonomy !== undefined) next.autonomy = ask.autonomy;
+    const nextDept: Department = { ...dept, lead: next };
+    return this.commit(this.departments.map((d) => (d.id === id ? nextDept : d)));
   }
 
   /** Takes the lead identity away; its worker, when live, keeps its desk as a normal worker. */
@@ -425,7 +430,30 @@ export class Departments {
     return this.departments.find((d) => d.lead?.workerId === workerId);
   }
 
-  /** The CEO's scoped objective for this manager; results and blockers roll up to it. */
+  /** Admins: who controls this manager, who may ask it read-only questions, and the billing custodian. */
+  setAccess(id: string, ask: { controllers?: unknown; audience?: unknown; custodian?: unknown }): string | undefined {
+    const dept = this.get(id);
+    if (!dept) return 'That department is gone';
+    const emails = (v: unknown): string[] | undefined => (Array.isArray(v) ? v.map((e) => String(e).trim().toLowerCase()).filter((e) => e && e.includes('@')).slice(0, 20) : undefined);
+    const controllers = emails(ask.controllers);
+    const audience = emails(ask.audience);
+    const custodian = ask.custodian === undefined || ask.custodian === '' ? undefined : String(ask.custodian).trim().toLowerCase();
+    if (ask.custodian !== undefined && custodian !== undefined && !custodian.includes('@')) return 'The custodian is an account email';
+    const next: Department = {
+      ...dept,
+      lead: dept.lead
+        ? {
+            ...dept.lead,
+            ...(controllers ? { controllers } : {}),
+            ...(audience ? { audience } : ask.audience === undefined ? {} : { audience: [] }),
+            ...(ask.custodian !== undefined ? { custodian } : {}),
+          }
+        : undefined,
+    };
+    return this.commit(this.departments.map((d) => (d.id === id ? next : d)));
+  }
+
+  /** An orchestration-scoped objective from the CEO (or an authorized person). */
   setObjective(id: string, text: unknown, by: string): string | undefined {
     const dept = this.get(id);
     if (!dept) return 'That department is gone';
@@ -533,7 +561,7 @@ function isDept(v: unknown): v is Department {
     (d.briefArchived === undefined || (Number.isSafeInteger(d.briefArchived) && d.briefArchived >= 0)) &&
     Array.isArray(d.roster) && d.roster.every((r) => r && typeof r.workerId === 'string' && typeof r.role === 'string' && typeof r.by === 'string' && Number.isFinite(r.at)) &&
     Array.isArray(d.assets) && d.assets.every((a) => a && typeof a.id === 'string' && typeof a.label === 'string' && ['file', 'link'].includes(a.kind) && typeof a.ref === 'string' && ['current', 'historical'].includes(a.status) && typeof a.by === 'string' && Number.isFinite(a.at)) &&
-    (d.lead === undefined || (d.lead && typeof d.lead === 'object' && typeof d.lead.name === 'string' && (d.lead.workerId === undefined || typeof d.lead.workerId === 'string') && typeof d.lead.by === 'string' && Number.isFinite(d.lead.at) && (d.lead.objective === undefined || (typeof d.lead.objective === 'object' && typeof d.lead.objective.text === 'string' && typeof d.lead.objective.by === 'string' && Number.isFinite(d.lead.objective.at))))) &&
+    (d.lead === undefined || (d.lead && typeof d.lead === 'object' && typeof d.lead.name === 'string' && (d.lead.workerId === undefined || typeof d.lead.workerId === 'string') && typeof d.lead.by === 'string' && Number.isFinite(d.lead.at) && (d.lead.objective === undefined || (typeof d.lead.objective === 'object' && typeof d.lead.objective.text === 'string' && typeof d.lead.objective.by === 'string' && Number.isFinite(d.lead.objective.at))) && (d.lead.controllers === undefined || (Array.isArray(d.lead.controllers) && d.lead.controllers.every((e) => typeof e === 'string'))) && (d.lead.audience === undefined || (Array.isArray(d.lead.audience) && d.lead.audience.every((e) => typeof e === 'string'))) && (d.lead.custodian === undefined || typeof d.lead.custodian === 'string') && (d.lead.autonomy === undefined || typeof d.lead.autonomy === 'string'))) &&
     (d.policy === undefined || (d.policy && typeof d.policy === 'object' && typeof d.policy.provider === 'string' && ['policy', 'ask'].includes(d.policy.mode) && typeof d.policy.by === 'string' && Number.isFinite(d.policy.at))) &&
     (d.requests === undefined || (Array.isArray(d.requests) && d.requests.every((r) => r && typeof r.id === 'string' && typeof r.title === 'string' && typeof r.task === 'string' && typeof r.by === 'string' && Number.isFinite(r.at)))) &&
     typeof d.by === 'string' &&

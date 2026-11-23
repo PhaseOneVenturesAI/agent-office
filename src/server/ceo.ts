@@ -36,7 +36,7 @@ export class FloorCeo {
   }
 
   /** Name (or replace) the CEO identity and its saved engine; never launches anything. */
-  set(ask: { name: unknown; provider?: AgentProvider; model?: string; effort?: AgentEffort }, by: string): string | undefined {
+  set(ask: { name: unknown; provider?: AgentProvider; model?: string; effort?: AgentEffort; autonomy?: string; owner?: string }, by: string): string | undefined {
     if (this.loadError) return this.loadError;
     const name = oneLine(String(ask.name ?? ''), MAX_NAME);
     if (!name) return 'Give the CEO a name';
@@ -47,6 +47,8 @@ export class FloorCeo {
     if (ask.provider !== undefined) next.provider = ask.provider;
     if (ask.model !== undefined) next.model = ask.model;
     if (ask.effort !== undefined) next.effort = ask.effort;
+    if (ask.autonomy !== undefined) next.autonomy = ask.autonomy;
+    if (ask.owner !== undefined) next.owner = ask.owner.trim().toLowerCase() || undefined;
     return this.commit(next);
   }
 
@@ -134,5 +136,5 @@ export class FloorCeo {
 function isCeo(v: unknown): v is CeoIdentity {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
   const c = v as Partial<CeoIdentity>;
-  return typeof c.name === 'string' && !!c.name && (c.workerId === undefined || typeof c.workerId === 'string') && typeof c.by === 'string' && Number.isFinite(c.at);
+  return typeof c.name === 'string' && !!c.name && (c.workerId === undefined || typeof c.workerId === 'string') && (c.owner === undefined || typeof c.owner === 'string') && (c.autonomy === undefined || typeof c.autonomy === 'string') && typeof c.by === 'string' && Number.isFinite(c.at);
 }

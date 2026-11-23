@@ -1,11 +1,12 @@
 // The floor's CEO (see server/ceo.ts and docs/department-leads.md): one persistent identity per
-// project. Naming, shifts and assignments are explicit — nothing here ever starts an agent by
-// itself, and assignments reach managers only through the floor's own dispatch (never a
-// busy-terminal injection, never a cross-floor call).
+// project, privately owned. Naming, shifts and assignments are explicit — nothing here ever starts
+// an agent by itself — and every edit is authorized: only the owner talks to or edits the CEO;
+// ownership itself changes through admin control only.
 import { nextFreeSeat } from '../../../shared/layout.js';
 import { OPEN_CODE_MODEL_MAX } from '../../../shared/providers.js';
 import { isAgentEffort, isAgentProvider, type CeoClientMsg } from '../../../shared/protocol.js';
 import { str } from '../../office/input.js';
+import { canEditCeo, canDelegateManager } from '../../role-access.js';
 import { here } from './common.js';
 import type { HandlerMap, ViewPieces } from './types.js';
 
@@ -19,13 +20,23 @@ export const ceoHandlers = {
       ctx.warn(c, 'Unknown agent provider');
       return;
     }
+    // Ownership passes only by delegation from the current owner (or an admin's first setup when
+    // no owner exists anywhere); office-admin status alone is never a way in.
+    if (msg.owner !== undefined) {
+      const editOwner = canEditCeo(ctx, floor, c.accountId);
+      if (!editOwner.ok) return ctx.warn(c, editOwner.why);
+    }
+    const edit = canEditCeo(ctx, floor, c.accountId);
+    if (!edit.ok) return ctx.warn(c, edit.why);
     const model = msg.model === undefined ? undefined : str(msg.model, OPEN_CODE_MODEL_MAX + 1);
-    const err = floor.ceo.set({ name: str(msg.name, 60), ...(msg.provider !== undefined ? { provider: msg.provider } : {}), ...(model !== undefined ? { model } : {}), ...(isAgentEffort(msg.effort) ? { effort: msg.effort } : {}) }, c.peer.name);
+    const err = floor.ceo.set({ name: str(msg.name, 60), ...(msg.provider !== undefined ? { provider: msg.provider } : {}), ...(model !== undefined ? { model } : {}), ...(isAgentEffort(msg.effort) ? { effort: msg.effort } : {}), ...(msg.autonomy !== undefined ? { autonomy: str(msg.autonomy, 40) } : {}), ...(msg.owner !== undefined ? { owner: str(msg.owner, 120) } : {}) }, c.peer.name);
     if (err) ctx.warn(c, err);
   },
   'ceo.clear'(ctx, c) {
     const floor = here(ctx, c);
     if (!floor) return;
+    const edit = canEditCeo(ctx, floor, c.accountId);
+    if (!edit.ok) return ctx.warn(c, edit.why);
     const live = floor.ceo.get()?.workerId;
     ctx.warn(c, floor.ceo.clear());
     // Retiring the role sends its worker home: deleting the role is what frees the seat.
@@ -35,6 +46,8 @@ export const ceoHandlers = {
     const who = c.peer.name;
     const floor = here(ctx, c);
     if (!floor) return;
+    const edit = canEditCeo(ctx, floor, c.accountId);
+    if (!edit.ok) return ctx.warn(c, edit.why);
     if (msg.provider !== undefined && (!isAgentProvider(msg.provider) || !floor.project.agentProviders.includes(msg.provider))) {
       ctx.warn(c, 'Unknown agent provider');
       return;
@@ -44,7 +57,7 @@ export const ceoHandlers = {
     const task = str(msg.prompt, 20000) || undefined;
     const saved = floor.ceo.savedChoice();
     const provider = msg.provider ?? saved?.provider;
-    const liveAgents = () => floor.workers.list().filter((w) => w.kind === 'agent').map((w) => w.id);
+    const liveAgents = () => floor.writerIds();
     const hire = () => {
       const composed = floor.ceo.composeLaunch(task, liveAgents);
       if (typeof composed === 'string') return ctx.warn(c, composed);
@@ -60,6 +73,8 @@ export const ceoHandlers = {
   'ceo.assign'(ctx, c, msg) {
     const floor = here(ctx, c);
     if (!floor) return;
+    const edit = canEditCeo(ctx, floor, c.accountId);
+    if (!edit.ok) return ctx.warn(c, edit.why);
     const objective = str(msg.objective, 4000);
     if (!objective.trim()) return ctx.warn(c, 'Say what the manager is to achieve');
     const dept = floor.departments.state().departments.find((d) => d.preset === msg.dept);

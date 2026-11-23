@@ -7,6 +7,7 @@ import { OPEN_CODE_MODEL_MAX } from '../../../shared/providers.js';
 import { swapBrief, swapGuard } from '../../workers/handoffs.js';
 import { nextFreeSeat } from '../../../shared/layout.js';
 import { str } from '../../office/input.js';
+import { roleAccess } from '../../role-access.js';
 import type { HandlerMap } from './types.js';
 import { ownedWorker } from './worker-access.js';
 
@@ -56,6 +57,13 @@ export const handoffHandlers = {
     if (!source) return;
     const floor = source.floor;
     const info = source.info;
+    // Swapping a role character's engine is editing the role: the CEO owner, or the manager's
+    // controllers — never the office-admin flag at large.
+    const role = floor.isRoleWorker(source.wid);
+    if (role) {
+      const access = roleAccess(ctx, floor, source.wid, c.accountId);
+      if (access.kind !== 'owner' && access.kind !== 'controller') return ctx.warn(c, access.kind === 'none' ? access.why : `Only the ${role.name}'s owner or controllers may change their engine.`);
+    }
     if (!isAgentProvider(msg.provider) || !floor.project.agentProviders.includes(msg.provider)) return ctx.warn(c, `Unknown agent provider`);
     const model = msg.model === undefined ? undefined : str(msg.model, OPEN_CODE_MODEL_MAX + 1);
     const effort = isAgentEffort(msg.effort) ? msg.effort : undefined;

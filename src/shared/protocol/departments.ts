@@ -66,6 +66,14 @@ export interface DeptLead {
   effort?: AgentEffort;
   /** The CEO's current objective for this manager, when one is active; results roll up to it. */
   objective?: { text: string; by: string; at: number };
+  /** Human controller emails: may edit the manager and give it major objectives. */
+  controllers?: string[];
+  /** Emails allowed read-only Q&A; empty/absent means any signed-in colleague may ask. */
+  audience?: string[];
+  /** Billing/credential custodian for this manager's runs (visible, never inferred). */
+  custodian?: string;
+  /** Effective autonomy label ('off' when unset). Informational until the provider supports it. */
+  autonomy?: string;
   by: string;
   at: number;
 }
@@ -151,7 +159,10 @@ export type DepartmentsClientMsg =
   /** Take a worker off the roster (the worker itself stays). */
   | { t: 'departments.release'; id: string; workerId: string }
   /** Name (or replace) the department's lead identity and its saved engine. Never launches. */
-  | { t: 'departments.lead'; id: string; name: string; provider?: AgentProvider; model?: string; effort?: AgentEffort }
+  /** Name (or replace) the lead identity and its saved engine; never launches. */
+  | { t: 'departments.lead'; id: string; name: string; provider?: AgentProvider; model?: string; effort?: AgentEffort; autonomy?: string }
+  /** Admins: set who controls a manager, who may ask it read-only questions, and the billing custodian. */
+  | { t: 'departments.access'; id: string; controllers?: string[]; audience?: string[]; custodian?: string }
   /** Take the lead identity away (a live lead worker keeps its desk). */
   | { t: 'departments.lead.clear'; id: string }
   /** Start the lead's shift explicitly: seats its worker with the lead prompt on the policy engine. */
@@ -163,9 +174,13 @@ export type DepartmentsClientMsg =
   /** Approve a pending engine request: seats the delegation on the picked engine (a person decides). */
   | { t: 'departments.request.approve'; id: string; request: string; provider?: AgentProvider; model?: string; effort?: AgentEffort }
   /** Reject a pending engine request: the delegation is dropped. */
-  | { t: 'departments.request.reject'; id: string; request: string };
+  | { t: 'departments.request.reject'; id: string; request: string }
+  /** A read-only staff question about the department: answered on a separate no-tools session. */
+  | { t: 'departments.ask'; id: string; question: string };
 
 export type DepartmentsServerMsg =
   | { t: 'departments'; state: DepartmentsState }
   /** The archived brief revisions of one department, as asked (newest first). */
-  | { t: 'departments.brief.history'; id: string; revs: DeptBriefRev[]; archived: number; next?: number };
+  | { t: 'departments.brief.history'; id: string; revs: DeptBriefRev[]; archived: number; next?: number }
+  /** The answer to a read-only staff question (separate no-tools session), or why it's unavailable. */
+  | { t: 'departments.qa'; id: string; question: string; answer: string; at: number };

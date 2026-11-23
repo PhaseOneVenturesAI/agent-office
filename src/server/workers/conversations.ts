@@ -61,17 +61,25 @@ export class WorkerConversations {
     if (!w || !conversationSupported(w.info.provider) || !text) return;
     this.append(id, { id: reply.id, role: 'assistant', text, at: Date.now() });
   }
-  send(id: string, value: unknown, by: string): string | undefined {
+  send(id: string, value: unknown, by: string, opts?: { scope?: 'staff'; preamble?: string }): string | undefined {
     const w = this.workers.get(id);
     if (!w || !conversationSupported(w.info.provider)) return 'Structured conversation is unavailable for this provider; use its terminal.';
     if (w.stopping || w.bootBlocked || w.info.lost || !['idle', 'done'].includes(w.info.status)) return 'Wait for the current turn or cleanup, or resolve the question in the terminal. This panel cannot answer tool approvals.';
     if (typeof value !== 'string' || !value.trim() || value.length > 20000 || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(value)) return 'Enter a plain text prompt of at most 20,000 characters.';
     const text = value.trim(), previous = w.info.status as 'idle' | 'done';
+    // A read-only question carries its constraints to the character, but the record keeps the
+    // person's clean text under the staff scope — never in the controller-facing stream.
+    const delivered = opts?.preamble ? `${opts.preamble}\n\n${text}` : text;
     // Reserve synchronously before another browser can send into this idle prompt.
     this.status(w, 'working');
-    const error = this.prompt(id, text, by);
+    const error = this.prompt(id, delivered, by);
     if (error) { this.status(w, previous); return error; }
-    this.append(id, { id: randomUUID(), role: 'user', text, at: Date.now(), by });
+    this.append(id, { id: randomUUID(), role: 'user', text, at: Date.now(), by, ...(opts?.scope === 'staff' ? { scope: 'staff' } : {}) });
+  }
+  /** The staff-scoped view of a role character's record: read-only Q&A only. */
+  snapshotScoped(id: string, scope: 'staff'): ConversationMessage[] {
+    if (!this.history || !this.durable?.(id)) return [];
+    return this.history.tail(id, 30).filter((m) => m.scope === scope).reverse();
   }
   stop(id: string, by: string): string | undefined {
     const w = this.workers.get(id);

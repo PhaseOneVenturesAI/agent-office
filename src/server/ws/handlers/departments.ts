@@ -6,6 +6,7 @@ import { normTitle } from '../../queue.js';
 import { OPEN_CODE_MODEL_MAX } from '../../../shared/providers.js';
 import { isAgentEffort, isAgentProvider, type DepartmentsClientMsg } from '../../../shared/protocol.js';
 import { str } from '../../office/input.js';
+import { canEditManager, canDelegateManager, roleAccessForManager } from '../../role-access.js';
 import { here } from './common.js';
 import type { HandlerMap, ViewPieces } from './types.js';
 
@@ -30,6 +31,8 @@ export const departmentsHandlers = {
     const who = c.peer.name;
     const floor = here(ctx, c);
     if (!floor) return;
+    const edit = canEditManager(ctx, floor, str(msg.id, 16), c.accountId);
+    if (!edit.ok) return ctx.warn(c, edit.why);
     const err = floor.departments.brief(str(msg.id, 16), str(msg.text, 25000), typeof msg.base === 'number' ? msg.base : -1, who);
     if (err) ctx.warn(c, err);
   },
@@ -90,13 +93,23 @@ export const departmentsHandlers = {
   'departments.lead'(ctx, c, msg) {
     const floor = here(ctx, c);
     if (!floor) return;
+    const edit = canEditManager(ctx, floor, str(msg.id, 16), c.accountId);
+    if (!edit.ok) return ctx.warn(c, edit.why);
     if (msg.provider !== undefined && (!isAgentProvider(msg.provider) || !floor.project.agentProviders.includes(msg.provider))) {
       ctx.warn(c, 'Unknown agent provider');
       return;
     }
     const model = msg.model === undefined ? undefined : str(msg.model, OPEN_CODE_MODEL_MAX + 1);
-    const err = floor.departments.setLead(str(msg.id, 16), { name: str(msg.name, 60), ...(msg.provider !== undefined ? { provider: msg.provider } : {}), ...(model !== undefined ? { model } : {}), ...(isAgentEffort(msg.effort) ? { effort: msg.effort } : {}) }, c.peer.name);
+    const err = floor.departments.setLead(str(msg.id, 16), { name: str(msg.name, 60), ...(msg.provider !== undefined ? { provider: msg.provider } : {}), ...(model !== undefined ? { model } : {}), ...(isAgentEffort(msg.effort) ? { effort: msg.effort } : {}), ...(msg.autonomy !== undefined ? { autonomy: str(msg.autonomy, 40) } : {}) }, c.peer.name);
     if (err) ctx.warn(c, err);
+  },
+  'departments.access'(ctx, c, msg) {
+    const floor = here(ctx, c);
+    if (!floor) return;
+    const edit = canDelegateManager(ctx, floor, str(msg.id, 16), c.accountId);
+    if (!edit.ok) return ctx.warn(c, edit.why);
+    const ask = msg as { controllers?: unknown; audience?: unknown; custodian?: unknown };
+    ctx.warn(c, floor.departments.setAccess(str(msg.id, 16), { ...(ask.controllers !== undefined ? { controllers: ask.controllers } : {}), ...(ask.audience !== undefined ? { audience: ask.audience } : {}), ...(ask.custodian !== undefined ? { custodian: ask.custodian } : {}) }));
   },
   'departments.lead.clear'(ctx, c, msg) {
     const floor = here(ctx, c);
@@ -110,6 +123,8 @@ export const departmentsHandlers = {
   'departments.policy'(ctx, c, msg) {
     const floor = here(ctx, c);
     if (!floor) return;
+    const edit = canEditManager(ctx, floor, str(msg.id, 16), c.accountId);
+    if (!edit.ok) return ctx.warn(c, edit.why);
     if (!isAgentProvider(msg.provider) || !floor.project.agentProviders.includes(msg.provider)) {
       ctx.warn(c, 'Unknown agent provider');
       return;
@@ -122,6 +137,8 @@ export const departmentsHandlers = {
     const who = c.peer.name;
     const floor = here(ctx, c);
     if (!floor) return;
+    const edit = canEditManager(ctx, floor, str(msg.id, 16), c.accountId);
+    if (!edit.ok) return ctx.warn(c, edit.why);
     if (msg.provider !== undefined && (!isAgentProvider(msg.provider) || !floor.project.agentProviders.includes(msg.provider))) {
       ctx.warn(c, 'Unknown agent provider');
       return;
@@ -147,6 +164,8 @@ export const departmentsHandlers = {
     const id = str(msg.id, 16);
     const dept = floor.departments.get(id);
     if (!dept) return ctx.warn(c, 'That department is gone');
+    const edit = canEditManager(ctx, floor, id, c.accountId);
+    if (!edit.ok) return ctx.warn(c, edit.why);
     const title = str(msg.title, 200);
     const task = str(msg.task, 20000).replace(/\r\n?/g, '\n').trim();
     if (!title || !task) return ctx.warn(c, 'Give the delegation a title and the task');
@@ -203,5 +222,19 @@ export const departmentsHandlers = {
     const err = floor.departments.dropRequest(str(msg.id, 16), str(msg.request, 16));
     if (err) ctx.warn(c, err);
     else ctx.toastFloor(floor, `${c.peer.name} rejected a delegation request`);
+  },
+  'departments.ask'(ctx, c, msg) {
+    const floor = here(ctx, c);
+    if (!floor) return;
+    const id = str(msg.id, 16);
+    const dept = floor.departments.get(id);
+    if (!dept?.lead) return ctx.warn(c, 'Name the manager first');
+    // Read-only Q&A is for staff; controllers and the owner talk to the manager directly.
+    const access = roleAccessForManager(ctx, floor, id, c.accountId);
+    if (access.kind === 'none') return ctx.warn(c, access.why);
+    void floor.staffQA(id, str(msg.question, 4000), c.peer.name).then((outcome) => {
+      if (c.out || !ctx.stillIn(c)) return;
+      ctx.sendTo(c, { t: 'departments.qa', id, question: str(msg.question, 4000), answer: outcome.ok ? outcome.answer : `Unavailable: ${outcome.why}`, at: Date.now() });
+    });
   },
 } satisfies HandlerMap<DepartmentsClientMsg>;
