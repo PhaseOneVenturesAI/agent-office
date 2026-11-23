@@ -77,6 +77,10 @@ DeepSeek Harness metrics come from ACP `usage_update`: tokens in context and the
 
 Kimi metrics come from the same ACP `usage_update`: tokens in context and the window's size per worker, plus a session cost only when Kimi reports one. The daily budget and historical ledger remain Claude-only.
 
+## Kimi sign-in
+
+In **☰ → 🔐 Your sign-ins → Kimi**, open the verification link shown by the office and confirm the matching one-time code on Kimi's page. The link already carries `user_code`; do not navigate to the bare authorization page or look for a separate code-entry field. The office preserves the complete HTTPS URL printed by `kimi login` and waits for a matching code before showing it. If no complete link appears, cancel and restart the flow. Sign-in remains scoped to the account's own `KIMI_CODE_HOME`.
+
 ## The office's prompts
 
 Everything the office tells a worker by itself can be rewritten in ⚙️ Settings → **🤖 Workers** → **📝 Edit the prompts…**: what **🤖 Hand to a worker**, **🔍 Review**, **Fix up & merge**, **Fix conflicts & merge** and **✍️ Ask a worker** send from the boards, what a meeting about an issue or a review panel starts with, the note the queue adds to a worktree task, the three board agents' briefs, every part the meeting room hands out, and the instructions for the model that writes the signs over workers' heads. Each one lists its `{{placeholders}}` (the issue number, the PR's branch, the file a meeting waits for…), which the office fills in when it sends it, and warns when one the office counts on is missing. **↺ Default** puts the office's own wording back. Admins edit them; they're the same on every floor and kept in `.agent-office/prompts.json` with the Default worker.

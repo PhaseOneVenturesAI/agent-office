@@ -120,8 +120,8 @@ export function openSignIns(net: Net, why?: string) {
           h(
             'ol.signin-steps',
             {},
-            h('li', {}, 'Copy your one-time code:', h('div.cmd', {}, h('pre.signin-code', {}, code), copyButton('Copy', () => code))),
-            h('li', {}, h('a.btn.primary', { href: url, target: '_blank', rel: 'noopener noreferrer' }, `Open ${NAMES[which]}’s sign-in page ↗`), ' and enter it there.'),
+            h('li', {}, which === 'kimi' ? 'Check this code matches Kimi’s page:' : 'Copy your one-time code:', h('div.cmd', {}, h('pre.signin-code', {}, code), copyButton('Copy', () => code))),
+            h('li', {}, h('a.btn.primary', { href: url, target: '_blank', rel: 'noopener noreferrer' }, `Open ${NAMES[which]}’s sign-in page ↗`), which === 'kimi' ? ' — the code is already included. Confirm it there.' : ' and enter it there.'),
             h('li', {}, `This updates by itself once ${NAMES[which]} says yes.`),
           ),
         );
