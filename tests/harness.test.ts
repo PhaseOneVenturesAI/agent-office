@@ -44,13 +44,17 @@ test('files are listed jailed to instructions kinds, and reads stay inside the r
   }
 });
 
-test('writes keep a .bak, refuse escapes, and the backup stays out of the list', () => {
+test('writes retain immutable prior text, preserve legacy backups and refuse missing bases/escapes', () => {
   const { root, harness, cleanup } = setup();
   try {
     writeFileSync(path.join(root, 'WORKFLOW.md'), 'v1\n');
-    assert.equal(harness.write('WORKFLOW.md', 'v2\n'), undefined);
+    writeFileSync(path.join(root, 'WORKFLOW.md.bak'), 'older legacy backup\n');
+    assert.ok(harness.write('WORKFLOW.md', 'missing base'));
+    assert.equal(harness.write('WORKFLOW.md', 'v2\n', harness.read('WORKFLOW.md').revision), undefined);
     assert.equal(readFileSync(path.join(root, 'WORKFLOW.md'), 'utf8'), 'v2\n');
-    assert.equal(readFileSync(path.join(root, 'WORKFLOW.md.bak'), 'utf8'), 'v1\n');
+    assert.equal(readFileSync(path.join(root, 'WORKFLOW.md.bak'), 'utf8'), 'older legacy backup\n');
+    const entry = harness.sources().revisions('WORKFLOW.md').revisions[0];
+    assert.equal(harness.sources().snapshot('WORKFLOW.md', entry.id).text, 'v1\n');
     assert.deepEqual(harness.list().map((f) => f.path), ['WORKFLOW.md']);
     assert.ok(harness.write('../evil.md', 'x'));
     assert.ok(harness.write('script.sh', 'x'));
@@ -58,6 +62,33 @@ test('writes keep a .bak, refuse escapes, and the backup stays out of the list',
   } finally {
     cleanup();
   }
+});
+
+test('a stale content base conflicts and a deleted source requires explicit historical restoration', () => {
+  const { root, harness, cleanup } = setup();
+  try {
+    writeFileSync(path.join(root, 'CLAUDE.md'), 'v1\n');
+    const first = harness.read('CLAUDE.md');
+    writeFileSync(path.join(root, 'CLAUDE.md'), 'v2\n');
+    assert.match(harness.write('CLAUDE.md', 'old tab\n', first.revision)!, /changed or was deleted/);
+    assert.equal(readFileSync(path.join(root, 'CLAUDE.md'), 'utf8'), 'v2\n');
+    assert.equal(harness.write('CLAUDE.md', 'v3\n', harness.read('CLAUDE.md').revision), undefined);
+    const third = harness.read('CLAUDE.md'); rmSync(path.join(root, 'CLAUDE.md'));
+    assert.match(harness.write('CLAUDE.md', 'recreate\n', third.revision)!, /changed or was deleted/);
+    assert.ok(harness.write('CLAUDE.md', 'no base\n'));
+    assert.equal(existsSync(path.join(root, 'CLAUDE.md')), false);
+    assert.equal(harness.list()[0].status, 'missing');
+  } finally { cleanup(); }
+});
+
+test('Apply rejects aliased shared instruction sources without touching provider homes', () => {
+  const { root, office, harness, cleanup } = setup();
+  try {
+    writeFileSync(path.join(root, 'other.md'), 'Not canonical');
+    symlinkSync('other.md', path.join(root, 'CLAUDE.md'));
+    assert.throws(() => harness.apply('Jonathan'), /Links/);
+    assert.equal(existsSync(office.claude), false);
+  } finally { cleanup(); }
 });
 
 test('apply pushes CLAUDE.md, AGENTS.md and skills into the office and every account home', () => {

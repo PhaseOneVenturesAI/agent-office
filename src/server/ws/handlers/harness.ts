@@ -20,13 +20,34 @@ export const harnessHandlers = {
   'harness.read'(ctx, c, msg) {
     const path = str(msg.path, 300);
     const r = ctx.harness.read(path);
-    ctx.sendTo(c, { t: 'harness.file', path, text: r.text, error: r.error });
+    ctx.sendTo(c, { t: 'harness.file', path, ...r, request: typeof msg.request === 'string' ? str(msg.request, 120) : undefined });
   },
   'harness.write'(ctx, c, msg) {
-    if (!admin(ctx, c)) return;
-    const err = ctx.harness.write(str(msg.path, 300), str(msg.text, 300_000));
-    if (err) return ctx.warn(c, err);
-    ctx.toastAll(`🧰 ${c.peer.name} updated the harness (${str(msg.path, 120)})`);
+    const request = str(msg.request, 120), path = str(msg.path, 300);
+    try {
+      if (!ctx.meOf(c.accountId).admin) throw new Error('Only admins can change the harness');
+      if (typeof msg.text !== 'string') throw new Error('Missing source text');
+      const result = ctx.harness.change({ action: 'edit', path, text: msg.text, base: str(msg.base, 120) }, c.peer.name);
+      ctx.sendTo(c, { t: 'harness.result', path, request, ...result });
+    } catch (error) { ctx.sendTo(c, { t: 'harness.result', path, request, error: (error as Error).message }); }
+  },
+  'harness.history'(ctx, c, msg) {
+    const request = str(msg.request, 120), path = str(msg.path, 300);
+    try { ctx.sendTo(c, { t: 'harness.result', path, request, history: ctx.harness.sources().revisions(path, msg.before === undefined ? undefined : str(msg.before, 120)) }); }
+    catch (error) { ctx.sendTo(c, { t: 'harness.result', path, request, error: (error as Error).message }); }
+  },
+  'harness.snapshot'(ctx, c, msg) {
+    const request = str(msg.request, 120), path = str(msg.path, 300);
+    try { ctx.sendTo(c, { t: 'harness.result', path, request, snapshot: ctx.harness.sources().snapshot(path, str(msg.revision, 120)) }); }
+    catch (error) { ctx.sendTo(c, { t: 'harness.result', path, request, error: (error as Error).message }); }
+  },
+  'harness.restore'(ctx, c, msg) {
+    const request = str(msg.request, 120), path = str(msg.path, 300);
+    try {
+      if (!ctx.meOf(c.accountId).admin) throw new Error('Only admins can change the harness');
+      const result = ctx.harness.change({ action: 'restore', path, base: str(msg.base, 120), revision: str(msg.revision, 120) }, c.peer.name);
+      ctx.sendTo(c, { t: 'harness.result', path, request, ...result });
+    } catch (error) { ctx.sendTo(c, { t: 'harness.result', path, request, error: (error as Error).message }); }
   },
   'harness.apply'(ctx, c) {
     if (!admin(ctx, c)) return;

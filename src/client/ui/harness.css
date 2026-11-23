@@ -1,2 +1,14 @@
 /* The office's harness (☰ → 🧰 Harness): the prompts layout, with a root note in the footer. */
 .harness-note { font-size: 12px; font-weight: 600; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.harness-editor-scope { white-space: pre-line; font-size: 12px; line-height: 1.4; color: var(--muted); overflow-wrap: anywhere; margin: 0; }
+.harness-editor-message { margin: 0; font-size: 13px; line-height: 1.4; }
+.harness-editor-message.error { color: #8b2515; background: #ffe5cf; padding: 8px; }
+.harness-editor-source { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; font: 12px/1.5 ui-monospace, monospace; padding: 10px; border: 1px solid var(--muted); }
+.harness-editor-tools { display: flex; gap: 8px; flex-wrap: wrap; }
+.harness [hidden] { display: none !important; }
+@media (max-width: 600px) {
+  .harness .prompts-body { grid-template-rows: 130px minmax(0, 1fr); }
+  .harness .btn { min-height: 40px; white-space: normal; text-align: left; }
+  .harness footer { flex-wrap: wrap; }
+  .harness textarea.prompt-text { font-size: 16px; min-height: 180px; }
+}

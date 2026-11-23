@@ -15,6 +15,8 @@ import { randomBytes } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import type { HarnessFile, HarnessState } from '../shared/protocol.js';
+import { HarnessSources, allowedHarnessSource, type HarnessChange } from './harness-history/index.js';
+import { harnessSourcePath, readHarnessSource } from './harness-history/paths.js';
 
 /** The file kinds an agent's instructions and skills are made of. */
 const EXTENSIONS = new Set(['.md', '.txt', '.json', '.toml', '.yaml', '.yml']);
@@ -23,7 +25,6 @@ const MAX_FILE = 256_000;
 /** Bounds on the walk, so a harness with a stray checkout in it still answers promptly. */
 const MAX_FILES = 500;
 const MAX_DEPTH = 6;
-const REL_PATH = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[\w .@+\-/]+$/;
 const ACCOUNT_ID = /^[A-Za-z0-9]{6,64}$/;
 /** Only these files are global defaults. Other Markdown remains available to edit, not inject. */
 const SHARED_INSTRUCTIONS = ['CLAUDE.md', 'WORKFLOW.md'];
@@ -71,7 +72,7 @@ export class Harness {
 
   state(): HarnessState {
     try {
-      return { root: this.root, files: this.list(), applied: this.applied };
+      return { root: this.root, host: os.hostname(), files: this.list(), applied: this.applied };
     } catch (err) {
       return { root: this.root, files: [], applied: this.applied, error: (err as Error).message };
     }
@@ -80,6 +81,8 @@ export class Harness {
   /** The files someone may open, POSIX-pathed, sorted. */
   list(): HarnessFile[] {
     const out: HarnessFile[] = [];
+    if (!existsSync(this.root)) return [];
+    const sources = this.sources();
     const walk = (dir: string, rel: string, depth: number) => {
       if (depth > MAX_DEPTH || out.length >= MAX_FILES) return;
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -91,43 +94,39 @@ export class Harness {
           walk(full, relPath, depth + 1);
           continue;
         }
-        if (!entry.isFile() || !EXTENSIONS.has(path.extname(entry.name)) || entry.name.endsWith('.bak')) continue;
-        const st = statSync(full);
-        if (st.size <= MAX_FILE) out.push({ path: relPath, size: st.size, mtime: st.mtimeMs });
+        if (!entry.isFile() || !EXTENSIONS.has(path.extname(entry.name)) || !allowedHarnessSource(relPath)) continue;
+        try {
+          const st = lstatSync(harnessSourcePath(sources.root, relPath));
+          if (st.size <= MAX_FILE) out.push({ path: relPath, size: st.size, mtime: st.mtimeMs, status: 'present' });
+        } catch { /* Unsafe/aliased sources are not exposed. */ }
       }
     };
-    if (!existsSync(this.root)) return [];
-    walk(this.root, '', 0);
+    walk(sources.root, '', 0);
+    for (const rel of sources.historicalPaths()) if (!out.some((file) => file.path === rel)) {
+      const current = sources.read(rel);
+      out.push({ path: rel, size: current.text === null ? 0 : Buffer.byteLength(current.text), mtime: 0, status: current.status });
+    }
     return out.sort((a, b) => a.path.localeCompare(b.path));
   }
 
-  /** One file's text, or why not. */
-  read(rel: string): { text?: string; error?: string } {
-    const file = this.jail(rel);
-    if (typeof file !== 'string') return { error: file.error };
-    try {
-      const st = statSync(file);
-      if (st.size > MAX_FILE) return { error: `That file is ${Math.ceil(st.size / 1024)} KB — too big to edit here` };
-      return { text: readFileSync(file, 'utf8') };
-    } catch {
-      return { error: 'No such file' };
-    }
+  sources(): HarnessSources { return new HarnessSources(this.root, this.dataDir); }
+
+  /** Exact source text and content revision, never an implicit provider context. */
+  read(rel: string): { text?: string | null; revision?: string; status?: 'present' | 'missing' | 'unavailable'; error?: string } {
+    try { return this.sources().read(rel); }
+    catch (error) { return { error: (error as Error).message }; }
   }
 
-  /** Replaces one file's text, keeping what it was as <file>.bak. Returns why it didn't. */
-  write(rel: string, text: string): string | undefined {
-    const file = this.jail(rel);
-    if (typeof file !== 'string') return file.error;
-    if (text.length > MAX_FILE) return `That is over ${Math.ceil(MAX_FILE / 1024)} KB — too big for an instructions file`;
-    try {
-      mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-      if (existsSync(file)) cpSync(file, `${file}.bak`);
-      writeFileSync(file, text, { mode: 0o600 });
-    } catch (err) {
-      return `Couldn't write ${rel}: ${(err as Error).message}`;
-    }
+  change(ask: HarnessChange, by: string) {
+    const result = this.sources().change(ask, by);
     this.onChange();
-    return undefined;
+    return result;
+  }
+
+  /** Legacy internal call shape still fails closed when the content base is absent. */
+  write(rel: string, text: string, base?: string): string | undefined {
+    try { this.change({ path: rel, text, base: base ?? '', action: 'edit' }, 'Office admin'); return; }
+    catch (error) { return (error as Error).message; }
   }
 
   /** Whether `id` runs a harness of their own: Apply skips their home. */
@@ -209,11 +208,11 @@ export class Harness {
     for (const name of SHARED_INSTRUCTIONS) {
       const file = path.join(this.root, name);
       if (!existsSync(file)) continue;
-      const stat = statSync(file);
-      if (!stat.isFile() || stat.size > MAX_FILE) throw new Error(`Cannot push ${name}: expected an instructions file under ${MAX_FILE} bytes`);
+      const source = readHarnessSource(this.sources().root, name).text;
+      if (source === null) continue;
       found = true;
       // Preserve legacy evidence in the source, but do not turn it back into global rules.
-      const text = readFileSync(file, 'utf8').replace(/\r\n?/g, '\n')
+      const text = source.replace(/\r\n?/g, '\n')
         .replace(/<!-- review-ratchet:start -->[\s\S]*?<!-- review-ratchet:end -->/g, '').trim();
       if (text.includes('<!-- review-ratchet:')) throw new Error(`Cannot push ${name}: incomplete legacy review block; preserve it separately before pushing`);
       if (text && !seen.has(text)) {
@@ -224,13 +223,6 @@ export class Harness {
     return found ? (parts.length ? `${parts.join('\n\n')}\n` : '') : undefined;
   }
 
-  /** `rel` resolved inside the root, or the reason it isn't allowed. */
-  private jail(rel: string): string | { error: string } {
-    if (!rel || rel.length > 300 || !REL_PATH.test(rel)) return { error: 'Not a path in the harness' };
-    if (!EXTENSIONS.has(path.extname(rel)) || rel.endsWith('.bak')) return { error: 'Only instructions files (.md, .txt, .json, .toml, .yaml) can be edited here' };
-    const file = path.join(this.root, rel);
-    return path.resolve(file).startsWith(path.resolve(this.root) + path.sep) ? file : { error: 'Not a path in the harness' };
-  }
 }
 
 /** Never follow a destination symlink when updating instructions or skills. */
