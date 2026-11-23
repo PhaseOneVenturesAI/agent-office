@@ -15,7 +15,7 @@ function setup() {
   return { base, dataDir, ceo, cleanup: () => rmSync(base, { recursive: true, force: true }) };
 }
 
-test('a CEO is named with a saved engine, replaced only off shift, and retires cleanly', () => {
+test('a CEO is named with a saved engine, replaced only off shift, and cannot be deleted', () => {
   const { ceo, cleanup } = setup();
   try {
     assert.match(ceo.set({ name: '  ' }, 'Kim')!, /Give the CEO a name/);
@@ -29,8 +29,8 @@ test('a CEO is named with a saved engine, replaced only off shift, and retires c
     assert.equal(ceo.set({ name: 'Avery', provider: 'codex' }, 'Kim'), undefined);
     assert.equal(ceo.get()!.workerId, 'w1', 'the engine refresh preserves the live link');
     assert.match(ceo.composeLaunch(undefined, () => ['w1']) as string, /already on shift/);
-    assert.equal(ceo.clear(), undefined);
-    assert.equal(ceo.get(), undefined);
+    assert.match(ceo.clear()!, /permanent/);
+    assert.equal(ceo.get()!.workerId, 'w1');
   } finally {
     cleanup();
   }
@@ -79,4 +79,18 @@ test('the identity survives a reload; a landed swap moves it; ownership checks h
   } finally {
     cleanup();
   }
+});
+
+test('explicit autonomy survives reload while unknown values leave the role intact', () => {
+  const { ceo, dataDir, cleanup } = setup();
+  try {
+    ceo.set({ name: 'Avery' }, 'Kim');
+    assert.equal(ceo.get()!.autonomyConfirmed, undefined);
+    assert.equal(ceo.set({ name: 'Avery', autonomy: 'autonomous' }, 'Kim'), undefined);
+    assert.equal(new FloorCeo(dataDir, () => {}).get()!.autonomyConfirmed, true);
+    assert.match(ceo.set({ name: 'Avery', autonomy: 'bypass-all' }, 'Kim')!, /Choose/);
+    assert.equal(ceo.get()!.autonomy, 'autonomous');
+    assert.match(ceo.clear()!, /permanent/);
+    assert.equal(new FloorCeo(dataDir, () => {}).get()!.name, 'Avery');
+  } finally { cleanup(); }
 });

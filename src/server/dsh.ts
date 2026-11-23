@@ -702,6 +702,7 @@ export function writeDshPatch(dataDir: string): string {
 }
 
 export interface DshLaunch {
+  autonomy?: 'off' | 'supervised' | 'autonomous';
   /** The executable to run: the configured `dsh`, or one a test points at a fake agent. */
   file: string;
   args: string[];

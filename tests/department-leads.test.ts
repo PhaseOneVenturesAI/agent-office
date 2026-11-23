@@ -22,7 +22,7 @@ function setup() {
   return { base, dataDir, project, departments, cleanup: () => rmSync(base, { recursive: true, force: true }) };
 }
 
-test('a lead is named with a saved engine, replaced only off shift, and retires cleanly', () => {
+test('a lead is named with a saved engine, replaced only off shift, and cannot be deleted', () => {
   const { departments, cleanup } = setup();
   try {
     const d = departments.add('marketing', undefined, 'Kim');
@@ -36,11 +36,12 @@ test('a lead is named with a saved engine, replaced only off shift, and retires 
     // While the lead's worker is live, the identity can't be replaced under it.
     departments.recordLeadHire(d.id, 'w1', 'desk-1', 'Kim');
     assert.match(departments.setLead(d.id, { name: 'Zoe' }, 'Kim')!, /on shift/);
-    // Retiring the lead clears the identity and the lead roster row; the worker itself stays rostered elsewhere.
-    assert.equal(departments.clearLead(d.id), undefined);
+    // Clearing or removing cannot erase a permanent manager or its roster/history link.
+    assert.match(departments.clearLead(d.id)!, /permanent/);
+    assert.match(departments.remove(d.id, () => false)!, /permanent/);
     const after = departments.get(d.id)!;
-    assert.equal(after.lead, undefined);
-    assert.ok(!after.roster.some((r) => r.role === 'lead'));
+    assert.equal(after.lead?.workerId, 'w1');
+    assert.ok(after.roster.some((r) => r.role === 'lead'));
   } finally {
     cleanup();
   }

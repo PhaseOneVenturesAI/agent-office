@@ -75,6 +75,7 @@ export class KimiSession {
   private permissions: { id: unknown; options: DshPermissionOption[]; card: string; approval?: ApprovalRequest }[] = [];
   private get permission() { return this.permissions[0]; }
   private configOptions: Rec[] = [];
+  private modes: string[] = [];
   private renderer = new DshRenderer();
   private assistantTurn = new AssistantTurn();
   private prompting = false;
@@ -253,6 +254,7 @@ export class KimiSession {
     if (this.launch.resumeSessionId) ready = await this.tryResume(this.launch.resumeSessionId);
     if (!ready && !(await this.newSession())) return;
 
+    if (!(await this.applyAutonomy())) return;
     await this.applyChoices();
     if (this.launch.firstPrompt) this.prompt(this.launch.firstPrompt);
     else this.events.status('idle');
@@ -264,6 +266,7 @@ export class KimiSession {
       const id = isRec(result) ? str(result.sessionId) : undefined;
       if (!id) throw new Error('session/new returned no session id');
       this.adopt(id, isRec(result) ? result.configOptions : undefined);
+      this.modes = isRec(result) && isRec(result.modes) && Array.isArray(result.modes.availableModes) ? result.modes.availableModes.filter(isRec).map(m => String(m.id)) : [];
       this.events.output(notice('info', 'Kimi ready'));
       return true;
     } catch (err) {
@@ -276,6 +279,7 @@ export class KimiSession {
     try {
       const result = await this.request('session/resume', { sessionId: id, cwd: this.launch.cwd, mcpServers: [] });
       this.adopt(id, isRec(result) ? result.configOptions : undefined);
+      this.modes = isRec(result) && isRec(result.modes) && Array.isArray(result.modes.availableModes) ? result.modes.availableModes.filter(isRec).map(m => String(m.id)) : [];
       this.events.output(notice('info', `resumed session ${id}`));
       return true;
     } catch (err) {
@@ -288,6 +292,19 @@ export class KimiSession {
     this.sessionId = id;
     this.configOptions = Array.isArray(configOptions) ? configOptions.filter(isRec) : [];
     this.events.session(id);
+  }
+
+  /** ACP mode names differ from CLI flags: auto is safe, yolo approves everything. */
+  private async applyAutonomy(): Promise<boolean> {
+    const mode = this.launch.autonomy;
+    if (!mode) return true;
+    const modeId = mode === 'autonomous' ? 'auto' : 'default';
+    if (!this.modes.includes(modeId)) { this.fail(`Kimi did not advertise ${modeId} permission mode. No prompt was sent.`); return false; }
+    try {
+      await this.request('session/set_mode', { sessionId: this.sessionId, modeId });
+      this.events.autonomy?.(mode);
+      return true;
+    } catch (err) { this.fail(`Kimi rejected the permission mode: ${reason(err)}`); return false; }
   }
 
   /** Model and thinking effort chosen for this worker, if the live catalog offers them. */
@@ -514,6 +531,10 @@ export class KimiSession {
   }
 
   private fail(message: string): void {
+    // Retain the child reference until shutdown is scheduled; finish clears it.
+    this.closeDone ??= stopAcpChild(this.child, () => {
+      if (this.sessionId) this.send({ jsonrpc: '2.0', id: ++this.nextId, method: 'session/close', params: { sessionId: this.sessionId } });
+    });
     this.events.output(notice('bad', message));
     this.finish(-1, message);
   }

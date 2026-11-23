@@ -17,8 +17,10 @@ export interface CeoIdentity {
   provider?: AgentProvider;
   model?: string;
   effort?: AgentEffort;
-  /** Effective autonomy label for this character ('off' when unset). Informational until the provider supports it. */
+  /** Saved autonomy preference; only explicitly confirmed choices configure future launches. */
   autonomy?: string;
+  /** Explicit choice since runtime autonomy support; legacy labels never enable it. */
+  autonomyConfirmed?: boolean;
   by: string;
   at: number;
 }
@@ -31,7 +33,7 @@ export interface CeoState {
 
 export type CeoClientMsg =
   /** Name (or replace) the CEO identity and its saved engine. Never launches. */
-  | { t: 'ceo.set'; name: string; provider?: AgentProvider; model?: string; effort?: AgentEffort; autonomy?: string; /** Admins only: who privately owns the CEO. */ owner?: string }
+  | { t: 'ceo.set'; requestId?: string; name: string; provider?: AgentProvider; model?: string; effort?: AgentEffort; autonomy?: string; /** Admins only: who privately owns the CEO. */ owner?: string }
   /** Take the CEO identity away (a live CEO worker keeps its desk as a normal worker). */
   | { t: 'ceo.clear' }
   /** Start the CEO's shift explicitly: seats their worker at a desk with the CEO prompt. */

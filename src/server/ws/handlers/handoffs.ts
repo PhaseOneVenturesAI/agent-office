@@ -1,3 +1,4 @@
+import { confirmedAutonomy } from '../../providers/autonomy.js';
 import { managerExecution } from '../../role-subscriptions/access.js';
 import { protectRoleHandoff } from '../../role-seats.js';
 // Engine swaps (see docs/department-leads.md): an explicit handoff of a worker's task to a
@@ -111,7 +112,7 @@ export const handoffHandlers = {
         floor.workers.handoffs.clearSwap(source.wid);
         return ctx.warn(c, 'No free desk for the replacement — send someone home first');
       }
-      const r = floor.workers.spawn(desk, c.peer.name, undefined, !!info.worktree || !!floor.project.branch, 'agent', msg.provider, model, effort, undefined, execution.owner);
+      const r = floor.workers.spawn(desk, c.peer.name, undefined, !!info.worktree || !!floor.project.branch, 'agent', msg.provider, model, effort, undefined, execution.owner, [], undefined, undefined, confirmedAutonomy(department?.lead ?? (floor.ceo.isCeoWorker(source.wid) ? floor.ceo.get() : undefined)));
       if (typeof r === 'string') {
         floor.workers.handoffs.clearSwap(source.wid);
         return ctx.warn(c, r);

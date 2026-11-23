@@ -1,3 +1,4 @@
+import { confirmedAutonomy, isAutonomy } from '../../providers/autonomy.js';
 // The floor's CEO (see server/ceo.ts and docs/department-leads.md): one persistent identity per
 // project, privately owned. Naming, shifts and assignments are explicit — nothing here ever starts
 // an agent by itself — and every edit is authorized: only the owner talks to or edits the CEO;
@@ -16,35 +17,36 @@ export const ceoHandlers = {
   'ceo.set'(ctx, c, msg) {
     const floor = here(ctx, c);
     if (!floor) return;
+    const reply = (error?: string) => {
+      if (typeof msg.requestId === 'string') ctx.sendTo(c, { t: 'role.settings.result', requestId: msg.requestId, floor: floor.id, id: 'ceo', ...(error ? { error } : {}) });
+      else if (error) ctx.warn(c, error);
+    };
     if (msg.provider !== undefined && (!isAgentProvider(msg.provider) || !floor.project.agentProviders.includes(msg.provider))) {
-      ctx.warn(c, 'Unknown agent provider');
+      reply('Unknown agent provider');
       return;
     }
     // Ownership passes only by delegation from the current owner (or an admin's first setup when
     // no owner exists anywhere); office-admin status alone is never a way in.
     if (msg.owner !== undefined) {
       const editOwner = canEditCeo(ctx, floor, c.accountId);
-      if (!editOwner.ok) return ctx.warn(c, editOwner.why);
+      if (!editOwner.ok) return reply(editOwner.why);
       const revoked = ctx.roleSubscriptions?.revokeFloor(floor.id);
-      if (revoked) return ctx.warn(c, revoked);
+      if (revoked) return reply(revoked);
     }
     const edit = canEditCeo(ctx, floor, c.accountId);
-    if (!edit.ok) return ctx.warn(c, edit.why);
+    if (!edit.ok) return reply(edit.why);
     const model = msg.model === undefined ? undefined : str(msg.model, OPEN_CODE_MODEL_MAX + 1);
     const err = floor.ceo.set({ name: str(msg.name, 60), ...(msg.provider !== undefined ? { provider: msg.provider } : {}), ...(model !== undefined ? { model } : {}), ...(isAgentEffort(msg.effort) ? { effort: msg.effort } : {}), ...(msg.autonomy !== undefined ? { autonomy: str(msg.autonomy, 40) } : {}), ...(msg.owner !== undefined ? { owner: str(msg.owner, 120) } : {}) }, c.peer.name);
-    if (err) ctx.warn(c, err);
+    const live = floor.ceo.get()?.workerId;
+    if (!err && live && isAutonomy(msg.autonomy)) return reply(floor.workers.queueAutonomy(live, msg.autonomy));
+    reply(err);
   },
   'ceo.clear'(ctx, c) {
     const floor = here(ctx, c);
     if (!floor) return;
     const edit = canEditCeo(ctx, floor, c.accountId);
     if (!edit.ok) return ctx.warn(c, edit.why);
-    const revoked = ctx.roleSubscriptions?.revokeFloor(floor.id);
-    if (revoked) return ctx.warn(c, revoked);
-    const live = floor.ceo.get()?.workerId;
     ctx.warn(c, floor.ceo.clear());
-    // Retiring the role sends its worker home: deleting the role is what frees the seat.
-    if (live && !floor.ceo.get()?.workerId) void floor.sendHome(live);
   },
   'ceo.launch'(ctx, c, msg) {
     const who = c.peer.name;
@@ -68,7 +70,7 @@ export const ceoHandlers = {
       if (typeof composed === 'string') return ctx.warn(c, composed);
       const desk = nextFreeSeat((id) => floor.workers.deskOccupied(id), floor.plan.wing)?.id;
       if (!desk) return ctx.warn(c, 'No free desk — knock the back office out a row first');
-      const r = floor.workers.spawn(desk, who, composed.prompt, !!floor.project.branch, 'agent', provider, model ?? saved?.model, effort ?? saved?.effort, undefined, c.accountId, [], undefined, composed.ceo.name);
+      const r = floor.workers.spawn(desk, who, composed.prompt, !!floor.project.branch, 'agent', provider, model ?? saved?.model, effort ?? saved?.effort, undefined, c.accountId, [], undefined, composed.ceo.name, confirmedAutonomy(composed.ceo));
       if (typeof r === 'string') return ctx.warn(c, r);
       floor.ceo.recordHire(r.id, who);
       ctx.toastFloor(floor, `👔 ${who} started ${r.name}'s shift as the CEO`);

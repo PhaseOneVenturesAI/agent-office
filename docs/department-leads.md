@@ -130,3 +130,36 @@ Consent is stored without credential secrets in `role-subscription-grants.json`.
 Existing seated managers are never silently rebound to a different payer. A mismatched runtime must be replaced explicitly. Changing provider invalidates the old consent; the existing credential owner may need to finish the explicit swap before other controllers can use the newly consented runtime. Pending swaps retain their normal one-shot handoff and recovery behavior. Human-initiated personal child workers continue to use the initiating human’s subscription.
 
 This is application-level credential routing and consent, not an OS tenant sandbox: approving a coding agent’s tool access still authorizes code execution within the existing host environment. No live grants are created by installing this feature.
+
+## Runtime autonomy
+
+The CEO and each manager are permanent identities. Clear/remove APIs refuse deletion, including
+removing a department with a manager. Pause the current turn and continue in Conversation;
+neither action deletes the role, native session, or memory.
+
+Saving autonomy is explicit and acknowledged after persistence. Old informational labels never
+activate permissions. The saved role preference and worker's pending preference are separate from
+its current launch policy: saving during a running session does not restart it or silently approve
+anything. The next process start or explicit engine replacement applies the preference. A failed
+worker-setting save is reported and must be retried before restart.
+
+Verified installed modes:
+
+| Provider | Automatic | Manual (`off` / `supervised`) |
+| --- | --- | --- |
+| Claude Code 2.1.330 | `--permission-mode auto` | `--permission-mode manual` |
+| Codex 0.171.0-alpha.13 | `--approve-for-me --sandbox workspace-write` | `--ask-for-approval on-request --sandbox read-only` |
+| Kimi 2.7.2 ACP | `session/set_mode` with `auto` | `session/set_mode` with `default` |
+
+Kimi's ACP subcommand ignores root `--yolo` and `--auto` flags. ACP advertises `auto` for safe
+operations and `yolo` for approving everything; Office chooses only `auto`. It checks the advertised
+mode and waits for the RPC acknowledgement before sending a prompt. Rejection or missing support
+stops and cleans up the child without sending work. Claude/Codex labels describe the requested
+launch flags, not an invented runtime acknowledgement. Versions are checked at every new process
+start; unsupported versions or conflicting permission arguments fail clearly rather than falling
+back. No bypass-permissions or never-ask mode is selected.
+
+Automatic permissions do not grant account access, another person's subscription, delegation,
+publication, or deployment authority. Existing role and subscription checks still gate Office
+actions. Validation uses fake providers, CLI help/source inspection, and focused tests; it does not
+require spending tokens or changing live accounts.

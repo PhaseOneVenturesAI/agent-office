@@ -36,6 +36,9 @@ export interface WorkerInfo {
   model?: string;
   /** Reasoning effort requested for this worker, when one was chosen. */
   effort?: AgentEffort;
+  /** Explicit launch policy; separate from a role’s saved preference. */
+  autonomyRequested?: 'off' | 'supervised' | 'autonomous';
+  autonomyApplied?: { mode: 'off' | 'supervised' | 'autonomous'; provider: string; detail: string; acknowledged: boolean };
   deskId: string;
   name: string;
   color: string;

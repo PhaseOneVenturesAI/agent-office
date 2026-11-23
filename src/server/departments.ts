@@ -1,3 +1,4 @@
+import { isAutonomy } from './providers/autonomy.js';
 // Departments: a floor's own corners of work (see shared/protocol/departments.ts), persistent in
 // the floor's .agent-office/departments.json. A department is paperwork and furniture, never an
 // auto-running team: creating one launches nothing. Launching a worker into a role composes the
@@ -145,6 +146,7 @@ export class Departments {
   remove(id: string, live: (workerId: string) => boolean): string | undefined {
     const dept = this.get(id);
     if (!dept) return 'That department is gone';
+    if (dept.lead) return 'This department has a permanent manager. Pause their conversation instead of deleting the department.';
     const staffed = dept.roster.filter((r) => live(r.workerId));
     if (staffed.length) return `Send its ${staffed.length} worker${staffed.length === 1 ? '' : 's'} home first`;
     return this.commit(this.departments.filter((d) => d.id !== id));
@@ -311,22 +313,18 @@ export class Departments {
     if (ask.provider !== undefined) next.provider = ask.provider;
     if (ask.model !== undefined) next.model = ask.model;
     if (ask.effort !== undefined) next.effort = ask.effort;
-    if (ask.autonomy !== undefined) next.autonomy = ask.autonomy;
+    if (ask.autonomy !== undefined) {
+      if (!isAutonomy(ask.autonomy)) return 'Choose manual or automatic autonomy.';
+      next.autonomy = ask.autonomy;
+      next.autonomyConfirmed = true;
+    }
     const nextDept: Department = { ...dept, lead: next };
     return this.commit(this.departments.map((d) => (d.id === id ? nextDept : d)));
   }
 
-  /** Takes the lead identity away; its worker, when live, keeps its desk as a normal worker. */
+  /** Permanent manager identity: stop/continue the conversation, never delete the role. */
   clearLead(id: string): string | undefined {
-    const dept = this.get(id);
-    if (!dept?.lead) return 'That department has no lead';
-    const workerId = dept.lead.workerId;
-    const next: Department = {
-      ...dept,
-      lead: undefined,
-      roster: workerId ? dept.roster.filter((r) => !(r.role === 'lead' && r.workerId === workerId)) : dept.roster,
-    };
-    return this.commit(this.departments.map((d) => (d.id === id ? next : d)));
+    return this.get(id)?.lead ? 'Managers are permanent. Pause the current turn in Conversation; continue there when ready.' : 'That department has no lead';
   }
 
   /** The team engine policy: 'policy' runs it silently, 'ask' shows the picker prefilled from it. */

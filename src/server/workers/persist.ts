@@ -1,3 +1,4 @@
+import { isAutonomy } from '../providers/autonomy.js';
 // workers.json: every worker as the office last saw it, to pick them all back up after a restart.
 import { savedHandoff } from './handoffs.js';
 import { existsSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
@@ -25,6 +26,8 @@ export function saveWorkers(file: string, workers: Iterable<Worker>, stopping: b
     provider: info.provider,
     model: info.model,
     effort: info.effort,
+    autonomyRequested: info.autonomyRequested,
+    autonomyApplied: info.autonomyApplied,
     deskId: info.deskId,
     name: info.name,
     color: info.color,
@@ -83,6 +86,8 @@ export function restoreWorkers(file: string, workers: Map<string, Worker>, defau
         provider,
         model: savedModel(provider, s.model),
         effort: savedEffort(provider, s.effort),
+        autonomyRequested: isAutonomy(s.autonomyRequested) ? s.autonomyRequested : undefined,
+        autonomyApplied: s.autonomyApplied && isAutonomy(s.autonomyApplied.mode) && s.autonomyApplied.provider === provider && typeof s.autonomyApplied.detail === 'string' && typeof s.autonomyApplied.acknowledged === 'boolean' ? s.autonomyApplied : undefined,
         deskId: s.deskId,
         name: s.name ?? 'Worker',
         color: s.color ?? COLORS[0],

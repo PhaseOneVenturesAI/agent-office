@@ -1,3 +1,4 @@
+import { isAutonomy } from './providers/autonomy.js';
 // The floor's CEO (see shared/protocol/ceo.ts and docs/department-leads.md): one persistent identity
 // per project, stored in the floor's .agent-office/ceo.json — never a cross-floor role. The CEO is
 // a real worker seated through the same spawn as every hire; they direct the department managers,
@@ -47,18 +48,18 @@ export class FloorCeo {
     if (ask.provider !== undefined) next.provider = ask.provider;
     if (ask.model !== undefined) next.model = ask.model;
     if (ask.effort !== undefined) next.effort = ask.effort;
-    if (ask.autonomy !== undefined) next.autonomy = ask.autonomy;
+    if (ask.autonomy !== undefined) {
+      if (!isAutonomy(ask.autonomy)) return 'Choose manual or automatic autonomy.';
+      next.autonomy = ask.autonomy;
+      next.autonomyConfirmed = true;
+    }
     if (ask.owner !== undefined) next.owner = ask.owner.trim().toLowerCase() || undefined;
     return this.commit(next);
   }
 
-  /** Takes the identity away; a live CEO worker keeps its desk as a normal worker. */
+  /** Permanent project identity: pausing a turn never deletes its role or history. */
   clear(): string | undefined {
-    if (!this.ceo) return 'This floor has no CEO yet';
-    const workerId = this.ceo.workerId;
-    const err = this.commit(undefined);
-    void workerId;
-    return err;
+    return this.ceo ? 'The CEO is permanent. Pause their current turn in Conversation; continue there when ready.' : 'This floor has no CEO yet';
   }
 
   get(): CeoIdentity | undefined {
