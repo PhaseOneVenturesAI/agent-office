@@ -70,7 +70,7 @@ export function openDepartments(net: Net) {
     'div.modal.departments',
     { role: 'dialog', 'aria-label': 'Departments' },
     h('header', {}, h('h2', {}, '🏬 Departments'), close),
-    h('p.dept-intro', {}, 'One corner of the project, one lead to talk to — hire the roles yourself and nothing runs on its own.'),
+    h('p.dept-intro', {}, 'Talk to your lead, see what the team is making, and help when they need you.'),
     h('div.dept-layout', {}, cards, panel),
   );
 
@@ -337,11 +337,11 @@ export function openDepartments(net: Net) {
           'header.dept-head',
           {},
           h('h3', {}, `${meta.icon} ${d.name}`),
-          h('span.dept-meta', {}, `opened by ${d.by} · ${timeAgo(d.at)}`),
+
         ),
         leadBlock(net, d, repaint),
         briefBlock(d, repaint),
-        rolesBlock(d, writers),
+        h('details.dept-block', {}, h('summary', {}, 'Add a teammate yourself'), rolesBlock(d, writers)),
         workBlock(d),
         delegateBlock(net, d),
         manage,
