@@ -1,6 +1,7 @@
 // A worker that runs over ACP rather than in a terminal (DeepSeek Harness, Kimi; see
 // ProviderAdapter.transport): the office holds the connection and draws what it says into the
 // worker's terminal itself.
+import { randomUUID } from 'node:crypto';
 import { DshSession, terminalSafe } from '../dsh.js';
 import { KimiSession } from '../kimi.js';
 import type { HeadlessTerminal } from './terminal.js';
@@ -37,6 +38,7 @@ export function launchAcp(ctx: WorkerContext, w: Worker, term: HeadlessTerminal,
       firstPrompt: options.prompt,
     },
     {
+      assistant: (text) => { if (w.dsh === session) ctx.assistant(w, { id: `${info.sessionId}:${randomUUID()}`, text }); },
       output: (data) => {
         if (w.dsh !== session) return;
         term.write(data);

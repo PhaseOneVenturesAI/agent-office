@@ -1,3 +1,6 @@
+import type { DshEvents } from './dsh-events.js';
+export type { DshEvents } from './dsh-events.js';
+import { AssistantTurn } from './assistant-text.js';
 // DeepSeek Harness as a fourth provider, over ACP (see docs/dsh-acp-integration.md).
 //
 // `dsh` has no interactive terminal: its ACP profile speaks newline-delimited JSON-RPC v1 over
@@ -712,19 +715,6 @@ export interface DshLaunch {
   firstPrompt?: string;
 }
 
-export interface DshEvents {
-  /** ANSI text for the worker's terminal. */
-  output(text: string): void;
-  status(status: WorkerStatus): void;
-  action(action: WorkerAction | undefined): void;
-  usage(usage: Usage): void;
-  /** The session id the agent handed back, for the worker's card and for resume. */
-  session(sessionId: string): void;
-  /** A prompt someone typed into the terminal, for the worker's task card. */
-  prompted(text: string): void;
-  /** The child process ended. `quiet` marks a close the office asked for. */
-  exit(code: number | null, error: string | undefined, quiet: boolean): void;
-}
 
 /**
  * One DSH worker's ACP connection. Serializes prompts (ACP allows one per session), answers
@@ -741,6 +731,7 @@ export class DshSession {
   private permission?: { id: unknown; options: DshPermissionOption[] };
   private configOptions: Rec[] = [];
   private renderer = new DshRenderer();
+  private assistantTurn = new AssistantTurn();
   private prompting = false;
   private finished = false;
   private closing = false;
@@ -971,11 +962,14 @@ export class DshSession {
       return;
     }
     this.prompting = true;
+    this.assistantTurn.reset();
     this.events.status('working');
     this.request('session/prompt', { sessionId: this.sessionId, prompt: [{ type: 'text', text: clean }] }, 0)
       .then((result) => {
         this.prompting = false;
         const stop = isRec(result) ? str(result.stopReason) : undefined;
+        const reply = this.assistantTurn.finish();
+        if (stop === 'end_turn' && reply) this.events.assistant?.(reply);
         this.events.output(this.renderer.endTurn(stop === 'cancelled' ? 'Stopped' : 'Worked'));
         this.events.action(undefined);
         // "Worked" and "Stopped" are the harness's own words for those two endings.
@@ -1042,6 +1036,7 @@ export class DshSession {
 
   private onUpdate(params: unknown): void {
     const update = isRec(params) ? params.update : undefined;
+    if (this.prompting && isRec(params) && params.sessionId === this.sessionId) this.assistantTurn.append(update);
     const rendered = this.renderer.render(update);
     if (rendered.text) this.events.output(rendered.text);
     if (rendered.usage) this.events.usage(rendered.usage);

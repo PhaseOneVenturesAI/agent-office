@@ -1,0 +1,16 @@
+.worker-conversation { width: min(760px, 100%); max-height: calc(100dvh - 32px); }
+.worker-conversation > header { flex-shrink: 0; }
+.worker-conversation .body { display: grid; gap: 12px; overflow: auto; min-height: 0; }
+.worker-conversation .note { margin: 0; line-height: 1.4; }
+.worker-conversation header h2 { flex: 1; min-width: 0; }
+.conversation-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.conversation-actions label { display: flex; align-items: center; gap: 8px; }
+.worker-conversation textarea, .worker-conversation select { box-sizing: border-box; width: 100%; font: inherit; padding: 10px; border-radius: 6px; }
+.conversation-transcript { min-height: 100px; max-height: 40vh; overflow: auto; border: 1px solid currentColor; border-radius: 8px; padding: 12px; }
+.conversation-transcript article + article { margin-top: 16px; }
+.conversation-transcript p, .handoff-preview { white-space: pre-wrap; overflow-wrap: anywhere; margin: 5px 0 0; }
+.handoff-form { display: grid; gap: 12px; }
+.handoff-form[hidden] { display: none; }
+.handoff-form label { display: grid; gap: 5px; }
+.handoff-preview { max-height: 36vh; overflow: auto; font-size: 13px; padding: 12px; border: 1px solid currentColor; border-radius: 8px; }
+@media (max-width: 520px) { .worker-conversation .body { padding: 12px; } .conversation-actions .btn { min-height: 40px; } }

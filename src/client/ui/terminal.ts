@@ -1,4 +1,5 @@
 import './terminal.css';
+import { openWorkerConversation } from './worker-conversation';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -118,6 +119,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
     'aria-label': 'OpenCode models',
   }, '🧠 Models');
   const typed = h('span.typed', {});
+  const conversation = info.kind === 'agent' ? h('button.btn', { type: 'button' }, 'Conversation') : null;
   // The Esc key leaves the terminal, so this is how Esc reaches the program: to close a menu like
   // Claude's /skills, or to interrupt it. Ctrl+[ does the same from the keyboard.
   const escBtn = h('button.btn', {
@@ -149,7 +151,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
   );
   host.append(mic.live);
   // The keypad has an Esc of its own, and a 🎤 on its prompt box.
-  const el = h('div.modal.term', { role: 'dialog', 'aria-label': `${info.name} terminal` }, h('header', {}, dot, title, pill, cost, viewers, typed, modelsBtn, keypad ? null : mic.button, keypad ? null : escBtn, onChanges ? changesBtn : null, hideBtn, closeBtn), tabs.bar, host, tabs.pages, keypad);
+  const el = h('div.modal.term', { role: 'dialog', 'aria-label': `${info.name} terminal` }, h('header', {}, dot, title, pill, cost, viewers, typed, conversation, modelsBtn, keypad ? null : mic.button, keypad ? null : escBtn, onChanges ? changesBtn : null, hideBtn, closeBtn), tabs.bar, host, tabs.pages, keypad);
 
   const term = new Terminal({
     fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
@@ -359,6 +361,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
       else pendingFind = f;
     },
   };
+  conversation?.addEventListener('click', () => { modal.close(); openWorkerConversation(net, workerId, () => openTerminal(net, workerId, onChanges, undefined, opts)); });
   hideBtn.addEventListener('click', () => modal.close());
   closeBtn.addEventListener('click', () => modal.close());
   changesBtn.addEventListener('click', () => {

@@ -22,6 +22,7 @@ export interface Dictation {
   /** Give it each keydown of what's being dictated into: true when it was Ctrl+Space, which it took. */
   key(e: KeyboardEvent): boolean;
   /** Stops listening, for good: what was being dictated into is gone. */
+  stop(): void;
   drop(): void;
 }
 
@@ -34,6 +35,7 @@ const watchers = new Set<(on: boolean) => void>();
 /** Hears when dictation starts and stops listening (voice chat mutes you meanwhile, see features/dictation). */
 export function onDictating(fn: (on: boolean) => void) {
   watchers.add(fn);
+  return () => watchers.delete(fn);
 }
 
 // A window that closes takes its 🎤 with it.
@@ -48,7 +50,7 @@ function tail(text: string, max = 90): string {
 
 export function dictation(target: DictateTarget, opts: { label?: string } = {}): Dictation {
   const live = h('div.dictate-live.hidden', { role: 'status' });
-  if (speechSupport() === 'none') return { button: null, live, key: () => false, drop() {} };
+  if (speechSupport() === 'none') return { button: null, live, key: () => false, stop() {}, drop() {} };
   checkOnDevice();
 
   const button = h('button.btn.dictate-mic', { type: 'button', title: TITLE, 'aria-label': 'Dictate', 'aria-pressed': 'false' }, opts.label ? `🎤 ${opts.label}` : '🎤');
@@ -144,6 +146,7 @@ export function dictation(target: DictateTarget, opts: { label?: string } = {}):
       window.addEventListener('blur', letGo);
       return true;
     },
+    stop() { listening?.stop(); },
     drop() {
       letGo();
       lift();

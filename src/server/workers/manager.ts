@@ -1,3 +1,6 @@
+import { WorkerConversations } from './conversations.js';
+import { makeWorkerHandle } from './handle.js';
+import { WorkerHandoffs } from './handoffs.js';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import type { AgentChoice, AgentEffort, AgentProvider, TerminalHit, WorkerInfo, WorkerKind, WorkerRepo, WorkerStatus } from '../../shared/protocol.js';
@@ -62,6 +65,8 @@ export class WorkerManager {
   private tasks: WorkerTasks;
   private worktrees: WorkerTrees;
   private prs: WorkerPrs;
+  readonly handoffs: WorkerHandoffs;
+  readonly conversations: WorkerConversations;
   private usageTimer: NodeJS.Timeout;
   /** Runs the workers' terminals outside the office, so they outlive a restart of it (see ptys.ts). */
   private host: PtyHost;
@@ -103,6 +108,7 @@ export class WorkerManager {
       trees: this.trees,
       workers: this.workers,
       events,
+      assistant: (w, reply) => this.conversations.assistant(w.info.id, reply),
       prompts,
       get closing() {
         return self.closing;
@@ -121,6 +127,8 @@ export class WorkerManager {
     this.tasks = new WorkerTasks(this.ctx, claude, childEnv());
     this.worktrees = new WorkerTrees(this.ctx);
     this.prs = new WorkerPrs(this.ctx);
+    this.conversations = new WorkerConversations(this.workers, (id, text, by) => this.prompt(id, text, by), (id, by) => this.write(id, '\x03', by), (w, status) => this.setStatus(w, status));
+    this.handoffs = new WorkerHandoffs(this.ctx, (id, text, by) => this.prompt(id, text, by), () => this.persist());
     this.host = new PtyHost(dataDir, () => this.events.toast("The workers' terminal host stopped — resuming them", 'warn'));
     this.scrollback = new ScrollbackStore(dataDir);
     this.drops = new DropStore(dataDir);
@@ -372,6 +380,7 @@ export class WorkerManager {
     const w = this.workers.get(id);
     if (!w) return {};
     this.workers.delete(id);
+    this.conversations.forget(id);
     this.tasks.forget(id);
     clearTimeout(w.scanTimer);
     const proc = w.pty;
@@ -758,7 +767,11 @@ export class WorkerManager {
     }
     const adapter = providerAdapter(info.provider);
     const locate = adapter?.usage?.locate;
-    if (locate) locate(this.handleOf(w), this.cwd(info), childEnv());
+    if (locate) {
+      const env = childEnv();
+      if (w.owner && this.runAs) this.runAs.apply(w.owner, env, []);
+      locate(this.handleOf(w), this.cwd(info), env);
+    }
     this.follow(w, adopted.pty, term, undefined);
     // A turn that ended while the office was down says so with its Stop hook, which retries until
     // the office is back. Claude's progress report, where it gives one, says a turn is still going.
@@ -939,43 +952,7 @@ export class WorkerManager {
 
   /** What a worker's provider adapter is handed of it (see WorkerHandle): made once, kept on the worker. */
   private handleOf(w: Worker): WorkerHandle {
-    return (w.handle ??= {
-      get info() {
-        return w.info;
-      },
-      get state() {
-        return w.state;
-      },
-      get running() {
-        return !!w.pty;
-      },
-      get bootBlocked() {
-        return !!w.bootBlocked;
-      },
-      set bootBlocked(v) {
-        w.bootBlocked = v;
-      },
-      get leftNeedsInputAt() {
-        return w.leftNeedsInputAt;
-      },
-      set leftNeedsInputAt(v) {
-        w.leftNeedsInputAt = v;
-      },
-      get failStreak() {
-        return w.failStreak;
-      },
-      set failStreak(v) {
-        w.failStreak = v;
-      },
-      get tracker() {
-        return w.tracker;
-      },
-      get pendingPrompt() {
-        return w.pendingPrompt;
-      },
-      set pendingPrompt(v) {
-        w.pendingPrompt = v;
-      },
+    return (w.handle ??= makeWorkerHandle(w, {
       setStatus: (status) => this.setStatus(w, status),
       emit: () => this.emitUpdate(w),
       persist: () => this.persist(),
@@ -985,7 +962,8 @@ export class WorkerManager {
       clearTask: () => this.tasks.clear(w),
       scheduleScan: () => this.scheduleScan(w),
       prompt: (text) => this.prompt(w.info.id, text),
-    });
+      assistant: (reply) => this.conversations.assistant(w.info.id, reply),
+    }));
   }
 
   /** Full screens for every running worker — sent to people as they walk in. */
@@ -1024,6 +1002,6 @@ export class WorkerManager {
   }
 
   private persist() {
-    saveWorkers(this.statePath, this.workers.values(), this.stopping);
+    return saveWorkers(this.statePath, this.workers.values(), this.stopping);
   }
 }

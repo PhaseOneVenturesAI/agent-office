@@ -28,10 +28,12 @@ export class Net {
 
   onMessage(h: Handler) {
     this.handlers.push(h);
+    return () => { this.handlers = this.handlers.filter((x) => x !== h); };
   }
 
   onStatus(h: (up: boolean) => void) {
     this.statusHandlers.push(h);
+    return () => { this.statusHandlers = this.statusHandlers.filter((x) => x !== h); };
   }
 
   connect() {

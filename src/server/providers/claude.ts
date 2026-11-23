@@ -1,5 +1,7 @@
 // Claude Code: hooks from a settings file the office writes (its own hook route, /hooks/claude),
 // usage read off the session transcript and booked in the budget, and tasks the office names.
+import { homedir } from 'node:os';
+import { readAssistantReply } from '../assistant-text.js';
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { FAILS_TO_DESPAIR, outputFailed, toolAction } from '../../shared/actions.js';
@@ -173,8 +175,11 @@ function claudeHook(h: WorkerHandle, event: string, payload: any): boolean {
     case 'Notification':
       notified(h, payload?.notification_type, now);
       break;
-    case 'Stop':
+    case 'Stop': {
+      const reply = readAssistantReply('claude', h.tracker.transcript, info.sessionId, h.assistantHome);
+      if (reply) h.assistant?.(reply);
       h.setStatus('done');
+    }
       break;
   }
   return true;
@@ -223,6 +228,6 @@ export const claude: ProviderAdapter<undefined, ClaudeSetup> = {
   // OSC 9;4 progress (Claude Code emits it): 0 = idle, anything else = busy. Catches Esc-cancel,
   // which fires no Stop hook.
   screen: { progress: true, blocked: claudeBlocked },
-  usage: { transcript: true },
+  usage: { transcript: true, locate(h, cwd, env) { h.assistantHome = path.resolve(cwd, env.CLAUDE_CONFIG_DIR || path.join(env.HOME || homedir(), '.claude')); } },
   namesTasks: true,
 };
