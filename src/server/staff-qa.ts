@@ -1,12 +1,6 @@
-// Staff Q&A (see docs/department-leads.md): a read-only question about a department, answered on a
-// SEPARATE one-shot ACP session — never the manager's own provider session. The session is
-// provider-restricted, not prompt-restricted: it runs on the department's configured engine under
-// an explicitly authorized custodian's own sign-in, from a dedicated tool-free home (the config's
-// global tool switch removes every tool; the office additionally auto-rejects any permission
-// request, and session/new declares no MCP servers). The prompt carries only an approved context
-// snapshot. When the engine is not Kimi ACP, or no custodian is designated in an accounts office,
-// the answer is a truthful "unavailable" — staff content is never passed into a manager session,
-// never run on an arbitrary binary from PATH, and never on host credentials.
+// Isolated staff Q&A. Only Kimi's verified exact-version tool policy is enabled;
+// providers without a verified isolation boundary fail closed.
+// Account credentials, scratch homes and cleanup are assembled in dept-staff-qa.ts.
 
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -17,6 +11,15 @@ import { resolveCommand } from './workers/process.js';
 import type { AgentEffort, AgentProvider } from '../shared/providers.js';
 
 export type QaOutcome = { ok: true; answer: string } | { ok: false; why: string };
+
+/** Only runtime basics cross into Q&A; RunAs adds the selected provider credentials. */
+export function qaBaseEnv(): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const key of ['PATH', 'LANG', 'LC_ALL', 'TMPDIR', 'TEMP', 'TMP', 'SystemRoot', 'WINDIR']) {
+    if (process.env[key]) env[key] = process.env[key]!;
+  }
+  return env;
+}
 
 /** Providers whose tool-free mode the office can actually enforce today. Others fail closed. */
 export const QA_SUPPORTED: ReadonlySet<AgentProvider> = new Set(['kimi']);
@@ -29,18 +32,16 @@ export const QA_SUPPORTED: ReadonlySet<AgentProvider> = new Set(['kimi']);
  */
 export const QA_VERIFIED_VERSIONS: ReadonlySet<string> = new Set(['2.7.2']);
 
-const versionCache = new Map<string, string | undefined>();
-/** The CLI's reported version, cached; undefined when it can't be read. */
+/** Recheck the installed CLI version on each launch; undefined when it cannot be read. */
 export function cliVersion(file: string): string | undefined {
-  if (versionCache.has(file)) return versionCache.get(file);
+  // Recheck on each launch: a CLI can auto-update in place.
   let found: string | undefined;
   try {
     const out = execFileSync(file, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] });
-    found = /(\d+\.\d+\.\d+)/.exec(out)?.[1];
+    found = /(\d+\.\d+\.\d+(?:-[\w.-]+)?)/.exec(out)?.[1];
   } catch {
     found = undefined;
   }
-  versionCache.set(file, found);
   return found;
 }
 
@@ -52,7 +53,7 @@ export function toolFreeVerified(file: string): boolean {
 
 /** The dedicated Q&A home: the source home's credentials, a tool-free config, the framing prompt. */
 export function buildQaHome(sourceHome: string, framing: string): { home: string; cleanup: () => void } | string {
-  let home: string;
+  let home: string | undefined;
   try {
     home = mkdtempSync(path.join(tmpdir(), 'agent-office-staff-qa-'));
     const credentials = path.join(sourceHome, 'credentials');
@@ -74,16 +75,17 @@ export function buildQaHome(sourceHome: string, framing: string): { home: string
     );
     writeFileSync(path.join(home, 'SYSTEM.md'), framing, { mode: 0o600 });
   } catch (err) {
+    if (home) rmSync(home, { recursive: true, force: true });
     return `Couldn't prepare the read-only session: ${(err as Error).message}`;
   }
-  return { home, cleanup: () => rmSync(home, { recursive: true, force: true }) };
+  return { home, cleanup: () => rmSync(home!, { recursive: true, force: true }) };
 }
 
 /** The launch for a department's Q&A: its configured engine's CLI — never an arbitrary PATH binary. */
 export function qaLaunch(provider: AgentProvider | undefined): { file: string; args: string[] } | string {
-  if (!provider || !QA_SUPPORTED.has(provider)) {
-    return `Read-only staff Q&A is only available on a Kimi-backed manager today (the manager's engine is ${provider ?? 'not configured'}); running it on an engine whose tool-free mode isn't verified would not be honest.`;
-  }
+  if (provider === 'codex') return 'Codex has no verified global zero-tools Q&A mode in Office. Ask a manager controller for help. Office will not switch your provider automatically.';
+  if (provider === 'claude') return 'Claude has no verified isolated Q&A mode in Office: managed hooks and MCP can remain active. Ask a manager controller for help. Office will not switch your provider automatically.';
+  if (provider !== 'kimi') return `Read-only staff Q&A has no verified tool-free adapter for ${provider ?? 'an unconfigured manager'}.`;
   const file = resolveCommand('kimi');
   if (!file) return 'The Kimi CLI is not installed on this office machine.';
   if (!toolFreeVerified(file)) {
@@ -102,17 +104,18 @@ export function staffQaAsk(opts: { file: string; args: string[]; cwd: string; en
   return new Promise((resolve) => {
     let settled = false;
     let answered = false;
+    let outputBytes = 0;
     let session: DshSession;
     const finish = (outcome: QaOutcome) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      void session.close().then(() => resolve(outcome));
+      void session.close().then(() => resolve(outcome), () => resolve({ ok: false, why: 'The isolated Q&A session could not close cleanly.' }));
     };
     session = new DshSession(
       { file: opts.file, args: opts.args, cwd: opts.cwd, env: opts.env, model: opts.model, effort: opts.effort, firstPrompt: opts.prompt },
       {
-        output: () => {},
+        output: (text) => { outputBytes += Buffer.byteLength(text); if (outputBytes > 1_000_000) finish({ ok: false, why: 'The Q&A process exceeded its output limit.' }); },
         status: (status) => {
           // Defense in depth: the config removed the tools; anything still asking is rejected.
           if (status === 'needs_input') session.writeInput('\x1b');
@@ -131,7 +134,7 @@ export function staffQaAsk(opts: { file: string; args: string[]; cwd: string; en
       },
     );
     const timer = setTimeout(() => finish({ ok: false, why: 'The read-only session timed out.' }), opts.timeoutMs ?? 120_000);
-    session.start();
+    try { session.start(); } catch { finish({ ok: false, why: 'The isolated Q&A session could not start.' }); }
   });
 }
 

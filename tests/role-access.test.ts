@@ -236,10 +236,10 @@ test('the read-only Q&A session auto-rejects every tool request and still answer
   assert.deepEqual(outcome, { ok: true, answer: 'Short answer from the desk.' });
 });
 
-test('staff Q&A fails closed off Kimi, never falls back to an arbitrary binary, and builds a tool-free home', () => {
+test('staff Q&A fails closed for unsupported providers and builds a tool-free Kimi home', () => {
   // The manager's engine decides; there is no fallback to whatever is on PATH.
-  assert.match(qaLaunch('claude') as string, /only available on a Kimi-backed manager/);
-  assert.match(qaLaunch(undefined) as string, /only available on a Kimi-backed manager/);
+  assert.match(qaLaunch('codex') as string, /no verified global zero-tools/);
+  assert.match(qaLaunch(undefined) as string, /no verified tool-free adapter/);
   assert.match(qaLaunch('kimi') as unknown as string === 'string' ? '' : '', /^$/, 'kimi launches or reports its own absence honestly');
   // The dedicated home carries the custodian credentials, a tool-free config, and the framing.
   const src = mkdtempSync(path.join(tmpdir(), 'agent-office-qa-src-'));
@@ -291,8 +291,8 @@ test('floor staff Q&A uses the authorized custodian env, never the host credenti
   assert.deepEqual(applied, [{ id: 'acct-ivan', only: 'kimi' }], 'the custodian env is account-scoped to kimi');
   // Without a custodian in an office with accounts it would fail closed; the fixture has none, so
   // the office path also refuses to run on host credentials when the engine is unsupported.
-  const off = await floorStaffQA({ ...floor, departments: { get: () => ({ ...floor.departments.get('dept-1'), lead: { name: 'Maya', provider: 'claude', by: 'Kim', at: 0 } }) } } as never, 'dept-1', 'Q', 'Pat', 'acct-ivan');
-  assert.match(off.why!, /only available on a Kimi-backed manager/);
+  const off = await floorStaffQA({ ...floor, departments: { get: () => ({ ...floor.departments.get('dept-1'), lead: { name: 'Maya', provider: 'codex', by: 'Kim', at: 0 } }) } } as never, 'dept-1', 'Q', 'Pat', 'acct-ivan');
+  assert.match(off.why!, /no verified global zero-tools/);
 });
 
 test('accounts-mode ask refuses a missing or unknown custodian — no host fallback', () => {
