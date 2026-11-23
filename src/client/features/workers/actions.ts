@@ -330,9 +330,9 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
       return;
     }
     let spot = deskSeat(desk, desk.station ? -1.6 : desk.beanbag ? 1.6 : 2.4);
-    // On a map of its own, the office's distances can land in a pillar: the nearest open floor to it.
+    // A room wall or map pillar can occupy the usual viewing spot: use nearby open floor.
     const world = ctx.world();
-    if (!inOffice() && (!player.fits(spot.x, spot.z, 0) || !world.nav.walkable(spot.x, spot.z))) {
+    if (!player.fits(spot.x, spot.z, 0) || !world.nav.walkable(spot.x, spot.z)) {
       const [x, z] = world.nav.nearestWalkable([spot.x, spot.z]);
       spot = { x, z };
     }

@@ -48,7 +48,7 @@ function viewer(title: string, content: HTMLElement, doing: string) {
  * with revision history, roles with skill references, a brand/asset library and a roster — and
  * hiring into a role composes the worker's prompt from all of it. Creating one launches nothing.
  */
-export function openDepartments(net: Net) {
+export function openDepartments(net: Net, preset?: DeptPreset) {
   if (!store.floor) return;
   const floor = store.floor;
   /** Brief drafts by department: text and base revision together, surviving repaints (see BriefDraft). */
@@ -62,8 +62,8 @@ export function openDepartments(net: Net) {
   const list = h('div.dept-list');
   const el = h(
     'div.modal.departments',
-    { role: 'dialog', 'aria-label': 'Departments' },
-    h('header', {}, h('h2', {}, '🏬 Departments'), close),
+    { role: 'dialog', 'aria-label': preset ? PRESET_META[preset].label : 'Departments' },
+    h('header', {}, h('h2', {}, preset ? `${PRESET_META[preset].icon} ${PRESET_META[preset].label}` : '🏬 Departments'), close),
     h('p.dept-intro', {}, 'A department is a brief, roles and a brand library — never an auto-running team. Hiring into a role seats a worker with the brief and its skills in the prompt. At most two writers per project; everything else reviews.'),
     picker.element,
     list,
@@ -305,12 +305,12 @@ export function openDepartments(net: Net) {
       'div.dept-add',
       {},
       ...(Object.keys(PRESET_META) as DeptPreset[])
-        .filter((p) => !taken.has(p))
+        .filter((p) => !taken.has(p) && (!preset || p === preset))
         .map((p) => h('button.btn.small', { type: 'button', title: PRESET_META[p].blurb, onclick: () => net.send({ t: 'departments.add', preset: p }) }, `＋ ${PRESET_META[p].icon} ${PRESET_META[p].label}`)),
     );
     if (!state.departments.length) list.append(h('p.empty', {}, 'No departments on this floor yet. Open one:'));
     if (addRow.children.length) list.append(addRow);
-    for (const d of state.departments) {
+    for (const d of state.departments.filter((d) => !preset || d.preset === preset)) {
       const meta = PRESET_META[d.preset];
       list.append(
         h(

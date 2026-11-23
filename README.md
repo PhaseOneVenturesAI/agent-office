@@ -30,6 +30,16 @@ curl -fsSL https://raw.githubusercontent.com/AgentSystemLabs/agent-office/main/i
 
 ---
 
+## Department rooms
+
+The Office map has three walk-in glass studios: Marketing, Product & Engineering,
+and Review, opening onto a shared hallway. Each room has its own working board;
+press **E** there to open that department’s brief, roles and project brand library.
+The directory is in the south commons, outside the elevator and its arrival path.
+Department hires prefer that room’s desks; existing workers retain their seats,
+branches and histories. Overflow can use other available desks. Rooms do not
+hire or move workers automatically. The menu and phone view remain available.
+
 ## What it is
 
 - **A floor per project.** Ride the elevator, pick one of your GitHub repos, and the office clones it (showing how far along it is) and opens a floor for it. Every worker, board and queue on that floor works in that checkout. If a floor is missing after moving the office to another machine, add its repository again to recover it in the current workspace folder; its identity is kept and existing checkouts are preserved. See [checkout recovery](docs/configuration.md#where-the-office-keeps-things).
