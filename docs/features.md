@@ -81,16 +81,6 @@ Everything in the office, room by room. Back to the [README](../README.md).
 - **An account for everyone.** Open **🔑 Accounts** from the **☰** menu and make an invite link. Whoever opens it picks a password and gets an account in their own name. That name is the one on their character, in chat and on every terminal they type into (**⌨️** in the terminal header shows who typed last), and nobody else can take it. Admins see everyone's accounts there, can make someone an admin, and can revoke an account, which signs that person out at once. The shared office password keeps working alongside the accounts until an admin switches it off. Sessions are signed cookies, and login attempts are rate limited.
 - **Your own Claude and GitHub.** With an account, the workers you hire run on your own Claude plan, and the office acts on GitHub as you: comments, merges, labels, claimed issues, commits, pushes and pull requests show up under your name, with your git name and GitHub noreply email. The first time you come in, **🔐 Your sign-ins** opens (it's in the **☰** menu too). **Sign in with Claude** gives you Claude's sign-in page and takes back the code it shows; **Sign in with GitHub** shows a one-time code for github.com/login/device. Or paste a token from `claude setup-token` (or an API key), or a GitHub token. A 🐚 shell you open at a desk runs as you, so `claude auth login` and `gh auth login` typed there sign you in too. Hiring a Claude worker, queueing a task, calling a meeting or asking a board agent needs your own Claude sign-in first; without one, the window opens and says why. A worker keeps running as whoever hired it: a queued task as whoever queued it, a meeting's workers as whoever called it. Admins can pick the office machine's own sign-ins instead. Everyone's sign-ins are kept apart, so any number of people can be signed in to different accounts at once. Revoking an account signs it out and deletes its sign-ins. On the office password, with no account, everything runs on the machine's own `claude` and `gh` as before.
 
-## Department rooms
-
-The Office map has three walk-in glass studios: Marketing, Product & Engineering,
-and Review, opening onto a shared hallway. Each room has its own working board;
-press **E** there to open that department’s brief, roles and project brand library.
-The directory is in the south commons, outside the elevator and its arrival path.
-Department hires prefer that room’s desks; existing workers retain their seats,
-branches and histories. Overflow can use other available desks. Rooms do not
-hire or move workers automatically. The menu and phone view remain available.
-
 ## Harness and review history
 
 **☰ → 🧰 Harness** edits canonical files in the server's harness folder. The editor shows its host/source and keeps an exact draft with the original SHA256 base. A stale or deleted source rejects the save; reloading preserves the draft and its old base. Compare the displayed current source, then explicitly choose **Use current revision as base; keep draft** before saving a reconciled draft. Closing/reopening the modal preserves drafts within the current browser page. Missing bases from old clients fail closed. Source saves preserve exact UTF-8 text, including whitespace; they do not commit, push or prompt workers.
