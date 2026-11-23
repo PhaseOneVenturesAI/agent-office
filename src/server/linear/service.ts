@@ -10,14 +10,14 @@ export class LinearService {
   readonly client?: LinearClient;
   readonly sync?: LinearSync;
   /** Department ACL adapter: integration supplies the maintained controller policy, never admin inference. */
-  constructor(dir: string, readonly config: LinearConfig | undefined, private floors: () => Iterable<LinearFloor>, private accounts: () => { id: string; name: string }[], private controller: (account: string, scope: LinearControlScope) => boolean = () => false, request: typeof fetch = fetch) {
+  constructor(dir: string, readonly config: LinearConfig | undefined, private floors: () => Iterable<LinearFloor>, private accounts: () => { id: string; name: string }[], private controller?: (account: string, scope: LinearControlScope) => boolean, request: typeof fetch = fetch) {
     this.store = new LinearStore(dir);
     if (config && this.store.data.organization && this.store.data.organization.id !== config.organizationId) { this.store.data.token = undefined; this.store.data.error = 'Configured workspace changed; host must review existing mappings before reconnecting'; this.store.save(); }
     if (config) { this.client = new LinearClient(config, this.store, request); this.sync = new LinearSync(this.store, this.client, floors); this.sync.start(); }
   }
   close() { this.sync?.close(); }
   owner(account?: string) { return !!account && account === this.config?.ownerAccountId; }
-  canManage(account: string | undefined, floor: string, departmentId?: string, action: LinearControlScope['action'] = 'create', taskId?: string) { return !!account && (this.owner(account) || (!!departmentId && this.controller(account, { floorId: floor, departmentId, action, taskId }))); }
+  canManage(account: string | undefined, floor: string, departmentId?: string, action: LinearControlScope['action'] = 'create', taskId?: string) { return !!account && (this.controller ? this.controller(account, { floorId: floor, departmentId, action, taskId }) : this.owner(account)); }
   state(account: string | undefined, floor: string): LinearPublicState {
     const data = this.store.data, manage = this.canManage(account, floor);
     const target = [...this.floors()].find((f) => f.id === floor);

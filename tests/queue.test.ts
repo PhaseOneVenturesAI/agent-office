@@ -423,3 +423,26 @@ test("a queue worker that switches to a branch of its own takes its task's branc
   }]);
   assert.equal(q.state().tasks[0].pr?.number, 242);
 });
+
+test('linked business work preserves the manager duplicate guard after its agent turn, but releases it on acceptance', (t) => {
+  const f = fixture(); t.after(() => f.close()); const q = f.open(); q.setLimit(0);
+  const link = { organizationId: 'org', issueId: 'linear-issue', teamId: 'team', identifier: 'PLI-1', url: '', accountId: 'employee', stateId: 'todo', stateName: 'To do', workStatus: 'todo' as const, updatedAt: '' };
+  q.upsertLinear('human-task', 'Fix checkout', 'Fix checkout', link);
+  assert.match(q.add('Fix checkout', 'Manager') ?? '', /already assigned/);
+  q.startOwn('human-task', 'employee', 'Employee', 'claude'); q.setLimit(1);
+  f.workers[0].status = 'done'; q.onWorker(f.workers[0]);
+  assert.match(q.add('Fix checkout', 'Manager') ?? '', /already assigned/, 'agent turn ending does not release the business claim');
+  q.upsertLinear('human-task', 'Fix checkout', 'Fix checkout', { ...link, workStatus: 'completed' });
+  assert.equal(q.add('Fix checkout', 'Manager'), undefined);
+});
+
+test('own-agent start and manager retry cannot bypass an existing linked or manager task claim', (t) => {
+  const f = fixture(); t.after(() => f.close()); const q = f.open(); q.setLimit(0);
+  q.add('Fix checkout', 'Manager');
+  const original = q.state().tasks[0];
+  q.upsertLinear('linear-task', 'Fix checkout', 'Fix checkout', { organizationId: 'org', issueId: 'external', teamId: 'team', identifier: 'PLI-2', url: '', accountId: 'employee', stateId: 'todo', stateName: 'To do', workStatus: 'todo', updatedAt: '' });
+  assert.match(q.startOwn('linear-task', 'employee', 'Employee', 'claude') ?? '', /already assigned/);
+  q.setLimit(1); f.workers[0].status = 'done'; q.onWorker(f.workers[0]);
+  assert.match(q.retry(original.id) ?? '', /already assigned/);
+  assert.equal(q.startOwn('linear-task', 'employee', 'Employee', 'claude'), undefined);
+});

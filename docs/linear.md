@@ -61,9 +61,11 @@ different and require explicit verification; never infer a shared identity.
 
 `LinearService` takes `controller(accountId, scope)` where scope includes `floorId`,
 `departmentId`, optional `taskId`, and `action` (`create`, `edit`, `assign`, `sync`).
-Wire this to the maintained department role ACL during integration. The default denies
-all department control; only the explicitly configured integration owner has broad
-access. A generic admin flag never grants this power. Unknown/unscoped tasks remain
+The Office service wires this to `canControlLinear`: an explicit project CEO owner
+can manage project tasks, and `canEditManager` applies only to an existing scoped
+department lead. Missing departments/leads never gain administrator bootstrap access.
+The OAuth integration owner controls connection setup, not other projects’ tasks.
+An isolated LinearService without a supplied policy keeps its configured-owner default. A generic admin flag never grants this power. Unknown/unscoped tasks remain
 owner-controlled. A controller in Marketing must not gain Development permissions.
 Assignees retain their own manual work and own-agent execution independently.
 

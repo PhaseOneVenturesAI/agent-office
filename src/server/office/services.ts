@@ -1,3 +1,4 @@
+import { canControlLinear } from '../linear/access.js';
 import { LinearService } from '../linear/service.js';
 import { linearConfig } from '../linear/client.js';
 import { officeCredentialGrant } from '../office-credential-grants.js';
@@ -37,7 +38,7 @@ import type { Client } from './client.js';
 /** What the whole building shares, made before any floor opens: the sky, ⚙️ Settings, spend, sign-ins, limits. */
 export function createServices(ctx: Ctx): BuildingServices {
   const { cfg, accounts, clients, floors } = ctx;
-  const linear = new LinearService(cfg.dataDir, linearConfig(), () => floors.values(), () => accounts.state(new Set()).accounts.map(({ id, name }) => ({ id, name })));
+  const linear = new LinearService(cfg.dataDir, linearConfig(), () => floors.values(), () => accounts.state(new Set()).accounts.map(({ id, name }) => ({ id, name })), (account, scope) => canControlLinear(ctx, account, scope));
   // Day, night and the weather outside the windows, the same for everyone.
   const sky = new Sky({ city: cfg.city, weather: cfg.weather, realTime: cfg.realTimeSky, placeFile: path.join(cfg.dataDir, 'sky-place.json'), clockFile: path.join(cfg.dataDir, 'sky-clock.json') }, (state) => ctx.broadcast({ t: 'sky', state }));
   sky.start();

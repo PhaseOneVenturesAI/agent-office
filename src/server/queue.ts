@@ -108,7 +108,7 @@ export class TaskQueue {
     // One job, one owner: any live task with the same normalized title blocks the claim, whatever
     // department asked. The check and the claim are one synchronous step, so two delegations can't
     // both pass. Deliberately exact-title only — reworded duplicates are not detected.
-    if (this.tasks.some((t) => t.status !== 'done' && normTitle(t.title) === normTitle(cleanTitle))) return `“${cleanTitle}” is already assigned on this project`;
+    if (this.tasks.some((t) => activeTask(t) && normTitle(t.title) === normTitle(cleanTitle))) return `“${cleanTitle}” is already assigned on this project`;
     if (this.tasks.filter((t) => t.status === 'queued' || t.status === 'running').length >= MAX_TASKS) return `The queue is full (${MAX_TASKS} tasks)`;
     const task: QueueTask = {
       id: randomBytes(6).toString('hex'),
@@ -158,6 +158,7 @@ export class TaskQueue {
     if (task.linear.pending) return 'Wait for the pending Linear changes to sync first';
     if (task.linear.archived || task.linear.conflict || ['completed', 'canceled'].includes(task.linear.workStatus)) return 'Resolve or reopen this task before starting an agent';
     if (task.status === 'running' || task.status === 'queued') return 'This task already has an agent run';
+    if (this.tasks.some((other) => other !== task && activeTask(other) && normTitle(other.title) === normTitle(task.title))) return `“${task.title}” is already assigned on this project`;
     provider ??= this.workers.officeDefault?.provider ?? this.workers.defaultProvider;
     const error = personalProviderError(account, 'agent', provider) || validateWorkerModel('agent', provider, model) || validateWorkerEffort('agent', provider, effort);
     if (error) return error;
@@ -208,6 +209,7 @@ export class TaskQueue {
     const t = this.tasks.find((x) => x.id === taskId);
     if (!t) return 'No such task';
     if (t.linear) return 'Use Start my agent on the linked task';
+    if (this.tasks.some((other) => other !== t && other.linear && activeTask(other) && normTitle(other.title) === normTitle(t.title))) return `“${t.title}” is already assigned on this project`;
     if (t.status !== 'done') return 'That task is still on the queue';
     if (t.issue !== undefined && this.tasks.some((x) => x !== t && x.issue === t.issue && x.status !== 'done')) return `Issue #${t.issue} is already on the queue`;
     if (t.issue !== undefined && this.tasks.some((x) => x !== t && x.issue === t.issue && x.supersedes === t.id)) return `That task is already retried`;
@@ -520,4 +522,9 @@ export function normTitle(title: string): string {
 
 function firstLine(s: string): string {
   return s.split('\n')[0].trim();
+}
+
+/** A linked business task stays claimed after an agent turn, until accepted or archived. */
+function activeTask(t: QueueTask): boolean {
+  return t.linear ? !t.linear.archived && !['completed', 'canceled'].includes(t.linear.workStatus) : t.status !== 'done';
 }

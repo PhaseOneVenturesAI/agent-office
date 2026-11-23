@@ -47,7 +47,7 @@ export const linearRoutes: Route = {
         await ctx.linear.edit(account, floorId, task.id, { stateId: state }, undefined, undefined, task.linear.updatedAt);
         const error = ctx.floors.get(floorId)!.queue.manualTask(task.id); if (error) throw new Error(error);
       } else if (ask.action === 'retry') {
-        if (!ctx.linear.canManage(account, floorId)) throw new Error('Only a department controller can retry the integration');
+        if (!ctx.linear.owner(account)) throw new Error('Only the configured integration owner can retry the connection');
         await ctx.linear.sync?.run();
       } else throw new Error('Unknown Linear action');
       send(res, 200, ctx.linear.state(account, floorId));
