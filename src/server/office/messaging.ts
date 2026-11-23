@@ -1,4 +1,5 @@
 import { canViewTerminal, publicWorker } from '../worker-ownership.js';
+import { publicRoleWorker, roleAccess } from '../role-access.js';
 import { WebSocket } from 'ws';
 import type { Ctx, Messaging, ToastLevel } from './context.js';
 import type { Client } from './client.js';
@@ -21,13 +22,20 @@ export function messaging(ctx: Ctx): Messaging {
   const toastAll = (text: string, level: ToastLevel = 'info') => broadcast({ t: 'toast', text, level });
   /** To everyone on one floor. */
   const toFloor = (floor: Floor, msg: ServerMsg, droppable = false) => {
-    if (msg.t === 'worker.update') msg = { ...msg, worker: publicWorker(ctx, msg.worker) };
-    const json = JSON.stringify(msg);
+    // Role characters' private content (prompt, activity, task, handoff, usage, worktree) goes only
+    // to their owner/controllers; everyone else gets the public shell — name, engine, desk, status.
+    const roleMsg = msg.t === 'worker.update' && floor.isRoleWorker(msg.worker.id) ? msg : undefined;
+    if (msg.t === 'worker.update' && !roleMsg) msg = { ...msg, worker: publicWorker(ctx, msg.worker) };
     for (const c of ctx.clients.values()) {
       if (c.peer.floor !== floor.id || c.ws.readyState !== WebSocket.OPEN) continue;
       if (msg.t === 'screen' && !canViewTerminal(ctx, c.accountId, msg.workerId)) continue;
       if (droppable && c.ws.bufferedAmount > 4 * 1024 * 1024) continue;
-      c.ws.send(json);
+      if (roleMsg) {
+        const access = roleAccess(ctx, floor, roleMsg.worker.id, c.accountId);
+        c.ws.send(JSON.stringify({ ...roleMsg, worker: publicRoleWorker(roleMsg.worker, access.kind) }));
+      } else {
+        c.ws.send(JSON.stringify(msg));
+      }
     }
   };
   const toastFloor = (floor: Floor | undefined, text: string, level: ToastLevel = 'info') => {

@@ -46,18 +46,24 @@ export const departmentsHandlers = {
   'departments.asset'(ctx, c, msg) {
     const floor = here(ctx, c);
     if (!floor) return;
+    const edit0 = canEditManager(ctx, floor, str(msg.id, 16), c.accountId);
+    if (!edit0.ok) return ctx.warn(c, edit0.why);
     const err = floor.departments.addAsset(str(msg.id, 16), msg, c.peer.name);
     if (err) ctx.warn(c, err);
   },
   'departments.asset.drop'(ctx, c, msg) {
     const floor = here(ctx, c);
     if (!floor) return;
+    const edit1 = canEditManager(ctx, floor, str(msg.id, 16), c.accountId);
+    if (!edit1.ok) return ctx.warn(c, edit1.why);
     const err = floor.departments.dropAsset(str(msg.id, 16), str(msg.asset, 16));
     if (err) ctx.warn(c, err);
   },
   'departments.release'(ctx, c, msg) {
     const floor = here(ctx, c);
     if (!floor) return;
+    const edit2 = canEditManager(ctx, floor, str(msg.id, 16), c.accountId);
+    if (!edit2.ok) return ctx.warn(c, edit2.why);
     floor.departments.release(str(msg.id, 16), str(msg.workerId, 32));
   },
   'departments.launch'(ctx, c, msg) {
@@ -115,6 +121,8 @@ export const departmentsHandlers = {
     const floor = here(ctx, c);
     if (!floor) return;
     const id = str(msg.id, 16);
+    const edit3 = canEditManager(ctx, floor, id, c.accountId);
+    if (!edit3.ok) return ctx.warn(c, edit3.why);
     const live = floor.departments.get(id)?.lead?.workerId;
     ctx.warn(c, floor.departments.clearLead(id));
     // Retiring the manager sends their worker home: deleting the role is what frees the seat.
@@ -199,11 +207,15 @@ export const departmentsHandlers = {
     const id = str(msg.id, 16);
     const dept = floor.departments.get(id);
     if (!dept) return ctx.warn(c, 'That department is gone');
+    const edit = canEditManager(ctx, floor, id, c.accountId);
+    if (!edit.ok) return ctx.warn(c, edit.why);
     const policy = dept.policy;
     const provider = msg.provider ?? policy?.provider;
     // Seating an implementation writer: the cap holds at approval time, before the request is spent.
     const cap = floor.writerCap();
     if (cap) return ctx.warn(c, `${cap} — the request stays pending`);
+    // The request is only spent once the signed-in execution actually succeeds; a refused sign-in
+    // or a failed queue keeps it pending for the next attempt.
     const taken = floor.departments.takeRequest(id, str(msg.request, 16));
     if (typeof taken === 'string') return ctx.warn(c, taken);
     const model = msg.model !== undefined ? str(msg.model, OPEN_CODE_MODEL_MAX + 1) : policy?.model;
@@ -212,13 +224,20 @@ export const departmentsHandlers = {
     const parentId = dept.lead?.workerId && floor.workers.get(dept.lead.workerId) ? dept.lead.workerId : undefined;
     ctx.withSignIn(c, ctx.signInFor(provider ?? floor.workers.officeDefault.provider), () => {
       const err = floor.delegate(id, taken.title, taken.task, by, c.accountId, parentId, { provider, model, effort });
-      if (err) ctx.warn(c, `${err} — the request is cleared; the job is claimed elsewhere or the queue refused it`);
-      else ctx.toastFloor(floor, `📋 ${by}'s “${taken.title}” approved and queued`);
+      if (err) {
+        floor.departments.addRequest(id, { title: taken.title, task: taken.task, by: taken.by });
+        ctx.warn(c, `${err} — the request is back pending`);
+      } else ctx.toastFloor(floor, `📋 ${by}'s “${taken.title}” approved and queued`);
+    }, () => {
+      floor.departments.addRequest(id, { title: taken.title, task: taken.task, by: taken.by });
+      ctx.warn(c, 'Sign-in refused — the request stays pending.');
     });
   },
   'departments.request.reject'(ctx, c, msg) {
     const floor = here(ctx, c);
     if (!floor) return;
+    const edit4 = canEditManager(ctx, floor, str(msg.id, 16), c.accountId);
+    if (!edit4.ok) return ctx.warn(c, edit4.why);
     const err = floor.departments.dropRequest(str(msg.id, 16), str(msg.request, 16));
     if (err) ctx.warn(c, err);
     else ctx.toastFloor(floor, `${c.peer.name} rejected a delegation request`);
@@ -232,7 +251,8 @@ export const departmentsHandlers = {
     // Read-only Q&A is for staff; controllers and the owner talk to the manager directly.
     const access = roleAccessForManager(ctx, floor, id, c.accountId);
     if (access.kind === 'none') return ctx.warn(c, access.why);
-    void floor.staffQA(id, str(msg.question, 4000), c.peer.name).then((outcome) => {
+    const custodian = dept.lead?.custodian ? ctx.accounts.byEmail(dept.lead.custodian)?.id : undefined;
+    void floor.staffQA(id, str(msg.question, 4000), c.peer.name, custodian).then((outcome) => {
       if (c.out || !ctx.stillIn(c)) return;
       ctx.sendTo(c, { t: 'departments.qa', id, question: str(msg.question, 4000), answer: outcome.ok ? outcome.answer : `Unavailable: ${outcome.why}`, at: Date.now() });
     });

@@ -229,7 +229,10 @@ export async function officeWorkers(ctx: Ctx, req: http.IncomingMessage, res: ht
 
   const ask = readHireRequest(body, floor.project.agentProviders);
   if (typeof ask === 'string') return send(res, 400, { error: ask });
-  // A worker hiring another adds an implementation writer: the project's cap holds here too.
+  // Only department managers hire agents from agents — orchestration is theirs. People still hire
+  // their own standalone agents from a desk in the UI, which this hook is not.
+  if (!floor.departments.leadDeptOfWorker(me.id)) return send(res, 403, { error: 'Only a department manager may hire another worker here. People hire their own agents at a desk (E).' });
+  // A manager hiring adds an implementation writer: the project's cap holds here too.
   const cap = floor.writerCap();
   if (cap) return send(res, 409, { error: cap });
   const desk = ask.desk ?? nextFreeSeat((id) => floor.workers.deskOccupied(id), floor.plan.wing)?.id;

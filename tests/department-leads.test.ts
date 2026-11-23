@@ -9,6 +9,7 @@ import path from 'node:path';
 import { Departments } from '../src/server/departments.js';
 import { TaskQueue, type QueueWorkers } from '../src/server/queue.js';
 import { LeadDispatch } from '../src/server/dept-dispatch.js';
+import { RoleChat } from '../src/server/role-chat.js';
 import { swapBrief, swapGuard } from '../src/server/workers/handoffs.js';
 import type { AgentProvider, Department, QueueTask, WorkerInfo, WorkerStatus } from '../src/shared/protocol.js';
 
@@ -74,6 +75,41 @@ test('the shift composes an orchestrator prompt, refuses a duplicate while live,
     assert.equal(departments.get(d.id)!.lead!.workerId, undefined);
   } finally {
     cleanup();
+  }
+});
+
+test('a manager is never duplicated while seated, whatever their status', () => {
+  const { departments, cleanup } = setup();
+  try {
+    const d = departments.add('product', undefined, 'Kim');
+    assert.ok(typeof d !== 'string');
+    departments.setLead(d.id, { name: 'Priya' }, 'Kim');
+    departments.recordLeadHire(d.id, 'mgr-1', 'desk-1', 'Kim');
+    // Any live record — idle, done, offline, or working — means resumed, not duplicated.
+    for (const live of [['mgr-1'], ['mgr-1', 'w9']]) {
+      const r = departments.composeLeadLaunch(d.id, undefined, () => live);
+      assert.match(r as string, /already on shift/);
+    }
+    // Gone for real: the identity resumes on a fresh shift, the stale link cleared.
+    const resumed = departments.composeLeadLaunch(d.id, undefined, () => []);
+    assert.ok(typeof resumed !== 'string');
+    assert.equal(departments.get(d.id)!.lead!.workerId, undefined);
+  } finally {
+    cleanup();
+  }
+});
+
+test('a landed swap moves the durable conversation record with the seat', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'agent-office-chat-migrate-'));
+  try {
+    const chat = new RoleChat(dir);
+    chat.append('old-w', { id: 'm1', role: 'user', text: 'hello', at: 1 });
+    chat.append('old-w', { id: 'm2', role: 'assistant', text: 'hi there', at: 2 });
+    chat.migrate('old-w', 'new-w');
+    assert.equal(chat.tail('old-w').length, 0);
+    assert.deepEqual(chat.tail('new-w').map((m) => m.text), ['hi there', 'hello']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 

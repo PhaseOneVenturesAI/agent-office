@@ -37,10 +37,16 @@ export const conversationHandlers = {
     }
     if (!wid || !floor) return;
     const service = floor.workers.conversations;
+    const isRole = !!floor.isRoleWorker(wid);
     ctx.sendTo(c, { t: 'conversation.state', workerId: wid, supported: conversationSupported(floor.workers.get(wid)?.provider), messages: service.snapshot(wid) });
     listening.set(c, service.subscribe(wid, (message) => {
       if (c.out || !ctx.stillIn(c) || ctx.floorOf(c) !== floor) return close(c);
-      if (message.scope !== 'staff' && canUseWorker(ctx, c.accountId, floor.workers.ownerOf(wid), floor.workers.get(wid)?.provider)) ctx.sendTo(c, { t: 'conversation.message', workerId: wid, message });
+      // Role authority is re-checked on every message: revoked ownership or delegation closes the stream.
+      if (isRole) {
+        const access = roleAccess(ctx, floor, wid, c.accountId);
+        if (access.kind !== 'owner' && access.kind !== 'controller') return close(c);
+      } else if (!canUseWorker(ctx, c.accountId, floor.workers.ownerOf(wid), floor.workers.get(wid)?.provider)) return close(c);
+      if (message.scope !== 'staff') ctx.sendTo(c, { t: 'conversation.message', workerId: wid, message });
     }));
   },
   'conversation.close'(_ctx, c) { close(c); },

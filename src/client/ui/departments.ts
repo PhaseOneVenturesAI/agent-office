@@ -322,7 +322,6 @@ export function openDepartments(net: Net) {
               replacing
                 ? leadForm(net, d, d.lead, () => { replacing = false; paintPanel(d, liveWriters(store.departments.departments)); })
                 : h('div.dept-row', {}, h('button.btn.small', { type: 'button', onclick: () => { replacing = true; paintPanel(d, liveWriters(store.departments.departments)); } }, 'Replace the manager…')),
-              h('div.dept-row', {}, h('button.btn.small', { type: 'button', title: 'Retire the manager identity; their worker, when on shift, keeps its desk', onclick: () => net.send({ t: 'departments.lead.clear', id: d.id }) }, 'Retire the manager')),
             ]
           : []),
         h('div.dept-row', {}, h('button.btn.small', { type: 'button', title: 'Take the department off this floor (refused while its workers are at desks)', onclick: () => net.send({ t: 'departments.remove', id: d.id }) }, 'Remove the department')),

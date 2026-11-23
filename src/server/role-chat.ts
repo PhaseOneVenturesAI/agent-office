@@ -5,7 +5,7 @@
 // under its own scope so it never becomes part of the controller-facing record (see
 // docs/department-leads.md).
 
-import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import path from 'node:path';
 
 export interface ChatMessage {
@@ -36,6 +36,23 @@ export class RoleChat {
       appendFileSync(this.file(workerId), `${JSON.stringify({ ...message, text: clip(message.text) })}\n`, { mode: 0o600 });
     } catch {
       // A full disk must not take the office down; the live conversation still works.
+    }
+  }
+
+  /** Moves a worker's record to a replacement (a landed engine swap): history follows the seat. */
+  migrate(fromId: string, toId: string): void {
+    const from = this.file(fromId), to = this.file(toId);
+    if (from === to || !existsSync(from)) return;
+    try {
+      if (existsSync(to)) {
+        const lines = readFileSync(from, 'utf8');
+        appendFileSync(to, lines.endsWith('\n') || !lines.trim() ? lines : `${lines}\n`, { mode: 0o600 });
+        rmSync(from);
+      } else {
+        renameSync(from, to);
+      }
+    } catch {
+      // A failed move leaves the source file intact; nothing is lost.
     }
   }
 

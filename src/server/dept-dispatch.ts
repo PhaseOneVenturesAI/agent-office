@@ -9,6 +9,7 @@
 // are at-most-once while the parent is observed and never replayed; a parent that is gone drops
 // what it was holding.
 
+import { readFileSync, writeFileSync } from 'node:fs';
 import type { Department, QueueTask, WorkerInfo } from '../shared/protocol.js';
 
 /** What the dispatch needs from the floor; narrow on purpose, so a test can fake it. */
@@ -22,6 +23,8 @@ export interface DispatchDeps {
   ceo?(): { name: string; workerId?: string } | undefined;
   /** The worker's latest complete assistant reply (durable record), for rollups. */
   lastReply?(id: string): string | undefined;
+  /** Held notices from before a restart, when the floor keeps them. */
+  held?(): [string, { parent: string; text: string }][] | undefined;
 }
 
 /** Transitions that wake a parent; everything else is the child's own business. */
@@ -36,8 +39,44 @@ export class LeadDispatch {
   private last = new Map<string, string>();
   /** Notices held while a parent works: key -> { parent, text }. Latest only, per key. */
   private held = new Map<string, { parent: string; text: string }>();
+  /** Where held notices survive a restart; undefined in tests that don't need it. */
+  private persist?: { load(): [string, { parent: string; text: string }][]; save(entries: [string, { parent: string; text: string }][]): void };
 
-  constructor(private deps: DispatchDeps) {}
+  constructor(private deps: DispatchDeps) {
+    try {
+      const raw = this.deps.held?.();
+      if (raw) for (const [key, value] of raw) this.held.set(key, value);
+    } catch {
+      // A corrupt held file starts empty; notices are at-most-once anyway.
+    }
+  }
+
+  /** Binds a small durable store for held notices (a floor file), so a restart never drops them. */
+  attachPersist(file: string): void {
+    this.persist = {
+      load: () => {
+        try {
+          const parsed = JSON.parse(readFileSync(file, 'utf8')) as [string, { parent: string; text: string }][];
+          return Array.isArray(parsed) ? parsed.filter((e) => e && typeof e[0] === 'string' && e[1] && typeof e[1].parent === 'string' && typeof e[1].text === 'string') : [];
+        } catch {
+          return [];
+        }
+      },
+      save: (entries) => {
+        try {
+          writeFileSync(file, JSON.stringify(entries), { mode: 0o600 });
+        } catch {
+          // A full disk must not take the office down.
+        }
+      },
+    };
+    const loaded = this.persist.load();
+    if (loaded.length && this.held.size === 0) for (const [key, value] of loaded) this.held.set(key, value);
+  }
+
+  private saveHeld() {
+    this.persist?.save([...this.held.entries()].slice(-MAX_HELD));
+  }
 
   /** Forgets a worker that left; a parent that went home drops whatever was held for it. */
   onWorkerGone(workerId: string) {
@@ -116,6 +155,7 @@ export class LeadDispatch {
       const err = this.deps.prompt(parentId, text);
       if (!err) {
         this.held.delete(key);
+        this.saveHeld();
         return;
       }
       // Could not reach it (stopping, gone): treat as unreachable rather than replaying later.
@@ -123,6 +163,7 @@ export class LeadDispatch {
     }
     if (this.held.size >= MAX_HELD) this.held.delete(this.held.keys().next().value!);
     this.held.set(key, { parent: parentId, text });
+    this.saveHeld();
   }
 
   /** A task ended with no worker transition to carry it (killed, or never started): tell the parent. */
@@ -154,8 +195,12 @@ export class LeadDispatch {
       }
       if (!IDLE.has(parent.status)) return; // busy again: keep the rest for the next turn
       this.held.delete(key);
+      this.saveHeld();
       const err = this.deps.prompt(leadId, held.text);
-      if (err) return; // it stopped mid-flush: the rest stay held, never replayed
+      if (err) {
+        this.saveHeld();
+        return; // it stopped mid-flush: the rest stay held, never replayed
+      }
     }
   }
 

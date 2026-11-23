@@ -289,6 +289,7 @@ export class Floor {
       ceo: () => this.ceo.get(),
       lastReply: (id) => this.workers.conversations.lastReply(id),
     });
+    this.dispatch.attachPersist(path.join(dataDir, 'dispatch-held.json'));
     // Role characters keep a durable, paged conversation record (see role-chat.ts).
     this.roleChat = new RoleChat(dataDir);
     this.workers.conversations.attachHistory(this.roleChat, (id) => !!this.isRoleWorker(id));
@@ -432,9 +433,17 @@ export class Floor {
     };
   }
 
-  /** A staff read-only question about a department (see dept-staff-qa.ts): a separate session. */
-  staffQA(deptId: string, question: string, by: string): Promise<QaOutcome> {
-    return floorStaffQA(this, deptId, question, by);
+  /** A staff read-only question about a department (see dept-staff-qa.ts): a separate, tool-free
+   * session on the department's engine under the authorized custodian's sign-in. */
+  staffQA(deptId: string, question: string, by: string, custodianId?: string): Promise<QaOutcome> {
+    return floorStaffQA(this, deptId, question, by, custodianId);
+  }
+
+  /** After a landed swap: the manager and CEO identities, the roster, and the durable record follow. */
+  relinkEverywhere(fromId: string, toId: string): void {
+    this.departments.relinkWorker(fromId, toId);
+    this.ceo.relinkWorker(fromId, toId);
+    this.roleChat.migrate(fromId, toId);
   }
 
   /** A worker speaking for a role (the CEO or a department manager): protected from send-home. */
@@ -486,7 +495,9 @@ export class Floor {
     const provider = explicit?.provider ?? policy?.provider ?? saved?.provider;
     const model = explicit?.model ?? (explicit?.provider === undefined ? policy?.model : undefined) ?? saved?.model;
     const effort = explicit?.effort ?? (explicit?.provider === undefined ? policy?.effort : undefined) ?? saved?.effort;
-    const liveAgents = () => this.writerIds();
+    // The duplicate-shift check must see every live agent record — an idle, done, or offline
+    // manager is still seated, even though writerIds() (cap accounting) excludes them.
+    const liveAgents = () => this.workers.list().filter((w) => w.kind === 'agent').map((w) => w.id);
     const composed = this.departments.composeLeadLaunch(deptId, task, liveAgents);
     if (typeof composed === 'string') return composed;
     const fresh = this.departments.get(deptId)!;

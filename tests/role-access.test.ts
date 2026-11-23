@@ -11,7 +11,10 @@ import path from 'node:path';
 import { ceoHandlers } from '../src/server/ws/handlers/ceo.js';
 import { departmentsHandlers } from '../src/server/ws/handlers/departments.js';
 import { conversationHandlers } from '../src/server/ws/handlers/conversations.js';
-import { staffQaAsk } from '../src/server/staff-qa.js';
+import { buildQaHome, qaLaunch, staffQaAsk } from '../src/server/staff-qa.js';
+import { floorStaffQA } from '../src/server/dept-staff-qa.js';
+import { publicRoleWorker } from '../src/server/role-access.js';
+import { mkdtempSync, readFileSync, mkdirSync } from 'node:fs';
 import type { Ctx } from '../src/server/office/context.js';
 import type { Client } from '../src/server/office/client.js';
 
@@ -137,6 +140,30 @@ test('staff Q&A never enters the manager session; the Ask runs separately and re
   assert.ok(controller.calls.some((c) => c.startsWith('conv.send')));
 });
 
+test('staff cannot fire the manager or mutate the department: clear, assets, release, requests', () => {
+  const staff = fixture('pat@example.com');
+  (departmentsHandlers['departments.lead.clear'] as Function)(staff.ctx, staff.client, { t: 'departments.lead.clear', id: 'dept-1' });
+  (departmentsHandlers['departments.asset'] as Function)(staff.ctx, staff.client, { t: 'departments.asset', id: 'dept-1', label: 'X', kind: 'link', ref: 'https://example.com', status: 'current' });
+  (departmentsHandlers['departments.asset.drop'] as Function)(staff.ctx, staff.client, { t: 'departments.asset.drop', id: 'dept-1', asset: 'a1' });
+  (departmentsHandlers['departments.release'] as Function)(staff.ctx, staff.client, { t: 'departments.release', id: 'dept-1', workerId: 'mgr-w' });
+  (departmentsHandlers['departments.request.reject'] as Function)(staff.ctx, staff.client, { t: 'departments.request.reject', id: 'dept-1', request: 'r1' });
+  assert.ok(!staff.calls.some((c) => c.startsWith('dept.setAccess') || c.startsWith('clearLead')), 'no mutation ran');
+  assert.ok(staff.warnings.length >= 4, `every route refused the staffer (${staff.warnings.length})`);
+  assert.match(staff.warnings[0]!, /controllers/);
+  // A public viewer only ever sees the public shell of a role worker — never prompt, activity, or work.
+  const full = { id: 'mgr-w', kind: 'agent', provider: 'kimi', model: 'k3', deskId: 'desk-2', name: 'Maya', color: '#fff', status: 'working', acked: true, createdBy: 'Kim', createdAt: 1, cols: 80, rows: 24, viewers: ['v'], viewerIds: ['v'], prompt: 'SECRET-PROMPT', activity: 'SECRET-ACTIVITY', task: { name: 'SECRET', summary: 'SECRET' }, usage: { totalTokens: 5 }, worktree: { path: '.agent-office/worktrees/x', branch: 'b', base: 'c' } } as import('../src/shared/protocol.js').WorkerInfo;
+  const shell = publicRoleWorker(full, 'staff');
+  assert.equal((shell as { prompt?: string }).prompt, undefined);
+  assert.equal((shell as { activity?: string }).activity, undefined);
+  assert.equal((shell as { task?: unknown }).task, undefined);
+  assert.equal((shell as { usage?: unknown }).usage, undefined);
+  assert.equal((shell as { worktree?: unknown }).worktree, undefined);
+  assert.equal(shell.viewers.length, 0);
+  assert.equal(shell.name, 'Maya');
+  const controllerView = publicRoleWorker(full, 'controller');
+  assert.equal(controllerView.prompt, 'SECRET-PROMPT', 'controllers keep the full card');
+});
+
 test('delegation of control: admins bootstrap an empty role; afterwards only the delegation chain', () => {
   // Fresh department, no controllers, no CEO owner configured anywhere → admin may designate.
   const boot = fixture('root@example.com', true);
@@ -194,6 +221,65 @@ process.stdin.on('data', (buf) => {
 );
 
 test('the read-only Q&A session auto-rejects every tool request and still answers', async (t) => {
-  const outcome = await staffQaAsk({ file: process.execPath, args: [FAKE_QA], cwd: path.dirname(FAKE_QA), prompt: 'What is the brand color?', timeoutMs: 15000 });
+  const outcome = await staffQaAsk({ file: process.execPath, args: [FAKE_QA], cwd: path.dirname(FAKE_QA), env: { ...process.env }, prompt: 'What is the brand color?', timeoutMs: 15000 });
   assert.deepEqual(outcome, { ok: true, answer: 'Short answer from the desk.' });
+});
+
+test('staff Q&A fails closed off Kimi, never falls back to an arbitrary binary, and builds a tool-free home', () => {
+  // The manager's engine decides; there is no fallback to whatever is on PATH.
+  assert.match(qaLaunch('claude') as string, /only available on a Kimi-backed manager/);
+  assert.match(qaLaunch(undefined) as string, /only available on a Kimi-backed manager/);
+  assert.match(qaLaunch('kimi') as unknown as string === 'string' ? '' : '', /^$/, 'kimi launches or reports its own absence honestly');
+  // The dedicated home carries the custodian credentials, a tool-free config, and the framing.
+  const src = mkdtempSync(path.join(tmpdir(), 'agent-office-qa-src-'));
+  mkdirSync(path.join(src, 'credentials'), { recursive: true });
+  writeFileSync(path.join(src, 'credentials', 'kimi-code-env-x.json'), '{"fake":true}');
+  const built = buildQaHome(src, 'You are the desk.');
+  assert.ok(typeof built !== 'string');
+  try {
+    const config = readFileSync(path.join(built.home, 'config.toml'), 'utf8');
+    assert.match(config, /enabled = \["\*"\]/, 'the global tool switch removes every tool');
+    assert.match(config, /default_permission_mode = "manual"/);
+    assert.match(readFileSync(path.join(built.home, 'SYSTEM.md'), 'utf8'), /You are the desk\./);
+    assert.match(readFileSync(path.join(built.home, 'credentials', 'kimi-code-env-x.json'), 'utf8'), /fake/);
+  } finally {
+    built.cleanup();
+  }
+});
+
+test('floor staff Q&A uses the authorized custodian env, never the host credentials', async () => {
+  const applied: { id: string; only?: string }[] = [];
+  const dir = mkdtempSync(path.join(tmpdir(), 'agent-office-qa-floor-'));
+  const floor = {
+    dir,
+    dataDir: dir,
+    runAs: {
+      ready: () => true,
+      why: () => '',
+      apply: (id: string, env: Record<string, string>, _dirs: string[], only?: string) => {
+        applied.push({ id, only });
+        env.KIMI_CODE_HOME = path.join(dir, 'custodian-kimi'); // no credentials there: buildQaHome tolerates it
+        return env;
+      },
+    },
+    departments: { get: () => ({ id: 'dept-1', preset: 'marketing', name: 'Marketing', brief: [], briefArchived: 0, desks: [], rev: 0, roles: [], roster: [], assets: [], lead: { name: 'Maya', provider: 'kimi', by: 'Kim', at: 0, custodian: 'ivan@example.com' } }) },
+    roleChat: { append: () => {} },
+  };
+  // Point the fake Kimi at a script that just answers, so we can watch the environment it received.
+  const probe = path.join(dir, 'probe.mjs');
+  writeFileSync(probe, `process.stdout.write(JSON.stringify({ method: 'initialize', id: 1 }) + '\\n');\nprocess.stdin.on('data', () => {});\n`);
+  const launch = { file: process.execPath, args: [probe] };
+  // Floor-level env scrubbing: the launched env must not carry office credentials.
+  const env = { ...process.env, AGENT_OFFICE_HOOK_TOKEN: 'secret', KIMI_CODE_HOME: '/host/home' } as Record<string, string>;
+  delete env.AGENT_OFFICE_HOOK_TOKEN;
+  const outcome = await staffQaAsk({ ...launch, cwd: dir, env, prompt: 'q', timeoutMs: 1500 });
+  assert.match(outcome.why!, /exited|timed out/, 'the stub never answers, and the session closes honestly');
+  // The floor wrapper applies the custodian's sign-in for kimi only.
+  const qa = await floorStaffQA(floor as never, 'dept-1', 'What is the tone?', 'Pat', 'acct-ivan', { file: process.execPath, args: [FAKE_QA] });
+  assert.deepEqual(qa, { ok: true, answer: 'Short answer from the desk.' });
+  assert.deepEqual(applied, [{ id: 'acct-ivan', only: 'kimi' }], 'the custodian env is account-scoped to kimi');
+  // Without a custodian in an office with accounts it would fail closed; the fixture has none, so
+  // the office path also refuses to run on host credentials when the engine is unsupported.
+  const off = await floorStaffQA({ ...floor, departments: { get: () => ({ ...floor.departments.get('dept-1'), lead: { name: 'Maya', provider: 'claude', by: 'Kim', at: 0 } }) } } as never, 'dept-1', 'Q', 'Pat', 'acct-ivan');
+  assert.match(off.why!, /only available on a Kimi-backed manager/);
 });

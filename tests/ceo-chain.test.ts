@@ -241,6 +241,16 @@ test('user → CEO → manager → worker, and results back up the chain', async
     const stillThere = await fetch(`${hooks}/office/workers?worker=${ceoWorker.id}`, { headers: { authorization: `Bearer ${ceo.token}` } }).then((r) => r.json()) as { workers: { id: string }[] };
     assert.ok(stillThere.workers.some((w) => w.id === mgrWorker.id), 'the manager is not fireable');
 
+    // Only managers hire from agents: the plain worker's generic hire and queue add are refused;
+    // the manager's own hire is allowed (and a human's desk hire is untouched — browser worker.spawn).
+    const plainHire = await hook('/office/workers?worker=' + plain.id, { prompt: 'Do a side task' }, plainCreds.token);
+    assert.equal(plainHire.status, 403);
+    assert.match((await plainHire.json()).error, /Only a department manager may hire/);
+    const plainQueue = await fetch(`${hooks}/office/queue?worker=${plain.id}`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${plainCreds.token}` }, body: JSON.stringify({ title: 'Side', prompt: 'Do it' }) });
+    assert.equal(plainQueue.status, 403, 'the queue stays the board agents’ and managers’ path');
+    const mgrHire = await hook('/office/workers?worker=' + mgrWorker.id, { prompt: 'Set up the analytics snippet' }, mgrCreds.token);
+    assert.equal(mgrHire.status, 200, 'a manager may hire for the team');
+
     // The manager delegates the actual work; the floor queue seats a worker under her ownership.
     const ok = await hook('/office/workers/delegate?worker=' + mgrWorker.id, { title: 'Hero rebuild', task: 'Rebuild the hero section' }, mgrCreds.token);
     assert.equal(ok.status, 200);

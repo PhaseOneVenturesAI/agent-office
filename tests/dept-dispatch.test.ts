@@ -2,8 +2,12 @@
 // manager, managers with a CEO objective roll up, held notices flush only while the parent can
 // still take a prompt, and a reused worker's notice names its live task, not a stale done one.
 import test from 'node:test';
+import path from 'node:path';
 import assert from 'node:assert/strict';
 import { LeadDispatch } from '../src/server/dept-dispatch.js';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import type { Department, QueueTask, WorkerInfo } from '../src/shared/protocol.js';
 
 function worker(id: string, status: WorkerInfo['status'], more: Partial<WorkerInfo> = {}): WorkerInfo {
@@ -149,6 +153,38 @@ test("a manager's own finished turn rolls its last reply up to the CEO — the r
   assert.equal(f.prompted.length, 1);
   assert.equal(f.prompted[0].id, 'ceo-1');
   assert.match(f.prompted[0].text, /Maya \(Marketing\) reports: Shipped the hero v2; PR #12 awaits your review\./);
+});
+
+test('held notices survive a restart through their small durable store', () => {
+  const file = path.join(mkdtempSync(path.join(tmpdir(), 'agent-office-held-')), 'held.json');
+  const mk = () => {
+    const workers = new Map<string, WorkerInfo>();
+    const prompted: string[] = [];
+    const dispatch = new LeadDispatch({
+      get: (id) => workers.get(id),
+      prompt: (id, text) => { prompted.push(text); return undefined; },
+      tasks: () => [{ id: 't1', title: 'Job', prompt: '', addedBy: 'Maya (lead)', addedAt: 1, status: 'running', workerId: 'child-1', dept: 'dept-1', parentId: 'mgr-1' }],
+      departments: () => [dept()],
+      ceo: () => undefined,
+    });
+    dispatch.attachPersist(file);
+    return { dispatch, workers, prompted };
+  };
+  const first = mk();
+  const mgr = worker('mgr-1', 'working');
+  first.workers.set('mgr-1', mgr);
+  const child = worker('child-1', 'working');
+  first.workers.set('child-1', child);
+  child.status = 'done';
+  first.dispatch.onWorker(child);
+  assert.equal(first.prompted.length, 0, 'held while working');
+  // "Restart": a new dispatch over the same file sees the held notice.
+  const second = mk();
+  const mgr2 = worker('mgr-1', 'done');
+  second.workers.set('mgr-1', mgr2);
+  second.dispatch.onWorker(mgr2);
+  assert.equal(second.prompted.length, 1, 'the held notice flushes after the restart');
+  assert.match(second.prompted[0], /ended its turn on “Job”/);
 });
 
 test('without a CEO or objective, nothing rolls up and nothing loops', () => {

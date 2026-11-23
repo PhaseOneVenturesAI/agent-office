@@ -1,32 +1,70 @@
 // Staff Q&A (see docs/department-leads.md): a read-only question about a department, answered on a
-// SEPARATE one-shot ACP session — never the manager's own provider session. A staff question can
-// therefore never touch the manager's memory, choices, or authority: the office auto-rejects every
-// tool permission the session requests, the prompt carries only an approved context snapshot (the
-// current brief, the active objective, the current brand-reference labels), and the exchange is
-// recorded under the staff scope. When no ACP CLI is available the answer is a truthful
-// "unavailable" — staff content is never passed into a manager session to make do.
+// SEPARATE one-shot ACP session — never the manager's own provider session. The session is
+// provider-restricted, not prompt-restricted: it runs on the department's configured engine under
+// an explicitly authorized custodian's own sign-in, from a dedicated tool-free home (the config's
+// global tool switch removes every tool; the office additionally auto-rejects any permission
+// request, and session/new declares no MCP servers). The prompt carries only an approved context
+// snapshot. When the engine is not Kimi ACP, or no custodian is designated in an accounts office,
+// the answer is a truthful "unavailable" — staff content is never passed into a manager session,
+// never run on an arbitrary binary from PATH, and never on host credentials.
 
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { DshSession } from './dsh.js';
-import { childEnv } from './workers/env.js';
 import { resolveCommand } from './workers/process.js';
+import type { AgentEffort, AgentProvider } from '../shared/providers.js';
 
 export type QaOutcome = { ok: true; answer: string } | { ok: false; why: string };
 
-/** An ACP-capable CLI for one-shot read-only sessions, in preference order. */
-export function acpCommand(): { file: string; args: string[] } | undefined {
-  const kimi = resolveCommand('kimi');
-  if (kimi) return { file: kimi, args: ['acp'] };
-  const dsh = resolveCommand('dsh');
-  if (dsh) return { file: dsh, args: ['--profile', 'acp'] };
-  return undefined;
+/** Providers whose tool-free mode the office can actually enforce today. Others fail closed. */
+export const QA_SUPPORTED: ReadonlySet<AgentProvider> = new Set(['kimi']);
+
+/** The dedicated Q&A home: the source home's credentials, a tool-free config, the framing prompt. */
+export function buildQaHome(sourceHome: string, framing: string): { home: string; cleanup: () => void } | string {
+  let home: string;
+  try {
+    home = mkdtempSync(path.join(tmpdir(), 'agent-office-staff-qa-'));
+    const credentials = path.join(sourceHome, 'credentials');
+    if (existsSync(credentials)) cpSync(credentials, path.join(home, 'credentials'), { recursive: true });
+    // Verified against the installed Kimi's documented global tool switch: an enabled list holding
+    // only the bare wildcard disables every tool (and it is enforced again before execution). The
+    // office ALSO auto-rejects permission requests; this is the provider-enforced layer beneath it.
+    writeFileSync(
+      path.join(home, 'config.toml'),
+      [
+        'default_permission_mode = "manual"',
+        'telemetry = false',
+        '',
+        '[tools]',
+        'enabled = ["*"]',
+        '',
+      ].join('\n'),
+      { mode: 0o600 },
+    );
+    writeFileSync(path.join(home, 'SYSTEM.md'), framing, { mode: 0o600 });
+  } catch (err) {
+    return `Couldn't prepare the read-only session: ${(err as Error).message}`;
+  }
+  return { home, cleanup: () => rmSync(home, { recursive: true, force: true }) };
+}
+
+/** The launch for a department's Q&A: its configured engine's CLI — never an arbitrary PATH binary. */
+export function qaLaunch(provider: AgentProvider | undefined): { file: string; args: string[] } | string {
+  if (!provider || !QA_SUPPORTED.has(provider)) {
+    return `Read-only staff Q&A is only available on a Kimi-backed manager today (the manager's engine is ${provider ?? 'not configured'}); running it on an engine whose tool-free mode isn't verified would not be honest.`;
+  }
+  const file = resolveCommand('kimi');
+  if (!file) return 'The Kimi CLI is not installed on this office machine.';
+  return { file, args: ['acp'] };
 }
 
 /**
- * Runs one read-only question to a throwaway ACP session. Every permission request is rejected by
- * the office (Esc), so the agent has no tools: it can only answer from the prompt it was given.
- * Resolves with the answer text, or a truthful why.
+ * Runs one read-only question to a throwaway ACP session on an explicitly authorized environment.
+ * Every permission request is rejected by the office (Esc); the provider config has already removed
+ * the tools. Resolves with the answer text, or a truthful why.
  */
-export function staffQaAsk(opts: { file: string; args: string[]; cwd: string; prompt: string; timeoutMs?: number }): Promise<QaOutcome> {
+export function staffQaAsk(opts: { file: string; args: string[]; cwd: string; env: NodeJS.ProcessEnv; prompt: string; model?: string; effort?: AgentEffort; timeoutMs?: number }): Promise<QaOutcome> {
   return new Promise((resolve) => {
     let settled = false;
     let answered = false;
@@ -38,12 +76,11 @@ export function staffQaAsk(opts: { file: string; args: string[]; cwd: string; pr
       void session.close().then(() => resolve(outcome));
     };
     session = new DshSession(
-      { file: opts.file, args: opts.args, cwd: opts.cwd, env: childEnv(), firstPrompt: opts.prompt },
+      { file: opts.file, args: opts.args, cwd: opts.cwd, env: opts.env, model: opts.model, effort: opts.effort, firstPrompt: opts.prompt },
       {
         output: () => {},
         status: (status) => {
-          // Read-only: every tool request is rejected outright; a question without a reject choice
-          // is cancelled. The session can only answer in text.
+          // Defense in depth: the config removed the tools; anything still asking is rejected.
           if (status === 'needs_input') session.writeInput('\x1b');
           if (status === 'done' && !answered) finish({ ok: false, why: 'The read-only session ended without an answer.' });
         },

@@ -158,9 +158,8 @@ export function ceoBlock(net: Net, repaint: () => void) {
       h(
         'details.dept-advanced',
         {},
-        h('summary', {}, 'Replace or retire the CEO'),
-        naming ? ceoForm(net, () => { naming = false; paint(); }) : h('div.dept-row', {}, h('button.btn.small', { type: 'button', onclick: () => { naming = true; paint(); } }, 'Replace…')),
-        h('div.dept-row', {}, h('button.btn.small', { type: 'button', title: 'Retire the CEO identity; their worker, when on shift, keeps its desk', onclick: () => net.send({ t: 'ceo.clear' }) }, 'Retire the CEO')),
+        h('summary', {}, 'Replace the CEO'),
+        naming ? ceoForm(net, () => { naming = false; paint(); }) : h('div.dept-row', {}, h('button.btn.small', { type: 'button', title: 'Replace the identity — the character is permanent; this renames it', onclick: () => { naming = true; paint(); } }, 'Replace…')),
       ),
     );
   };

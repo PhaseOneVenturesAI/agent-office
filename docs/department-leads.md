@@ -31,16 +31,30 @@ and no UI ever starts an agent by itself.
   prompt when the parent is idle, one coalesced notice held per child while it works, never injected
   into a busy terminal, never replayed.
 
-## Staff Q&A — a separate, read-only session
+## Staff Q&A — a separate, provider-enforced tool-free session
 
 Staff (any signed-in account in a manager's Q&A audience) can ask the department questions, but the
 question **never enters the manager's provider session**: the manager chat refuses staff outright,
-and the Ask box answers on a **separate one-shot ACP session** (Kimi or DeepSeek Harness) whose
-every tool permission the office auto-rejects, from an approved context snapshot (current brief,
-objective, reference labels). The exchange is recorded under the staff scope. When no ACP CLI is
-available the answer is a truthful "unavailable" — staff content is never passed into a manager
-session to make do. Staff personal agents on their own subscriptions remain possible and remain
-unable to commandeer the team queue.
+and the Ask box answers on a **separate one-shot ACP session** that is restricted by the provider,
+not by prompt text:
+
+- It runs on the **department's configured engine only** (Kimi ACP today) — never an arbitrary
+  binary from PATH, never a fallback to whatever is installed.
+- The session boots from a **dedicated tool-free home**: the global tool switch removes every tool
+  (verified against the installed Kimi's documented config), `session/new` declares no MCP servers,
+  the office **additionally** auto-rejects any permission request that still fires, and the
+  read-only framing lives in the home's SYSTEM.md.
+- The environment is **account-scoped to the department's billing custodian** (its custodian email's
+  account sign-in) — never the host's credentials; with accounts on and no custodian designated it
+  fails closed rather than spending silently.
+- The prompt carries only the approved context snapshot (current brief, objective, reference
+  labels), and the exchange is recorded under the staff scope.
+
+Engines whose tool-free mode is not verified fail closed with a truthful unavailable status —
+tracked honestly rather than approximated. Staff personal agents on their own subscriptions remain
+possible and remain unable to commandeer the team queue or the generic hire path: only department
+managers (and board agents through office-queue) may spawn workers from agent land; people still
+hire their own standalone agents at a desk.
 
 ## Talking to the characters
 
@@ -81,7 +95,11 @@ are the front door.
 
 - Off-shift characters are card + desk presence, not a standing 3D character.
 - Staff Q&A draws on the approved snapshot, not the manager's full history; the manager's own
-  session is what preserves controller history.
+  session is what preserves controller history. Kimi's tool-free home is verified against its
+  documented config and the office's permission denials; a paid one-shot behavioral re-verification
+  on the installed CLI is still owed (tracked, not claimed).
+- In-conversation approval answering (the prototype's queued request cards) is not implemented;
+  approvals are answered in the terminal, where the actual request lives.
 - Effective autonomy is honored only where the provider exposes a real mode; everywhere else it is
   a visible label, and tool approvals always need a person.
 - The Linear sync backend is owned by another worker; this branch deliberately carries no queue

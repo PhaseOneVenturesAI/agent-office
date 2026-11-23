@@ -7,6 +7,7 @@
 // single-user behavior: whoever is there is the owner.
 
 import type { Ctx } from './office/context.js';
+import type { WorkerInfo } from '../shared/protocol.js';
 import type { Floor } from './floor.js';
 
 export type RoleAccess = { kind: 'owner' } | { kind: 'controller' } | { kind: 'staff' } | { kind: 'none'; why: string };
@@ -104,10 +105,40 @@ export function canEditManager(ctx: Ctx, floor: Floor, deptId: string, accountId
   if (!ctx.accounts.any) return { ok: true };
   const email = accountEmail(ctx, accountId);
   const dept = floor.departments.get(deptId);
-  if (!dept?.lead) return { ok: false, why: 'Name the manager first.' };
-  const owner = floor.ceo.get()?.owner?.toLowerCase();
-  if ((owner && email === owner) || dept.lead.controllers?.map((e) => e.toLowerCase()).includes(email ?? '')) return { ok: true };
-  return { ok: false, why: `Only the ${dept.name} controllers (${dept.lead.controllers?.join(', ') || 'none named yet'}) or the CEO owner (${ceoOwner(floor) ?? 'none'}) may edit this manager.` };
+  if (!dept) return { ok: false, why: 'That department is gone' };
+  const owner = ceoOwner(floor);
+  if (dept.lead) {
+    if ((owner && email === owner) || dept.lead.controllers?.map((e) => e.toLowerCase()).includes(email ?? '')) return { ok: true };
+    return { ok: false, why: `Only the ${dept.name} controllers (${dept.lead.controllers?.join(', ') || 'none named yet'}) or the CEO owner (${owner ?? 'none'}) may edit this manager.` };
+  }
+  // No manager yet: naming the first one is office-admin setup; afterwards the delegation chain owns it.
+  return isAdmin(ctx, accountId) ? { ok: true } : { ok: false, why: 'An office admin names the first manager; the controllers own it from there.' };
+}
+
+/**
+ * What a role worker's card may show someone without authority: identity, engine, desk, status —
+ * never prompt, activity, task, handoff, usage, or worktree paths. The authoritative conversation
+ * and the work itself stay private.
+ */
+export function publicRoleWorker(w: WorkerInfo, access: RoleAccess['kind']): WorkerInfo {
+  if (access === 'owner' || access === 'controller') return w;
+  return {
+    id: w.id,
+    kind: w.kind,
+    ...(w.provider ? { provider: w.provider } : {}),
+    ...(w.model ? { model: w.model } : {}),
+    deskId: w.deskId,
+    name: w.name,
+    color: w.color,
+    status: w.status,
+    acked: w.acked,
+    createdBy: w.createdBy,
+    createdAt: w.createdAt,
+    cols: w.cols,
+    rows: w.rows,
+    viewers: [],
+    viewerIds: [],
+  };
 }
 
 /** Staff Q&A preamble: keeps the character honest about what a read-only question may trigger. */
