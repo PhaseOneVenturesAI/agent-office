@@ -14,6 +14,7 @@ export const routes: readonly Route[] = [
   // Anyone.
   authRoutes.login,
   authRoutes.loginOptions,
+  authRoutes.cfLogin,
   authRoutes.join,
   authRoutes.claimable,
   authRoutes.claim,
