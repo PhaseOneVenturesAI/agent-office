@@ -1,5 +1,5 @@
 import { canViewTerminal, publicWorker } from '../worker-ownership.js';
-import { redactWorkersFor } from '../role-access.js';
+import { redactWorkersFor, roleOrigin } from '../role-access.js';
 import { WebSocket } from 'ws';
 import type { Ctx, Messaging, ToastLevel } from './context.js';
 import type { Client } from './client.js';
@@ -22,12 +22,12 @@ export function messaging(ctx: Ctx): Messaging {
   const toastAll = (text: string, level: ToastLevel = 'info') => broadcast({ t: 'toast', text, level });
   /** To everyone on one floor. */
   const toFloor = (floor: Floor, msg: ServerMsg, droppable = false) => {
-    if (msg.t === 'worker.update' && !floor.isRoleWorker(msg.worker.id)) msg = { ...msg, worker: publicWorker(ctx, msg.worker) };
+    if (msg.t === 'worker.update' && !roleOrigin(floor, msg.worker.id)) msg = { ...msg, worker: publicWorker(ctx, msg.worker) };
     for (const c of ctx.clients.values()) {
       if (c.peer.floor !== floor.id || c.ws.readyState !== WebSocket.OPEN) continue;
       if (msg.t === 'screen' && !canViewTerminal(ctx, c.accountId, msg.workerId)) continue;
       if (droppable && c.ws.bufferedAmount > 4 * 1024 * 1024) continue;
-      const worker = msg.t === 'worker.update' && floor.isRoleWorker(msg.worker.id) ? redactWorkersFor(ctx, floor, [msg.worker], c.accountId)[0] : undefined;
+      const worker = msg.t === 'worker.update' && roleOrigin(floor, msg.worker.id) ? redactWorkersFor(ctx, floor, [msg.worker], c.accountId)[0] : undefined;
       c.ws.send(JSON.stringify(worker ? { ...msg, worker } : msg));
     }
   };

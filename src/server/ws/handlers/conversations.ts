@@ -2,7 +2,7 @@ import { canUseWorker, OWN_WORKER } from '../../worker-ownership.js';
 import type { ConversationClientMsg } from '../../../shared/protocol.js';
 import type { Client } from '../../office/client.js';
 import { conversationSupported } from '../../workers/conversations.js';
-import { roleAccess } from '../../role-access.js';
+import { roleAccess, roleOrigin } from '../../role-access.js';
 import { workerOf } from './common.js';
 import { ownedWorker } from './worker-access.js';
 import type { FeatureHooks, HandlerMap } from './types.js';
@@ -21,7 +21,7 @@ export const conversationHandlers = {
     close(c);
     const role = workerOf(ctx, msg.workerId);
     let wid: string | undefined, floor = role?.floor;
-    if (role && role.floor.isRoleWorker?.(role.wid)) {
+    if (role && roleOrigin(role.floor, role.wid)) {
       // Role characters: only the owner/controllers talk to them — staff Q&A never enters the
       // manager's own session (see staff-qa.ts); it runs on a separate read-only session.
       const access = roleAccess(ctx, role.floor, role.wid, c.accountId);
@@ -42,7 +42,7 @@ export const conversationHandlers = {
     listening.set(c, service.subscribe(wid, (message) => {
       if (c.out || !ctx.stillIn(c) || ctx.floorOf(c) !== floor) return close(c);
       // Role authority is re-checked on every message: revoked ownership or delegation closes the stream.
-      if (floor.isRoleWorker?.(wid)) {
+      if (roleOrigin(floor, wid)) {
         const access = roleAccess(ctx, floor, wid, c.accountId);
         if (access.kind !== 'owner' && access.kind !== 'controller') return close(c);
       }
@@ -53,7 +53,7 @@ export const conversationHandlers = {
   'conversation.close'(_ctx, c) { close(c); },
   'conversation.send'(ctx, c, msg) {
     const role = workerOf(ctx, msg.workerId);
-    if (role && role.floor.isRoleWorker?.(role.wid)) {
+    if (role && roleOrigin(role.floor, role.wid)) {
       const access = roleAccess(ctx, role.floor, role.wid, c.accountId);
       if (access.kind === 'staff') return ctx.warn(c, 'Read-only questions go in the Ask box on the manager’s card — they never enter this conversation.');
       if (access.kind === 'none') return ctx.warn(c, access.why || 'Not available.');
@@ -66,7 +66,7 @@ export const conversationHandlers = {
   },
   'conversation.page'(ctx, c, msg) {
     const role = workerOf(ctx, msg.workerId);
-    if (role && role.floor.isRoleWorker?.(role.wid)) {
+    if (role && roleOrigin(role.floor, role.wid)) {
       const access = roleAccess(ctx, role.floor, role.wid, c.accountId);
       if (access.kind !== 'owner' && access.kind !== 'controller') return;
       if (role.floor !== ctx.floorOf(c) || !canUseWorker(ctx, c.accountId, role.floor.workers.ownerOf(role.wid), role.info.provider)) return;
@@ -80,7 +80,7 @@ export const conversationHandlers = {
   },
   'conversation.interrupt'(ctx, c, msg) {
     const w = ownedWorker(ctx, c, msg.workerId);
-    if (w && w.floor.isRoleWorker?.(w.wid)) {
+    if (w && roleOrigin(w.floor, w.wid)) {
       const access = roleAccess(ctx, w.floor, w.wid, c.accountId);
       if (access.kind !== 'owner' && access.kind !== 'controller') return ctx.warn(c, 'Role access changed; no interruption was sent.');
     }

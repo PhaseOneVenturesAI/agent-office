@@ -1,3 +1,4 @@
+import { RolePrivacy } from './role-privacy.js';
 // Durable scoped history for role characters (the CEO and department managers): an append-only
 // JSONL per worker in the floor's .agent-office folder, paged newest-first. The provider session
 // stays the bounded execution context — this file is the record the role (and the people
@@ -25,7 +26,8 @@ const MAX_TEXT = 20_000;
 const clip = (s: string) => (s.length > MAX_TEXT ? `${s.slice(0, MAX_TEXT - 1)}…` : s);
 
 export class RoleChat {
-  constructor(private dir: string) {}
+  readonly privacy: RolePrivacy;
+  constructor(private dir: string) { this.privacy = new RolePrivacy(dir); }
 
   private file(workerId: string): string {
     return path.join(this.dir, `role-chat-${workerId}.jsonl`);

@@ -1,3 +1,4 @@
+import type { RoleOrigin } from './role-privacy.js';
 // Role access (see docs/department-leads.md): who may talk to or edit the CEO and the department
 // managers. The CEO is privately owned (one owner email per project) — only that owner talks to it
 // or edits it; ownership changes are admin control, never arbitrary coworkers. A department
@@ -34,16 +35,32 @@ export function ceoOwner(floor: Floor): string | undefined {
   return floor.ceo.get()?.owner?.toLowerCase() ?? configuredCeoOwner();
 }
 
+/** Includes retired source workers, without making them permanent active characters. */
+export function roleOrigin(floor: Floor, workerId: string): RoleOrigin | undefined {
+  const retained = floor.roleChat?.privacy?.get(workerId);
+  if (retained) return retained;
+  if (floor.ceo?.get()?.workerId === workerId) return { kind: 'ceo' };
+  const department = floor.departments?.leadDeptOfWorker(workerId);
+  return department?.lead ? { kind: 'manager', department: department.id } : undefined;
+}
+export function canAccessRoleWorker(ctx: Ctx, floor: Floor, workerId: string, accountId: string | undefined): boolean {
+  if (!roleOrigin(floor, workerId)) return true;
+  const access = roleAccess(ctx, floor, workerId, accountId);
+  return access.kind === 'owner' || access.kind === 'controller';
+}
+
 /** Who this account is for this role worker: owner, controller, staff (read-only Q&A), or nobody. */
 export function roleAccess(ctx: Ctx, floor: Floor, workerId: string, accountId: string | undefined): RoleAccess {
   if (!ctx.accounts.any) return { kind: 'owner' };
   const email = accountEmail(ctx, accountId);
   if (!email) return { kind: 'none', why: 'Sign in with your own account first.' };
   const owner = ceoOwner(floor);
-  if (floor.ceo.get()?.workerId === workerId) {
+  const origin = roleOrigin(floor, workerId);
+  if (origin?.kind === 'unavailable') return { kind: 'none', why: 'Private role ownership needs repair.' };
+  if (origin?.kind === 'ceo') {
     return email === owner ? { kind: 'owner' } : { kind: 'none', why: `The CEO is private to ${owner ?? 'its owner'}.` };
   }
-  const dept = floor.departments.leadDeptOfWorker(workerId);
+  const dept = origin?.kind === 'manager' ? floor.departments.get?.(origin.department) ?? floor.departments.leadDeptOfWorker(workerId) : undefined;
   if (dept?.lead) {
     if (dept.lead.controllers?.map((e) => e.toLowerCase()).includes(email) || (owner && email === owner)) return { kind: 'controller' };
     const audience = dept.lead.audience ?? [];
@@ -123,7 +140,7 @@ export function canEditManager(ctx: Ctx, floor: Floor, deptId: string, accountId
  */
 /** Recipient-aware redaction for a worker list (initial views and updates share it). */
 export function redactWorkersFor(ctx: Ctx, floor: Floor, workers: WorkerInfo[], accountId: string | undefined): WorkerInfo[] {
-  return workers.map((w) => (floor.isRoleWorker(w.id) ? publicRoleWorker(w, roleAccess(ctx, floor, w.id, accountId).kind) : w));
+  return workers.map((w) => (roleOrigin(floor, w.id) ? publicRoleWorker(w, roleAccess(ctx, floor, w.id, accountId).kind) : w));
 }
 
 export function publicRoleWorker(w: WorkerInfo, access: RoleAccess['kind']): WorkerInfo {
