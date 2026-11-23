@@ -3,7 +3,8 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { ChangesState, FloorInfo, PeerInfo, ProjectInfo, ServerMsg, WorkerInfo } from '../shared/protocol.js';
 import { isBusy } from '../shared/status.js';
-import { DESK_BY_ID } from '../shared/layout.js';
+import { DESK_BY_ID, nextFreeSeat } from '../shared/layout.js';
+import type { AgentEffort, AgentProvider } from '../shared/providers.js';
 import type { FloorDef } from './building.js';
 import { excludeFromGit } from './config.js';
 import { agentProviders, configuredProvider } from './agents.js';
@@ -15,6 +16,7 @@ import { Changes } from './changes.js';
 import { Decor } from './decor.js';
 import { FloorPlanStore } from './floorplan.js';
 import { Departments, MAX_WRITERS } from './departments.js';
+import { FloorCeo } from './ceo.js';
 import { LeadDispatch } from './dept-dispatch.js';
 import { Docs } from './docs.js';
 import { Dog } from './dog.js';
@@ -106,6 +108,8 @@ export function projectInfo(dir: string, name: string, agentCmd: string, agentAr
   };
 }
 
+const WRITING = new Set(['starting', 'idle', 'working', 'needs_input']);
+
 /**
  * One floor of the building: a project's checkout with its own desks and workers, issues and PR
  * boards, task queue, pictures and jukebox, all kept in that checkout's .agent-office folder.
@@ -122,6 +126,8 @@ export class Floor {
   /** The signs over its desks, and how far its back office is built out. */
   readonly plan: FloorPlanStore;
   readonly departments: Departments;
+  /** The floor's CEO: one persistent identity per project, directing the managers (see ceo.ts). */
+  readonly ceo: FloorCeo;
   /** The lead dispatch: child transitions become messages in the lead's own session. */
   readonly dispatch: LeadDispatch;
   readonly jukebox: Jukebox;
@@ -164,6 +170,7 @@ export class Floor {
     this.departments = new Departments(dataDir, def.dir, () =>
       ctx.emit(this, { t: 'departments', state: this.departments.state() }),
     );
+    this.ceo = new FloorCeo(dataDir, () => ctx.emit(this, { t: 'ceo', state: this.ceo.state() }));
     this.jail = new Jail(dataDir);
 
     // Before the workers, so it hears about the ones who wake up needing input.
@@ -270,6 +277,7 @@ export class Floor {
       prompt: (id, text) => this.workers.prompt(id, text, 'office'),
       tasks: () => this.queue.state().tasks,
       departments: () => this.departments.state().departments,
+      ceo: () => this.ceo.get(),
     });
 
     // Meetings seat their own workers round the meeting room's table and run them round by round.
@@ -412,13 +420,77 @@ export class Floor {
   }
 
   /**
+   * Seats (or resumes) a department's manager through the same spawn as every hire, on the team
+   * policy engine unless a person picked one explicitly. Managers orchestrate: they never count
+   * against the writer cap. Used by the manager panel and by the CEO's explicit execute.
+   */
+  startManager(deptId: string, by: string, owner: string | undefined, explicit?: { provider?: AgentProvider; model?: string; effort?: AgentEffort }, task?: string): WorkerInfo | string {
+    const dept = this.departments.get(deptId);
+    if (!dept) return 'That department is gone';
+    const policy = dept.policy;
+    const saved = this.departments.leadChoice(deptId);
+    const provider = explicit?.provider ?? policy?.provider ?? saved?.provider;
+    const model = explicit?.model ?? (explicit?.provider === undefined ? policy?.model : undefined) ?? saved?.model;
+    const effort = explicit?.effort ?? (explicit?.provider === undefined ? policy?.effort : undefined) ?? saved?.effort;
+    const liveAgents = () => this.writerIds();
+    const composed = this.departments.composeLeadLaunch(deptId, task, liveAgents);
+    if (typeof composed === 'string') return composed;
+    const fresh = this.departments.get(deptId)!;
+    const desk = fresh.desks.find((d) => !this.workers.deskOccupied(d)) ?? nextFreeSeat((x) => this.workers.deskOccupied(x), this.plan.wing)?.id;
+    if (!desk) return 'No free desk — knock the back office out a row first';
+    // The lead orchestrates rather than writes: it takes a worktree only when every worker here has one.
+    const r = this.workers.spawn(desk, by, composed.prompt, !!this.project.branch, 'agent', provider, model, effort, undefined, owner, [], undefined, composed.lead.name);
+    if (typeof r === 'string') return r;
+    this.departments.recordLeadHire(deptId, r.id, desk, by);
+    return r;
+  }
+
+  /** The CEO's assignment to a manager: records the objective, delivers it to a live manager, and
+   * starts an off-shift one only on explicit execute — through the signed-in owner path (the
+   * office's own, when whoever asked runs office-owned). */
+  assignObjective(deptId: string, objective: string, by: string, opts?: { execute?: boolean; owner?: string }): string | { manager: string; started: boolean } {
+    const dept = this.departments.get(deptId);
+    if (!dept) return 'That department is gone';
+    if (!dept.lead) return `Name the ${dept.name} manager first`;
+    const err = this.departments.setObjective(deptId, objective, by);
+    if (err) return err;
+    const from = this.ceo.get()?.name ?? by;
+    const text = `🎯 ${from} (CEO): ${objective}`;
+    const live = dept.lead.workerId ? this.workers.get(dept.lead.workerId) : undefined;
+    if (live) {
+      // Delivered now when idle, held (never injected mid-turn) while their turn runs.
+      this.dispatch.hold(live.id, `objective:${deptId}`, text);
+      return { manager: live.name, started: false };
+    }
+    if (opts?.execute !== true) return `${dept.lead.name} is off shift — start them from the panel, or ask the CEO to execute`;
+    if (dept.policy?.mode === 'ask') return `The ${dept.name} policy asks each time — start ${dept.lead.name} from the panel, where the engine is picked`;
+    const r = this.startManager(deptId, by, opts.owner);
+    if (typeof r === 'string') return r;
+    this.dispatch.hold(r.id, `objective:${deptId}`, text);
+    return { manager: r.name, started: true };
+  }
+
+  /**
    * Why no implementation writer may start right now: the project's two-writer cap, counting every
    * live agent that isn't rostered as review/support/lead. Manual hires, queue seating and hook
    * hires all ask here; department role launches keep their role-aware check in composeLaunch.
    */
+  /** Agents that would write right now: active agents, minus the CEO (they direct, they never write). */
+  writerIds(): string[] {
+    const ceoId = this.ceo.get()?.workerId;
+    return this.workers
+      .list()
+      .filter((w) => w.kind === 'agent' && WRITING.has(w.status) && w.id !== ceoId)
+      .map((w) => w.id);
+  }
+
+  /**
+   * Why no implementation writer may start right now: the project's two-writer cap, counting the
+   * agents that would actually write. Manual hires, queue seating and hook hires all ask here;
+   * department role launches pass the same ids to their role-aware check in composeLaunch.
+   */
   writerCap(): string | undefined {
-    const live = () => this.workers.list().filter((w) => w.kind === 'agent').map((w) => w.id);
-    return this.departments.writers(live) >= MAX_WRITERS
+    return this.departments.writers(() => this.writerIds()) >= MAX_WRITERS
       ? `This project already has ${MAX_WRITERS} implementation writers — review or ship what's in flight first`
       : undefined;
   }

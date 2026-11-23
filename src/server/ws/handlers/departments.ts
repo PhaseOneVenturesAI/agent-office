@@ -68,7 +68,7 @@ export const departmentsHandlers = {
     const model = msg.model === undefined ? undefined : str(msg.model, OPEN_CODE_MODEL_MAX + 1);
     const effort = isAgentEffort(msg.effort) ? msg.effort : undefined;
     const task = str(msg.prompt, 20000) || undefined;
-    const liveAgents = () => floor.workers.list().filter((w) => w.kind === 'agent').map((w) => w.id);
+    const liveAgents = () => floor.writerIds();
     const hire = () => {
       // Re-checked here, after the sign-in and the fresh fetch: the cap, the department, the role
       // and the desk as they are now, so two launches at once can't both pass a stale check.
@@ -123,30 +123,18 @@ export const departmentsHandlers = {
       return;
     }
     const id = str(msg.id, 16);
-    const model = msg.model === undefined ? undefined : str(msg.model, OPEN_CODE_MODEL_MAX + 1);
-    const effort = isAgentEffort(msg.effort) ? msg.effort : undefined;
+    const ask = floor.departments.get(id)?.policy?.mode === 'ask';
+    // An explicit pick is the ask-mode picker (a person deciding); policy/lead engine otherwise.
+    const explicit = ask ? { provider: msg.provider, model: msg.model === undefined ? undefined : str(msg.model, OPEN_CODE_MODEL_MAX + 1), effort: isAgentEffort(msg.effort) ? msg.effort : undefined } : undefined;
+    const engine = floor.departments.get(id)?.policy?.provider ?? floor.departments.leadChoice(id)?.provider;
     const task = str(msg.prompt, 20000) || undefined;
-    // The engine: an explicit pick (the policy's 'ask' mode), else the policy, else the lead's saved engine.
-    const policy = floor.departments.get(id)?.policy;
-    const saved = floor.departments.leadChoice(id);
-    const provider = msg.provider ?? policy?.provider ?? saved?.provider;
-    const chosenModel = model ?? (msg.provider === undefined ? policy?.model : undefined) ?? saved?.model;
-    const chosenEffort = effort ?? (msg.provider === undefined ? policy?.effort : undefined) ?? saved?.effort;
-    const liveAgents = () => floor.workers.list().filter((w) => w.kind === 'agent').map((w) => w.id);
     const hire = () => {
-      const composed = floor.departments.composeLeadLaunch(id, task, liveAgents);
-      if (typeof composed === 'string') return ctx.warn(c, composed);
-      const fresh = floor.departments.get(id)!;
-      const desk = fresh.desks.find((d) => !floor.workers.deskOccupied(d)) ?? nextFreeSeat((x) => floor.workers.deskOccupied(x), floor.plan.wing)?.id;
-      if (!desk) return ctx.warn(c, 'No free desk — knock the back office out a row first');
-      // The lead orchestrates rather than writes: it takes a worktree only when every worker here has one.
-      const worktree = !!floor.project.branch;
-      const r = floor.workers.spawn(desk, who, composed.prompt, worktree, 'agent', provider, chosenModel, chosenEffort, undefined, c.accountId, [], undefined, composed.lead.name);
+      const r = floor.startManager(id, who, c.accountId, explicit, task);
       if (typeof r === 'string') return ctx.warn(c, r);
-      floor.departments.recordLeadHire(id, r.id, desk, who);
-      ctx.toastFloor(floor, `🎖️ ${who} started ${composed.lead.name}'s shift as the ${fresh.name} lead`);
+      const dept = floor.departments.get(id)!;
+      ctx.toastFloor(floor, `🎖️ ${who} started ${r.name}'s shift as the ${dept.name} manager`);
     };
-    ctx.withSignIn(c, ctx.signInFor(provider ?? floor.workers.officeDefault.provider), () => ctx.withFreshBase(c, [floor], hire));
+    ctx.withSignIn(c, ctx.signInFor((ask ? msg.provider : undefined) ?? engine ?? floor.workers.officeDefault.provider), () => ctx.withFreshBase(c, [floor], hire));
   },
   'departments.delegate'(ctx, c, msg) {
     const who = c.peer.name;

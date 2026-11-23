@@ -19,7 +19,7 @@ const leadWorker = (d: Department): WorkerInfo | undefined => (d.lead?.workerId 
 /** One short line about the lead's shift, for the card and the directory. */
 export function leadStatusText(d: Department): string {
   const lead = d.lead;
-  if (!lead) return 'no lead yet';
+  if (!lead) return 'no manager yet';
   const w = leadWorker(d);
   if (!w) return `${lead.name} · off shift`;
   if (w.status === 'needs_input') return `${lead.name} · needs you`;
@@ -50,7 +50,7 @@ export function leadForm(net: Net, d: Department, existing: DeptLead | undefined
   const name = h('input.dept-lead-name', { type: 'text', placeholder: 'Their name — Maya, Priya, Dev…', maxlength: '40', 'aria-label': 'Lead name' }) as HTMLInputElement;
   if (existing) name.value = existing.name;
   const fields = agentFields(store.project, `dept-lead-${d.id}`, prefill(existing));
-  const save = h('button.btn.small.primary', { type: 'button' }, existing ? 'Save the lead' : 'Name the lead');
+  const save = h('button.btn.small.primary', { type: 'button' }, existing ? 'Save the manager' : 'Name the manager');
   const cancel = h('button.btn.small', { type: 'button', onclick: done }, 'Cancel');
   save.addEventListener('click', () => {
     if (!name.value.trim()) return name.focus();
@@ -164,9 +164,9 @@ export function leadBlock(net: Net, d: Department, repaint: () => void) {
     block.replaceChildren();
     if (!lead) {
       block.append(
-        h('h4', {}, '🎖️ Lead'),
-        h('p.empty', {}, 'Name one coordinator for this department — they staff the roles, watch the work and tell you what’s blocked.'),
-        naming ? leadForm(net, d, undefined, () => { naming = false; paint(); }) : h('button.btn.small.primary', { type: 'button', onclick: () => { naming = true; paint(); } }, 'Name the lead'),
+        h('h4', {}, '🎖️ Manager'),
+        h('p.empty', {}, 'Name one manager for this department — they staff the roles, watch the work and tell you what’s blocked.'),
+        naming ? leadForm(net, d, undefined, () => { naming = false; paint(); }) : h('button.btn.small.primary', { type: 'button', onclick: () => { naming = true; paint(); } }, 'Name the manager'),
       );
       return;
     }
@@ -188,7 +188,7 @@ export function leadBlock(net: Net, d: Department, repaint: () => void) {
         h(
           'div.dept-row',
           {},
-          h('button.btn.small.primary', { type: 'button', title: 'Talk to the lead', onclick: () => openWorkerConversation(net, w.id, () => openTerminal(net, w.id)) }, '💬 Talk'),
+          h('button.btn.small.primary', { type: 'button', title: 'Talk to the manager', onclick: () => openWorkerConversation(net, w.id, () => openTerminal(net, w.id)) }, '💬 Talk'),
           h('button.btn.small', { type: 'button', onclick: () => openDeptTeam(net, d) }, '👥 Team'),
           h('button.btn.small', { type: 'button', onclick: () => openDeptWork(net, d) }, '📋 Work'),
         ),
@@ -240,7 +240,7 @@ export function openDeptTeam(net: Net, d: Department) {
   const paint = () => {
     const rows = d.roster.map((r) => {
       const w = store.workers.get(r.workerId);
-      const role = r.role === 'lead' ? '🎖️ Lead' : (d.roles.find((x) => x.id === r.role)?.name ?? '?');
+      const role = r.role === 'lead' ? '🎖️ Manager' : (d.roles.find((x) => x.id === r.role)?.name ?? '?');
       if (!w) return h('div.dept-row', {}, h('span', {}, 'a worker (gone)'), h('span.dept-meta', {}, `${role} · hired by ${r.by} · ${timeAgo(r.at)}`));
       const task = w.task ? `${w.task.name}: ${w.task.summary}` : w.prompt;
       return h(
@@ -313,7 +313,7 @@ export function openLeadChooser(net: Net, d: Department, workerId: string) {
   const el = h(
     'div.modal.dept-chooser',
     { role: 'dialog', 'aria-label': `Talk to ${d.lead?.name ?? w.name}` },
-    h('header', {}, h('h2', {}, `🎖️ ${d.lead?.name ?? w.name} — ${d.name} lead`), close),
+    h('header', {}, h('h2', {}, `🎖️ ${d.lead?.name ?? w.name} — ${d.name} manager`), close),
     h('p.dept-hint', {}, sub),
     h(
       'div.dept-row',

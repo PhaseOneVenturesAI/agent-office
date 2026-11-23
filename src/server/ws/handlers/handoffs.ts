@@ -38,10 +38,11 @@ export const handoffHandlers = {
     const err = source.floor.workers.handoffs.acknowledge(source.wid, msg.handoffId, c.peer.name);
     ctx.warn(c, err);
     if (!err && source.info.swap) {
-      // The swap landed: the lead identity and the roster follow the replacement; the source's
-      // reservation clears. The source itself keeps its session, transcript and branch.
+      // The swap landed: the manager and CEO identities and the roster follow the replacement;
+      // the source's reservation clears. The source keeps its own session, transcript and branch.
       const engine = source.info.swap.engine;
       source.floor.departments.relinkWorker(source.wid, handoff.to);
+      source.floor.ceo.relinkWorker(source.wid, handoff.to);
       source.floor.workers.handoffs.clearSwap(source.wid);
       ctx.toastFloor(source.floor, `🔁 ${handoff.toName} took over ${source.info.name}'s work on ${engine} — ${source.info.name} keeps its own session and branch; send it home when you're done with it`);
     } else if (err && source.info.swap && source.info.handoff?.state === 'delivery-failed') {

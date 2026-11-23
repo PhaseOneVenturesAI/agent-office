@@ -66,7 +66,7 @@ export async function officeWorkers(ctx: Ctx, req: http.IncomingMessage, res: ht
       workers: list.map((w) => workerRow(w, view, me.id)),
     });
   }
-  if (req.method !== 'POST' || !['', '/home', '/tell', '/pr', '/review', '/delegate'].includes(action)) return send(res, 405, { error: 'GET /office/workers, or POST to /office/workers, /office/workers/home, /office/workers/tell, /office/workers/pr, /office/workers/review or /office/workers/delegate' });
+  if (req.method !== 'POST' || !['', '/home', '/tell', '/pr', '/review', '/delegate', '/assign'].includes(action)) return send(res, 405, { error: 'GET /office/workers, or POST to /office/workers, /office/workers/home, /office/workers/tell, /office/workers/pr, /office/workers/review, /office/workers/delegate or /office/workers/assign' });
   let body: unknown;
   try {
     body = JSON.parse((await readBody(req)) || '{}');
@@ -159,6 +159,33 @@ export async function officeWorkers(ctx: Ctx, req: http.IncomingMessage, res: ht
     if (typeof r === 'string') return send(res, 400, { error: r });
     ctx.toastFloor(floor, `🎬 ${who} staged “${r.title}” for review`);
     return send(res, 200, { ok: true, review: { id: r.id, title: r.title, url: r.url } });
+  }
+
+  if (action === '/assign') {
+    // The CEO's assignment path (see docs/department-leads.md): only this floor's live CEO may
+    // assign objectives; managers are started only on explicit execute, on the CEO's own sign-ins.
+    const b = (body ?? {}) as { dept?: unknown; objective?: unknown; execute?: unknown };
+    if (!floor.ceo.isCeoWorker(me.id)) {
+      const named = floor.ceo.get()?.name;
+      return send(res, 403, { error: named ? `Only ${named} (this floor's CEO) assigns objectives — managers delegate workers` : 'This floor has no CEO on shift' });
+    }
+    const preset = str(b.dept, 20);
+    const dept = floor.departments.state().departments.find((d) => d.preset === preset);
+    if (!dept) return send(res, 404, { error: `No ${preset} department on this floor — assignments never cross floors` });
+    if (!dept.lead) return send(res, 400, { error: `Name the ${dept.name} manager first` });
+    const objective = str(b.objective, 4000);
+    if (!objective.trim()) return send(res, 400, { error: 'Say what the manager is to achieve: objective' });
+    const go = () => {
+      const r = floor.assignObjective(dept.id, objective, floor.ceo.get()!.name, { execute: b.execute === true, owner: floor.workers.ownerOf(me.id) });
+      if (typeof r === 'string') return send(res, 400, { error: r });
+      ctx.toastFloor(floor, `🎯 ${who} gave ${r.manager} an objective${r.started ? ' and started their shift' : ''}`);
+      send(res, 200, { ok: true, ...r });
+    };
+    // A started manager gets a worktree off what's on GitHub now, like every hire.
+    const fetching = floor.workers.fetchBase?.();
+    if (fetching) void fetching.then(go);
+    else go();
+    return;
   }
 
   if (action === '/delegate') {

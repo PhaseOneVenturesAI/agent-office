@@ -10,6 +10,7 @@ import { openDeploys } from './deploys';
 import { openProjectContext } from './project-context';
 import { acknowledgeBriefDraft, type BriefDraft } from './department-draft';
 import { delegateBlock, leadBlock, leadForm, leadStatusText, policyBlock } from './dept-lead';
+import { ceoBlock } from './ceo';
 import { openEngineSwap } from './engine-swap';
 
 const PRESET_META: Record<DeptPreset, { icon: string; label: string; blurb: string }> = {
@@ -70,7 +71,8 @@ export function openDepartments(net: Net) {
     'div.modal.departments',
     { role: 'dialog', 'aria-label': 'Departments' },
     h('header', {}, h('h2', {}, '🏬 Departments'), close),
-    h('p.dept-intro', {}, 'Talk to your lead, see what the team is making, and help when they need you.'),
+    h('p.dept-intro', {}, 'Talk to your CEO or a manager, see what the team is making, and help when they need you.'),
+    ceoBlock(net, () => paint()),
     h('div.dept-layout', {}, cards, panel),
   );
 
@@ -313,13 +315,13 @@ export function openDepartments(net: Net) {
         'div.dept-block',
         {},
         h('h4', {}, '🎛️ This department'),
-        h('p.dept-meta', {}, `Opened by ${d.by} · ${timeAgo(d.at)}${d.lead ? ` · lead named by ${d.lead.by}` : ''}`),
+        h('p.dept-meta', {}, `Opened by ${d.by} · ${timeAgo(d.at)}${d.lead ? ` · manager named by ${d.lead.by}` : ''}`),
         ...(d.lead
           ? [
               replacing
                 ? leadForm(net, d, d.lead, () => { replacing = false; paintPanel(d, liveWriters(store.departments.departments)); })
-                : h('div.dept-row', {}, h('button.btn.small', { type: 'button', onclick: () => { replacing = true; paintPanel(d, liveWriters(store.departments.departments)); } }, 'Replace the lead…')),
-              h('div.dept-row', {}, h('button.btn.small', { type: 'button', title: 'Retire the lead identity; their worker, when on shift, keeps its desk', onclick: () => net.send({ t: 'departments.lead.clear', id: d.id }) }, 'Retire the lead')),
+                : h('div.dept-row', {}, h('button.btn.small', { type: 'button', onclick: () => { replacing = true; paintPanel(d, liveWriters(store.departments.departments)); } }, 'Replace the manager…')),
+              h('div.dept-row', {}, h('button.btn.small', { type: 'button', title: 'Retire the manager identity; their worker, when on shift, keeps its desk', onclick: () => net.send({ t: 'departments.lead.clear', id: d.id }) }, 'Retire the manager')),
             ]
           : []),
         h('div.dept-row', {}, h('button.btn.small', { type: 'button', title: 'Take the department off this floor (refused while its workers are at desks)', onclick: () => net.send({ t: 'departments.remove', id: d.id }) }, 'Remove the department')),
@@ -402,7 +404,7 @@ export function openDepartments(net: Net) {
       paint();
     }
   };
-  const offs = [net.onMessage(onMessage), store.on('departments', paint), store.on('workers', paint), store.on('reviews', paint), store.on('deploys', paint)];
+  const offs = [net.onMessage(onMessage), store.on('departments', paint), store.on('ceo', paint), store.on('workers', paint), store.on('reviews', paint), store.on('deploys', paint)];
   const modal = openModal(el, {
     doing: '🏬 organizing departments',
     onClose: () => offs.forEach((off) => off()),

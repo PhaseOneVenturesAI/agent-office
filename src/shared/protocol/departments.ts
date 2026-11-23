@@ -64,6 +64,8 @@ export interface DeptLead {
   provider?: AgentProvider;
   model?: string;
   effort?: AgentEffort;
+  /** The CEO's current objective for this manager, when one is active; results roll up to it. */
+  objective?: { text: string; by: string; at: number };
   by: string;
   at: number;
 }

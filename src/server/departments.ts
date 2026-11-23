@@ -88,6 +88,7 @@ export class Departments {
         // A malformed lead or policy is dropped from the live view; the file is rewritten clean on
         // the next real change, and a stale live link self-heals at launch time.
         if (d.lead && (typeof d.lead.name !== 'string' || !d.lead.name || typeof d.lead.by !== 'string' || !Number.isFinite(d.lead.at))) delete d.lead;
+        if (d.lead?.objective && (typeof d.lead.objective.text !== 'string' || !d.lead.objective.text || typeof d.lead.objective.by !== 'string' || !Number.isFinite(d.lead.objective.at))) delete d.lead.objective;
         if (d.policy && (typeof d.policy.provider !== 'string' || (d.policy.mode !== 'policy' && d.policy.mode !== 'ask'))) delete d.policy;
         if (d.requests && (!Array.isArray(d.requests) || d.requests.some((r) => !r || typeof r.id !== 'string' || typeof r.title !== 'string' || typeof r.task !== 'string' || typeof r.by !== 'string' || !Number.isFinite(r.at)))) delete d.requests;
       }
@@ -424,6 +425,24 @@ export class Departments {
     return this.departments.find((d) => d.lead?.workerId === workerId);
   }
 
+  /** The CEO's scoped objective for this manager; results and blockers roll up to it. */
+  setObjective(id: string, text: unknown, by: string): string | undefined {
+    const dept = this.get(id);
+    if (!dept) return 'That department is gone';
+    const clean = String(text ?? '').replace(/\r\n?/g, '\n').trim().slice(0, 4000);
+    if (!clean) return 'Say what the manager is to achieve';
+    const next: Department = { ...dept, lead: dept.lead ? { ...dept.lead, objective: { text: clean, by, at: Date.now() } } : undefined };
+    return this.commit(this.departments.map((d) => (d.id === id ? next : d)));
+  }
+
+  clearObjective(id: string): string | undefined {
+    const dept = this.get(id);
+    if (!dept) return 'That department is gone';
+    if (!dept.lead?.objective) return undefined;
+    const next: Department = { ...dept, lead: { ...dept.lead, objective: undefined } };
+    return this.commit(this.departments.map((d) => (d.id === id ? next : d)));
+  }
+
   /** After a swap lands: the lead identity and roster rows move from the old worker to the replacement. */
   relinkWorker(fromId: string, toId: string): void {
     let changed = false;
@@ -514,7 +533,7 @@ function isDept(v: unknown): v is Department {
     (d.briefArchived === undefined || (Number.isSafeInteger(d.briefArchived) && d.briefArchived >= 0)) &&
     Array.isArray(d.roster) && d.roster.every((r) => r && typeof r.workerId === 'string' && typeof r.role === 'string' && typeof r.by === 'string' && Number.isFinite(r.at)) &&
     Array.isArray(d.assets) && d.assets.every((a) => a && typeof a.id === 'string' && typeof a.label === 'string' && ['file', 'link'].includes(a.kind) && typeof a.ref === 'string' && ['current', 'historical'].includes(a.status) && typeof a.by === 'string' && Number.isFinite(a.at)) &&
-    (d.lead === undefined || (d.lead && typeof d.lead === 'object' && typeof d.lead.name === 'string' && (d.lead.workerId === undefined || typeof d.lead.workerId === 'string') && typeof d.lead.by === 'string' && Number.isFinite(d.lead.at))) &&
+    (d.lead === undefined || (d.lead && typeof d.lead === 'object' && typeof d.lead.name === 'string' && (d.lead.workerId === undefined || typeof d.lead.workerId === 'string') && typeof d.lead.by === 'string' && Number.isFinite(d.lead.at) && (d.lead.objective === undefined || (typeof d.lead.objective === 'object' && typeof d.lead.objective.text === 'string' && typeof d.lead.objective.by === 'string' && Number.isFinite(d.lead.objective.at))))) &&
     (d.policy === undefined || (d.policy && typeof d.policy === 'object' && typeof d.policy.provider === 'string' && ['policy', 'ask'].includes(d.policy.mode) && typeof d.policy.by === 'string' && Number.isFinite(d.policy.at))) &&
     (d.requests === undefined || (Array.isArray(d.requests) && d.requests.every((r) => r && typeof r.id === 'string' && typeof r.title === 'string' && typeof r.task === 'string' && typeof r.by === 'string' && Number.isFinite(r.at)))) &&
     typeof d.by === 'string' &&

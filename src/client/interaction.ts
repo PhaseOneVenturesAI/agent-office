@@ -31,8 +31,13 @@ export function interactionAvailable(it: Interactable | null, key: DeskKey, stat
     if (key === 'B') return !state.worker;
     if (key === 'P' || key === 'E') return true;
     if (key === 'R') return !!state.worker && isAsleep(state.worker.status);
-    // T talks to a department lead's character; the handler ignores it elsewhere.
-    if (key === 'T') return !!state.worker && state.worker.kind === 'agent' && store.departments.departments.some((d) => d.lead?.workerId === state.worker!.id);
+    // T talks to a manager's or the CEO's character; the handler ignores it elsewhere.
+    if (key === 'T')
+      return (
+        !!state.worker &&
+        state.worker.kind === 'agent' &&
+        (store.ceo.ceo?.workerId === state.worker.id || store.departments.departments.some((d) => d.lead?.workerId === state.worker!.id))
+      );
     return !!state.worker && (key === 'C' || key === 'X' || key === 'O');
   }
 
