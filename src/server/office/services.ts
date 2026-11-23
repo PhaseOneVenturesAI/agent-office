@@ -1,3 +1,4 @@
+import { RoleSubscriptions } from '../role-subscriptions/store.js';
 import { canControlLinear } from '../linear/access.js';
 import { LinearService } from '../linear/service.js';
 import { linearConfig } from '../linear/client.js';
@@ -188,7 +189,7 @@ export function createServices(ctx: Ctx): BuildingServices {
     });
   };
 
-  return { linear, sky, themes, maps, prompts, leaveOnMerge, ledger, signins, harness, personalHarness, reviews, deploys, hygiene, costwall, nodes, deliveries, cloudflare, limits, accountLimits, webhook, machine, limitsOf, pumpQueues };
+  return { roleSubscriptions: new RoleSubscriptions(cfg.dataDir), linear, sky, themes, maps, prompts, leaveOnMerge, ledger, signins, harness, personalHarness, reviews, deploys, hygiene, costwall, nodes, deliveries, cloudflare, limits, accountLimits, webhook, machine, limitsOf, pumpQueues };
 }
 
 /** What's made once the floors are open: the SSH team, the tailnet, workers' web servers, pictures and upgrades. */

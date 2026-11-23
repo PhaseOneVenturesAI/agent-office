@@ -34,10 +34,10 @@ function fixture(defaultProvider: AgentProvider = 'claude') {
   };
   const queues: TaskQueue[] = [];
   let emptied = 0;
-  const open = (room?: () => number, worktrees = false) => {
+  const open = (room?: () => number, worktrees = false, beforeStart?: () => string | undefined) => {
     const queue = new TaskQueue(dir, manager, worktrees, {
       update() {}, toast() {}, claimIssue: async () => undefined,
-      refreshGitHub() {}, hiringPaused: () => undefined, emptied: () => emptied++, room,
+      refreshGitHub() {}, hiringPaused: () => undefined, emptied: () => emptied++, room, beforeStart,
     });
     queues.push(queue);
     return queue;
@@ -445,4 +445,13 @@ test('own-agent start and manager retry cannot bypass an existing linked or mana
   q.setLimit(1); f.workers[0].status = 'done'; q.onWorker(f.workers[0]);
   assert.match(q.retry(original.id) ?? '', /already assigned/);
   assert.equal(q.startOwn('linear-task', 'employee', 'Employee', 'claude'), undefined);
+});
+
+test('queued execution rechecks consent at actual seating and retry does not bypass it',t=>{
+ const f=fixture();t.after(()=>f.close());let allowed=true;
+ const q=f.open(undefined,false,()=>allowed?undefined:'Subscription consent revoked');q.setLimit(0);
+ q.add('Do scoped work','Manager','Scoped work');allowed=false;q.setLimit(1);
+ assert.equal(f.workers.length,0);const task=q.state().tasks[0];assert.equal(task.outcome,'failed');assert.match(task.error!,/revoked/);
+ q.retry(task.id);assert.equal(f.workers.length,0);
+ allowed=true;q.retry(q.state().tasks.at(-1)!.id);assert.equal(f.workers.length,1);
 });

@@ -1,3 +1,4 @@
+import type { RoleSubscriptions } from '../role-subscriptions/store.js';
 // What every part of the office shares: the building-wide singletons and the helpers the WebSocket
 // handlers, the HTTP routes and the hook server use. startServer (server.ts) makes it a stage at a
 // time, in the order the office has always started up in (see each stage's interface), so a part
@@ -66,6 +67,7 @@ export interface Core {
 
 /** Made once the hook server listens, before any floor opens (office/services.ts). */
 export interface BuildingServices {
+  roleSubscriptions: RoleSubscriptions;
   linear: LinearService;
   sky: Sky;
   themes: Themes;

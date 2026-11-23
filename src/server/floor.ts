@@ -1,3 +1,4 @@
+import { startManager, assignObjective } from './role-subscriptions/runtime.js';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
@@ -56,6 +57,9 @@ export interface FloorContext {
   /** Workers hired by an account run on its own sign-ins (see signins.ts). */
   runAs?: RunAs;
   accountsEnabled?: () => boolean;
+  managerExecution?(floor: Floor, department: string, actor: string | undefined, provider?: AgentProvider): { owner?: string; error?: string };
+  queuedDepartmentError?(floor: Floor, task: QueueTask): string | undefined;
+  roleDispatchError?(floor: Floor, workerId: string): string | undefined;
   /** How to run gh as an account: its own sign-in, the office's (undefined), or why it can't. */
   ghAs(owner: string | undefined): GhAs | undefined | string;
   /** To everyone on this floor. */
@@ -273,6 +277,7 @@ export class Floor {
       hiringPaused: () => ctx.ledger.hiringPaused,
       room: () => ctx.capacity.room(),
       writersFull: () => this.writerCap(),
+      beforeStart: (task) => ctx.queuedDepartmentError?.(this, task),
       finished: (task) => this.dispatch?.onTaskFinished(task),
       emptied: () => {
         ctx.toast(this, '📋 The queue is empty: every task is done 🎉');
@@ -285,7 +290,7 @@ export class Floor {
     // the lead's own session. Reads the queue's reconciled state, so it is wired after the queue.
     this.dispatch = new LeadDispatch({
       get: (id) => this.workers.get(id),
-      prompt: (id, text) => this.workers.prompt(id, text, 'office'),
+      prompt: (id, text) => ctx.roleDispatchError?.(this, id) ?? this.workers.prompt(id, text, 'office'),
       tasks: () => this.queue.state().tasks,
       departments: () => this.departments.state().departments,
       ceo: () => this.ceo.get(),
@@ -485,51 +490,10 @@ export class Floor {
    * against the writer cap. Used by the manager panel and by the CEO's explicit execute.
    */
   startManager(deptId: string, by: string, owner: string | undefined, explicit?: { provider?: AgentProvider; model?: string; effort?: AgentEffort }, task?: string): WorkerInfo | string {
-    const dept = this.departments.get(deptId);
-    if (!dept) return 'That department is gone';
-    const policy = dept.policy;
-    const saved = this.departments.leadChoice(deptId);
-    const provider = explicit?.provider ?? policy?.provider ?? saved?.provider;
-    const model = explicit?.model ?? (explicit?.provider === undefined ? policy?.model : undefined) ?? saved?.model;
-    const effort = explicit?.effort ?? (explicit?.provider === undefined ? policy?.effort : undefined) ?? saved?.effort;
-    // The duplicate-shift check must see every live agent record — an idle, done, or offline
-    // manager is still seated, even though writerIds() (cap accounting) excludes them.
-    const liveAgents = () => this.workers.list().filter((w) => w.kind === 'agent').map((w) => w.id);
-    const composed = this.departments.composeLeadLaunch(deptId, task, liveAgents);
-    if (typeof composed === 'string') return composed;
-    const fresh = this.departments.get(deptId)!;
-    const desk = fresh.desks.find((d) => !this.workers.deskOccupied(d)) ?? nextFreeSeat((x) => this.workers.deskOccupied(x), this.plan.wing)?.id;
-    if (!desk) return 'No free desk — knock the back office out a row first';
-    // The lead orchestrates rather than writes: it takes a worktree only when every worker here has one.
-    const r = this.workers.spawn(desk, by, composed.prompt, !!this.project.branch, 'agent', provider, model, effort, undefined, owner, [], undefined, composed.lead.name);
-    if (typeof r === 'string') return r;
-    this.departments.recordLeadHire(deptId, r.id, desk, by);
-    return r;
+    return startManager(this, this.ctx.managerExecution, deptId, by, owner, explicit, task);
   }
-
-  /** The CEO's assignment to a manager: records the objective, delivers it to a live manager, and
-   * starts an off-shift one only on explicit execute — through the signed-in owner path (the
-   * office's own, when whoever asked runs office-owned). */
   assignObjective(deptId: string, objective: string, by: string, opts?: { execute?: boolean; owner?: string }): string | { manager: string; started: boolean } {
-    const dept = this.departments.get(deptId);
-    if (!dept) return 'That department is gone';
-    if (!dept.lead) return `Name the ${dept.name} manager first`;
-    const err = this.departments.setObjective(deptId, objective, by);
-    if (err) return err;
-    const from = this.ceo.get()?.name ?? by;
-    const text = `🎯 ${from} (CEO): ${objective}`;
-    const live = dept.lead.workerId ? this.workers.get(dept.lead.workerId) : undefined;
-    if (live) {
-      // Delivered now when idle, held (never injected mid-turn) while their turn runs.
-      this.dispatch.hold(live.id, `objective:${deptId}`, text);
-      return { manager: live.name, started: false };
-    }
-    if (opts?.execute !== true) return `${dept.lead.name} is off shift — start them from the panel, or ask the CEO to execute`;
-    if (dept.policy?.mode === 'ask') return `The ${dept.name} policy asks each time — start ${dept.lead.name} from the panel, where the engine is picked`;
-    const r = this.startManager(deptId, by, opts.owner);
-    if (typeof r === 'string') return r;
-    this.dispatch.hold(r.id, `objective:${deptId}`, text);
-    return { manager: r.name, started: true };
+    return assignObjective(this, this.ctx.managerExecution, deptId, objective, by, opts);
   }
 
   /**

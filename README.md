@@ -477,3 +477,5 @@ Role conversations and approvals both require role authority **and** access to t
 Retired role workers retain their private-role access rules after an engine swap; keeping their original work and history does not make their old CEO/manager conversations public.
 
 Engine swaps wait for server confirmation; an interrupted role update can be retried with **Finish role swap** without repeating its handoff.
+
+Shared department managers use explicit subscription consent in **Roles**: the named custodian approves the exact project, department, provider and controllers, including same-provider department workers. Staff Q&A is a separate optional consent. Personal workers and private CEOs retain their ownership rules.
