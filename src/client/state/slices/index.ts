@@ -12,6 +12,7 @@ import { building, floor, me, presence } from '../core';
 import { accounts } from './accounts';
 import { ball } from './ball';
 import { cabinet } from './cabinet';
+import { costwall } from './costwall';
 import { cars } from './cars';
 import { decor } from './decor';
 import { deploys } from './deploys';
@@ -67,4 +68,5 @@ export const SLICES: readonly Slice[] = [
   reviews,
   deploys,
   hygiene,
+  costwall,
 ];

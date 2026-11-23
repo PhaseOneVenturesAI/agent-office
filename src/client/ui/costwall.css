@@ -1,0 +1,78 @@
+/* 💸 Cost wall */
+.modal.costwall {
+  width: min(660px, 94vw);
+  max-height: 84vh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.modal.costwall .cw-status {
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+.modal.costwall .cw-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+.modal.costwall .cw-person {
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.modal.costwall .cw-person h3 {
+  margin: 0;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modal.costwall .cw-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  padding: 3px 0 3px 4px;
+}
+
+.modal.costwall .cw-row.cw-total {
+  border-top: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  margin-top: 2px;
+  padding-top: 6px;
+  font-weight: 600;
+}
+
+.modal.costwall .cw-who {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modal.costwall .cw-num {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.modal.costwall .cw-unknown {
+  opacity: 0.55;
+  font-size: 12px;
+}
+
+.modal.costwall .cw-ledger {
+  border-top: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  padding-top: 8px;
+  font-size: 12px;
+  opacity: 0.8;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}

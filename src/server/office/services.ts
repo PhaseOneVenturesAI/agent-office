@@ -6,6 +6,7 @@ import { Harness, harnessRoot } from '../harness.js';
 import { Reviews } from '../reviews.js';
 import { Deploys } from '../deploys.js';
 import { Hygiene } from '../hygiene.js';
+import { Costwall } from '../costwall.js';
 import { CloudflareAccess } from '../cloudflare.js';
 import { agentProviders, configuredProvider } from '../agents.js';
 import { Tailnet } from '../tailnet.js';
@@ -99,6 +100,11 @@ export function createServices(ctx: Ctx): BuildingServices {
   // cleaned by hand once doesn't quietly regrow.
   const hygiene = new Hygiene(() => [...floors.values()], () => ctx.broadcast({ t: 'hygiene', state: hygiene.state() }));
 
+  // The cost wall: every agent's session usage added up per person and per provider (☰ → 💸
+  // Cost wall), next to the office ledger's all-time and today. It recomputes from the workers
+  // at their desks, so it's never stale; a slow timer broadcasts it when the numbers moved.
+  const costwall = new Costwall(() => [...floors.values()], ledger, () => ctx.broadcast({ t: 'costwall', state: costwall.state() }));
+
   // Behind Cloudflare Access, its edge login is the front door (see cloudflare.ts): no office
   // password is needed, and each verified email gets an account of its own.
   const cloudflare = cfg.cfAccess ? new CloudflareAccess(cfg.cfAccess.team, cfg.cfAccess.aud, new Set(cfg.cfAccess.admins)) : undefined;
@@ -165,7 +171,7 @@ export function createServices(ctx: Ctx): BuildingServices {
     });
   };
 
-  return { sky, themes, maps, prompts, leaveOnMerge, ledger, signins, harness, reviews, deploys, hygiene, cloudflare, limits, accountLimits, webhook, machine, limitsOf, pumpQueues };
+  return { sky, themes, maps, prompts, leaveOnMerge, ledger, signins, harness, reviews, deploys, hygiene, costwall, cloudflare, limits, accountLimits, webhook, machine, limitsOf, pumpQueues };
 }
 
 /** What's made once the floors are open: the SSH team, the tailnet, workers' web servers, pictures and upgrades. */
