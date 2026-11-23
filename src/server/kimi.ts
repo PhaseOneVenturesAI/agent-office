@@ -1,3 +1,4 @@
+import { stopAcpChild } from './acp-shutdown.js';
 import { AssistantTurn } from './assistant-text.js';
 // Kimi as a provider, over ACP: the same wire DeepSeek Harness speaks (see dsh.ts and
 // docs/dsh-acp-integration.md), so this session shares DSH's renderer, permission card and config
@@ -76,6 +77,7 @@ export class KimiSession {
   private prompting = false;
   private finished = false;
   private closing = false;
+  private closeDone?: Promise<void>;
   private started = false;
 
   constructor(
@@ -199,22 +201,14 @@ export class KimiSession {
     this.events.output('\r\n');
   }
 
-  /** Sends home: close the session quietly, then end the child. */
-  close(): void {
-    if (this.closing || this.finished) return;
+  /** Close quietly, then wait for this child to exit before Office may leave. */
+  close(): Promise<void> {
+    if (this.closeDone) return this.closeDone;
+    if (this.finished) return Promise.resolve();
     this.closing = true;
-    if (this.sessionId) {
-      // session/close is a request, but the office does not wait on it: the child goes either way.
-      this.send({ jsonrpc: '2.0', id: ++this.nextId, method: 'session/close', params: { sessionId: this.sessionId } });
-    }
-    const child = this.child;
-    setTimeout(() => {
-      try {
-        child?.kill('SIGTERM');
-      } catch {
-        // already gone
-      }
-    }, 500).unref?.();
+    return this.closeDone = stopAcpChild(this.child, () => {
+      if (this.sessionId) this.send({ jsonrpc: '2.0', id: ++this.nextId, method: 'session/close', params: { sessionId: this.sessionId } });
+    });
   }
 
   // --- the handshake, and everything the agent sends back -------------------

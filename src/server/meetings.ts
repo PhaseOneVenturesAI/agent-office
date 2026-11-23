@@ -1,6 +1,7 @@
+import { dismissMeeting } from './meeting-dismiss.js';
 import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { closeSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { MEETING_SEATS } from '../shared/layout.js';
@@ -85,6 +86,7 @@ interface Part {
  * workers stay at the table to be looked at until the room is cleared or the next meeting is called.
  */
 export class MeetingRoom {
+  private dismissals = new Map<string, Promise<boolean>>();
   private current: Meeting | null = null;
   private past: MeetingRecord[] = [];
   private statePath: string;
@@ -156,7 +158,7 @@ export class MeetingRoom {
 
     // The last meeting's workers make room: they go home, and their worktree is tidied away after them.
     const last = this.current;
-    if (last) void this.dismiss(last);
+    if (last && !last.cleared) { void this.dismiss(last); return 'The previous meeting is still closing; wait for its workers before starting another.'; }
     const busy = MEETING_SEATS.slice(0, count).find((d) => this.workers.list().some((w) => w.deskId === d.id));
     if (busy) return 'Someone is still sitting at the meeting table';
 
@@ -203,8 +205,10 @@ export class MeetingRoom {
       const text = `${this.brief(m, i)}\n\n${part ? this.ask(m, part) : this.say('meeting.wait')}`;
       const w = this.workers.seat(m.seats[i].deskId, `${by} (meeting)`, text, provider, model, effort, { id, worktree }, owner);
       if (typeof w === 'string') {
-        for (const s of m.seats) if (s.workerId) void this.workers.kill(s.workerId);
-        if (worktree && this.trees) void this.trees.remove(worktree, 'all');
+        m.status = 'stopped'; m.reason = w; m.finishedAt = Date.now();
+        if (last) this.archive(last);
+        this.current = m; this.changed();
+        void this.dismiss(m);
         return w;
       }
       m.seats[i].workerId = w.id;
@@ -232,11 +236,11 @@ export class MeetingRoom {
     const m = this.current;
     if (!m) return 'Nobody is in the meeting room';
     if (m.status === 'running') return 'The meeting is still on: stop it first';
-    this.events.toast(`🤝 ${by} cleared the meeting room`, 'info');
-    void this.dismiss(m);
-    this.archive(m);
-    this.current = null;
-    this.changed();
+    void this.dismiss(m).then((cleared) => {
+      if (!cleared || this.current !== m) return;
+      this.events.toast(`🤝 ${by} cleared the meeting room`, 'info');
+      this.archive(m); this.current = null; this.changed();
+    });
     return undefined;
   }
 
@@ -451,29 +455,15 @@ export class MeetingRoom {
    * Sends a meeting's workers home, then tidies its worktree away: the branch stays when the output
    * was committed on it, and everything stays when something is left uncommitted.
    */
-  private async dismiss(m: Meeting) {
-    if (m.cleared) return;
-    m.cleared = true;
-    const here = new Set(this.workers.list().map((w) => w.id));
-    await Promise.all(m.seats.filter((s) => s.workerId && here.has(s.workerId)).map((s) => this.workers.kill(s.workerId!)));
-    const wt = m.worktree;
-    if (!wt || !this.trees) return this.persist();
-    // Kept with the floor's state already (keepNotes): the notes, and a review panel's review, which
-    // is on the pull request now, go, so they don't count as work left behind.
-    const cwd = this.cwd(m);
-    const own = path.resolve(this.dir, '.agent-office', 'worktrees') + path.sep;
-    for (const leftover of [m.notes, m.pattern === 'review' ? m.output : undefined]) {
-      const abs = leftover && path.resolve(cwd, leftover);
-      if (abs && abs.startsWith(own)) rmSync(abs, { recursive: true, force: true });
-    }
-    const state = await this.trees.inspect(wt);
-    if (state.error || state.dirty) {
-      this.events.toast(`Kept the “${m.title}” meeting's worktree and branch ${wt.branch}: ${state.error ?? `${state.dirty} uncommitted change${state.dirty === 1 ? '' : 's'}`}`, 'info');
-    } else {
-      const err = await this.trees.remove(wt, state.ahead ? 'worktree' : 'all');
-      if (err) this.events.toast(`Couldn't tidy away the meeting's worktree: ${err}`, 'warn');
-    }
-    this.persist();
+  private dismiss(m: Meeting): Promise<boolean> {
+    const existing = this.dismissals.get(m.id);
+    if (existing) return existing;
+    const task = dismissMeeting(m, this.workers, this.trees, this.dir, this.cwd(m), (text, level) => this.events.toast(text, level), () => this.persist()).catch((error) => {
+      this.events.toast(`Kept the meeting workspace: ${String(error)}`, 'warn'); return false;
+    });
+    this.dismissals.set(m.id, task);
+    void task.then(() => this.dismissals.delete(m.id));
+    return task;
   }
 
   /** Puts a finished meeting on the list of earlier ones. */

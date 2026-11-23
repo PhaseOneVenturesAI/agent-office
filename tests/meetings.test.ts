@@ -130,7 +130,7 @@ test('a debate runs its rounds and ends when the chair writes the decision', (t)
   assert.ok(existsSync(path.join(f.dir, '.agent-office', 'meetings', m.id)));
 });
 
-test('a meeting has no token limit: what its workers use is added up and shown, and never stops it', (t) => {
+test('a meeting has no token limit: what its workers use is added up and shown, and never stops it', async (t) => {
   const f = fixture(); t.after(() => f.close());
   // A limit an older page still sends is ignored.
   assert.equal(f.start({ rounds: 2, output: 'decision.md', budget: 100_000 } as Partial<MeetingRequest>), undefined);
@@ -153,7 +153,25 @@ test('a meeting has no token limit: what its workers use is added up and shown, 
   m = f.room.state().current!;
   assert.equal(m.status, 'done');
   assert.equal(f.room.clear('Ada'), undefined);
+  await new Promise((resolve) => setImmediate(resolve));
   assert.match(f.room.state().past[0].summary, /Debate · 2 rounds · 60\.5M tokens · \$31\.50 · ✅ decision\.md/);
+});
+
+test('a partially seated meeting keeps its shared workspace when its first worker cannot stop', async (t) => {
+  const f = fixture({ git: true }); t.after(() => f.close());
+  const manager = (f.room as any).workers as MeetingWorkers;
+  const seat = manager.seat.bind(manager); let seats = 0;
+  manager.seat = (...args) => seats++ ? 'fixture could not seat another worker' : seat(...args);
+  manager.kill = async () => ({ error: 'fixture child still alive' });
+  assert.match(f.start({})!, /could not seat/);
+  const m = f.room.state().current!;
+  assert.equal(m.status, 'stopped'); assert.equal(f.workers.length, 1);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(f.room.state().current!.id, m.id);
+  assert.notEqual(f.room.state().current!.cleared, true);
+  assert.ok(existsSync(path.join(f.dir, m.worktree!.path)));
+  assert.ok(existsSync(path.join(f.dir, m.worktree!.path, m.notes!)));
+  assert.match(f.toasts.join(' '), /child still alive/);
 });
 
 test('a worker that ends its part without writing the file is reminded once, then the meeting stops', (t) => {
@@ -260,7 +278,7 @@ test('in a git project the output is committed on the meeting branch, which outl
   // Notes stay out of the commit.
   assert.equal(git('show', '--name-only', '--format=', m.worktree!.branch), 'docs/decision.md');
   assert.equal(f.room.clear('Ada'), undefined);
-  for (let i = 0; i < 50 && existsSync(path.join(f.dir, m.worktree!.path)); i++) await new Promise((r) => setTimeout(r, 20));
+  for (let i = 0; i < 50 && f.room.state().current; i++) await new Promise((r) => setTimeout(r, 20));
   assert.equal(f.workers.length, 0);
   assert.ok(!existsSync(path.join(f.dir, m.worktree!.path)));
   assert.equal(git('rev-parse', '--abbrev-ref', m.worktree!.branch), m.worktree!.branch);

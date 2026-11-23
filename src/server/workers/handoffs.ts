@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import type { HandoffBrief, WorkerHandoff } from '../../shared/protocol.js';
 import type { Worker, WorkerContext } from './types.js';
 
-const idle = (w: Worker) => !w.bootBlocked && !w.info.lost && !!(w.pty || w.dsh) && ['idle', 'done'].includes(w.info.status);
+const idle = (w: Worker) => !w.stopping && !w.bootBlocked && !w.info.lost && !!(w.pty || w.dsh) && ['idle', 'done'].includes(w.info.status);
 const text = (v: unknown, max: number) => typeof v === 'string' && v.trim().length <= max ? v.trim() : '';
 
 /** Task responsibility only: provider credential ownership, sessions and worktrees never move. */

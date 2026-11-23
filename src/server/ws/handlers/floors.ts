@@ -61,12 +61,14 @@ export const floorHandlers = {
     // Everyone's workers on it stop: admins do it.
     if (!ctx.meOf(c.accountId).admin) return ctx.warn(c, 'Only admins can take a floor off the building');
     const id = str(msg.floor, 64);
-    const r = ctx.building.remove(id, who);
-    if (typeof r === 'string') return ctx.warn(c, r);
-    console.log(`  ${who} took the ${r.name} floor off the building (${r.dir} stays where it is)`);
     const floor = ctx.floors.get(id);
-    if (floor) ctx.closeFloor(floor, who);
-    else ctx.floorsChanged();
+    if (floor) {
+      void ctx.closeFloor(floor, who).then((error) => ctx.warn(c, error), (error) => ctx.warn(c, `Floor removal failed: ${String(error)}`));
+    } else {
+      const r = ctx.building.remove(id, who);
+      if (typeof r === 'string') return ctx.warn(c, r);
+      ctx.floorsChanged();
+    }
   },
   'floor.projectsDir'(ctx, c, msg) {
     const who = c.peer.name;

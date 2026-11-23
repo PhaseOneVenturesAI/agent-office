@@ -1,3 +1,5 @@
+import { WorkerRemovals } from './removal.js';
+import { AcpClosures } from '../acp-shutdown.js';
 import { WorkerConversations } from './conversations.js';
 import { makeWorkerHandle } from './handle.js';
 import { WorkerHandoffs } from './handoffs.js';
@@ -60,6 +62,8 @@ export class WorkerManager {
   private closing = false;
   /** Closing for good (Ctrl+C), not restarting: whatever the workers were doing is stopped on purpose. */
   private stopping = false;
+  private acpClosures = new AcpClosures();
+  private shutdownDone?: Promise<void>;
   /** What the workers' modules share of this manager (see WorkerContext). */
   private ctx: WorkerContext;
   private tasks: WorkerTasks;
@@ -67,6 +71,7 @@ export class WorkerManager {
   private prs: WorkerPrs;
   readonly handoffs: WorkerHandoffs;
   readonly conversations: WorkerConversations;
+  private removals: WorkerRemovals;
   private usageTimer: NodeJS.Timeout;
   /** Runs the workers' terminals outside the office, so they outlive a restart of it (see ptys.ts). */
   private host: PtyHost;
@@ -104,6 +109,7 @@ export class WorkerManager {
     this.agentPath = resolveCommand(agentCmd);
     const self = this;
     this.ctx = {
+      closeAcp: (session) => this.acpClosures.close(session),
       dir,
       trees: this.trees,
       workers: this.workers,
@@ -132,6 +138,11 @@ export class WorkerManager {
     this.host = new PtyHost(dataDir, () => this.events.toast("The workers' terminal host stopped — resuming them", 'warn'));
     this.scrollback = new ScrollbackStore(dataDir);
     this.drops = new DropStore(dataDir);
+    this.removals = new WorkerRemovals(this.ctx, {
+      forget: (id) => { this.conversations.forget(id); this.tasks.forget(id); },
+      files: (id) => { this.scrollback.remove(id); this.drops.remove(id); },
+      sendHome: (...args) => this.worktrees.sendHome(...args),
+    });
     restoreWorkers(this.statePath, this.workers, this.defaultProvider, (deskId) => this.deskOccupied(deskId));
     this.scrollback.prune(new Set(this.workers.keys()));
     this.drops.prune(new Set(this.workers.keys()));
@@ -228,6 +239,7 @@ export class WorkerManager {
    * other floors' repositories a worker in its own worktree works in too (see makeWorkspace).
    */
   spawn(deskId: string, by: string, prompt?: string, worktree = false, kind: WorkerKind = 'agent', provider?: AgentProvider, model?: string, effort?: AgentEffort, meeting?: { id: string; worktree?: WorkerInfo['worktree'] }, owner?: string, repos: RepoSource[] = [], via?: 'herald'): WorkerInfo | string {
+    if (this.closing) return 'This floor is closing; no new workers can start.';
     // Nobody picked (a board agent, say): the office's default worker, model and effort included.
     if (kind === 'agent' && provider === undefined) ({ provider, model, effort } = this.officeDefault);
     const selectedProvider = kind === 'agent' ? provider : undefined;
@@ -317,6 +329,7 @@ export class WorkerManager {
   resume(id: string, prompt?: string): string | undefined {
     const w = this.workers.get(id);
     if (!w) return 'No such worker';
+    if (this.closing || w.stopping) return 'This worker is stopping; wait for cleanup to finish.';
     if (w.pty || w.dsh) return 'Worker is already running';
     if (this.worktrees.checkLost(w, true)) return lostMessage(w.info);
     clockWork(w.info, 'starting');
@@ -376,29 +389,8 @@ export class WorkerManager {
    * pull request's head commit) is work delivered. Resolves once that's done, with a line for the team
    * about the worktree.
    */
-  async kill(id: string, cleanup?: WorktreeCleanup, landed?: string, landedRepos?: Record<string, string | undefined>): Promise<{ note?: string; error?: string }> {
-    const w = this.workers.get(id);
-    if (!w) return {};
-    this.workers.delete(id);
-    this.conversations.forget(id);
-    this.tasks.forget(id);
-    clearTimeout(w.scanTimer);
-    const proc = w.pty;
-    w.pty = undefined; // so the exit handler knows this worker is gone and stays quiet
-    const session = w.dsh;
-    w.dsh = undefined;
-    try {
-      session?.close();
-      proc?.kill();
-    } catch {
-      // already gone
-    }
-    w.term?.dispose();
-    this.scrollback.remove(id);
-    this.drops.remove(id);
-    this.events.remove(id, w.info);
-    this.persist();
-    return this.worktrees.sendHome(w.info, cleanup, landed, landedRepos);
+  kill(id: string, cleanup?: WorktreeCleanup, landed?: string, landedRepos?: Record<string, string | undefined>): Promise<{ note?: string; error?: string }> {
+    return this.removals.remove(id, cleanup, landed, landedRepos);
   }
 
   /**
@@ -466,7 +458,7 @@ export class WorkerManager {
   /** Keystrokes from `by`'s browser. */
   write(id: string, data: string, by: string) {
     const w = this.workers.get(id);
-    if (!w) return;
+    if (!w || this.closing || w.stopping) return;
     if (w.dsh) {
       // ACP has no terminal: the session buffers these into a line and submits it on Enter.
       w.dsh.writeInput(data);
@@ -509,6 +501,7 @@ export class WorkerManager {
   prompt(id: string, text: string, by?: string): string | undefined {
     const w = this.workers.get(id);
     if (!w) return 'No such worker';
+    if (this.closing || w.stopping) return 'This worker is stopping; wait for cleanup to finish.';
     if (w.dsh) {
       const clean = text.replace(/\r\n?/g, '\n').trim();
       if (!clean) return 'Empty prompt';
@@ -603,7 +596,8 @@ export class WorkerManager {
    * The office is closing. On a restart (`keep`), terminals in the host keep running for the next
    * office to pick back up; otherwise every worker stops.
    */
-  shutdown(keep = false) {
+  shutdown(keep = false): Promise<void> {
+    if (this.shutdownDone) return this.shutdownDone;
     this.closing = true;
     this.stopping = !keep;
     clearInterval(this.screenTimer);
@@ -619,11 +613,7 @@ export class WorkerManager {
       if (w.dsh) {
         const session = w.dsh;
         w.dsh = undefined;
-        try {
-          session.close();
-        } catch {
-          // already gone
-        }
+        void this.acpClosures.close(session);
       }
       if (keep && w.pty?.id) continue;
       // A restart only takes this one down because it runs in-process: the next office carries on its turn.
@@ -638,6 +628,7 @@ export class WorkerManager {
     this.persist();
     if (keep) this.host.detach();
     else this.host.stop();
+    return this.shutdownDone = this.acpClosures.wait();
   }
 
   // ---------------------------------------------------------------------------

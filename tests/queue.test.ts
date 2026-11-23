@@ -312,7 +312,7 @@ test('workers hired by hand, or left at their prompt after a restart, do not hol
   assert.deepEqual(q.state().tasks.map((t) => t.status), ['done', 'running', 'running']);
 });
 
-test('an office at its worker limit holds the queue, and a finished queue worker makes room', (t) => {
+test('an office at its worker limit holds the queue, and a finished queue worker makes room', async (t) => {
   const f = fixture(); t.after(() => f.close());
   let limit = 1;
   const q = f.open(() => limit - f.workers.length);
@@ -321,6 +321,7 @@ test('an office at its worker limit holds the queue, and a finished queue worker
   assert.equal(f.workers.length, 1);
   // The first finishes: its worker goes home to make room, and the second task gets the seat.
   f.workers[0].status = 'done'; q.onWorker(f.workers[0]);
+  await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(q.state().tasks.map((t) => t.status), ['done', 'running']);
   assert.deepEqual(f.workers.map((w) => w.id), ['worker-1']);
   // The limit lowered past who's there: nobody is sent home and nothing fails, the queue just waits.

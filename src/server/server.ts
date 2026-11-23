@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { settleShutdown } from './acp-shutdown.js';
 import https from 'node:https';
 import type { Config } from './config.js';
 import { resolveCommand } from './workers.js';
@@ -52,7 +53,9 @@ export async function startServer(cfg: Config, opts: StartOptions = {}) {
   tailnet.start(() => services.list().map((s) => s.port));
 
   /** With `keep` (a restart), workers' terminals keep running for the next office to pick up. */
-  const shutdown = (keep = false) => {
+  let shutdownDone: Promise<void> | undefined;
+  const shutdown = (keep = false): Promise<void> => {
+    if (shutdownDone) return shutdownDone;
     stopTimers();
     ctx.cancelFloorsChanged();
     ctx.arcade.flush();
@@ -63,7 +66,7 @@ export async function startServer(cfg: Config, opts: StartOptions = {}) {
     ctx.machine.stop();
     ctx.sky.stop();
     ctx.themes.stop();
-    for (const f of ctx.floors.values()) f.shutdown(keep);
+    const pending = [...ctx.floors.values()].map((f) => f.shutdown(keep));
     ctx.building.shutdown(keep);
     ctx.ledger.flush();
     ctx.limits.close();
@@ -74,6 +77,7 @@ export async function startServer(cfg: Config, opts: StartOptions = {}) {
     for (const c of ctx.clients.values()) c.ws.close();
     server.close();
     hookServer.close();
+    return shutdownDone = settleShutdown(pending);
   };
 
   /** A link (path and fragment) that signs one browser in, once; see Auth.linkKey. */

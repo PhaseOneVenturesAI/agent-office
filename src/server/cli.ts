@@ -4,6 +4,7 @@ import { loadConfig, ensureSelfSigned } from './config.js';
 import { startServer } from './server.js';
 import { tildify } from './building.js';
 import { openBrowser } from './browser.js';
+import { installShutdownSignals } from './shutdown-signals.js';
 
 const argv = process.argv.slice(2);
 if (argv[0] === 'prune') {
@@ -96,20 +97,7 @@ ${signIn ? `\n  sign in: ${signIn}\n           ${opened ? 'opened in your browse
   choose a provider (including Pi and Cursor) when hiring or queueing a task
 ${cfg.tls || loopback ? '' : '\n  tip: voice & screen share need https off localhost — use a reverse proxy or --self-signed\n'}`);
 
-let closing = false;
-// SIGTERM is a restart (tsx watch reloading, a plain `kill`, systemd): workers keep running in their
-// terminal host and the next office picks them back up. Ctrl+C closes the office and stops them.
-// (Under systemd that needs KillMode=process, or stopping the service stops the host with it; see
-// deploy/provision.sh. Workers cut off that way are resumed and carry on.)
-const stop = (signal: NodeJS.Signals) => {
-  if (closing) process.exit(1);
-  closing = true;
-  const keep = signal === 'SIGTERM';
-  console.log(keep ? '\n  closing the office — workers keep running for the next one…' : '\n  closing the office…');
-  office.shutdown(keep);
-  setTimeout(() => process.exit(0), 300);
-};
+// SIGTERM preserves hosted PTYs (systemd needs KillMode=process); ACP children are awaited.
+installShutdownSignals(office.shutdown);
 // Last line of defense: one bad request must never take down every running worker.
 process.on('unhandledRejection', (err) => console.error('agent-office: unhandled rejection', err));
-process.on('SIGINT', stop);
-process.on('SIGTERM', stop);
