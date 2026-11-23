@@ -80,3 +80,13 @@ test('provision makes a passwordless account per email, deduplicating names', as
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('the /api/cf-login route is registered, and public', async () => {
+  // Unregistered, the sign-in check answers it with "Not logged in" and the login page falls back
+  // to a password form — the bug where Cloudflare sign-in silently stopped being enough.
+  const { routes } = await import('../src/server/http/routes/index.js');
+  const route = routes.find((r) => r.path === '/api/cf-login');
+  assert.ok(route, 'cf-login is in the route table');
+  assert.equal(route!.method, 'POST');
+  assert.equal(route!.auth, 'public');
+});
