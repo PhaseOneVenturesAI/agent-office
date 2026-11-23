@@ -522,3 +522,36 @@
   margin: 0 auto;
   border-radius: 8px;
 }
+
+/* 🛡️ Roles: the administration surface, in the same cream/outlined voice. */
+.modal.roles {
+  width: min(680px, 94vw);
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.modal.roles .roles-list {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 4px;
+}
+
+.modal.roles section.dept {
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modal.roles .dept-qa-answer {
+  border-left: 3px solid color-mix(in srgb, currentColor 20%, transparent);
+  padding-left: 8px;
+}
+
+.modal.roles .dept-qa-answer p { margin: 4px 0; }
