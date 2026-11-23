@@ -11,6 +11,7 @@ import { carHandlers, carHooks, carsView } from './car.js';
 import { changesHandlers, changesHooks } from './changes.js';
 import { costwallHandlers } from './costwall.js';
 import { decorHandlers, decorView } from './decor.js';
+import { departmentsHandlers, departmentsView } from './departments.js';
 import { deploysHandlers } from './deploys.js';
 import { dogHandlers, dogView } from './dog.js';
 import { floorHandlers, projectView } from './floors.js';
@@ -46,6 +47,7 @@ export const handlers: HandlerMap<ClientMsg> = {
   ...changesHandlers,
   ...costwallHandlers,
   ...decorHandlers,
+  ...departmentsHandlers,
   ...deploysHandlers,
   ...dogHandlers,
   ...floorHandlers,
@@ -93,4 +95,5 @@ export const views: ViewPieces = {
   whiteboard: whiteboardView,
   meeting: meetingView,
   cabinet: cabinetView,
+  departments: departmentsView,
 };

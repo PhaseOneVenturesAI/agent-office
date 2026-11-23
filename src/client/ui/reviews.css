@@ -147,3 +147,96 @@
   font: inherit;
   font-size: 13px;
 }
+
+/* Versions, series and the pipeline. */
+.modal.reviews .review-version {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+
+.modal.reviews .review-group {
+  margin: 6px 0 0;
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+.modal.reviews .review-refs {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.modal.reviews .review-refs a {
+  color: inherit;
+}
+
+.modal.reviews .review-stages {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.modal.reviews .review-stage-chip {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #3b9ddd 22%, transparent);
+  color: #3b9ddd;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.modal.reviews .review-stage-pick {
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+}
+
+.modal.reviews .review-history {
+  flex-basis: 100%;
+}
+
+.modal.reviews .review-history summary {
+  cursor: pointer;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.modal.reviews .review-history-line {
+  margin: 4px 0 0;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.modal.reviews footer.review-stage-form {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.modal.reviews .review-stage-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.modal.reviews .review-stage-group,
+.modal.reviews .review-stage-refs {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+}

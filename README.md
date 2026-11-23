@@ -52,6 +52,8 @@ curl -fsSL https://raw.githubusercontent.com/AgentSystemLabs/agent-office/main/i
 
 There's a lot more (a rooftop bar, an office dog, an arcade, supercars in the garage to drive round a scenic loop past a farm, pines, mountains and a beach): see [docs/features.md](docs/features.md).
 
+**Departments on each floor.** Open the directory in the 3D office with **E**, use **☰ → Departments**, or open it in the 2D view. Marketing, Product & Engineering, and Review each keep their own brief, roles, brand references and worker roster. Creating a department starts no agents. Explicit hiring supplies its current brief, safe brand references and relevant skill paths, with at most two implementation writers across the project. [Department workflow and limits](docs/features.md#departments-and-versioned-deliverables).
+
 ## Requirements
 
 On the machine that runs the office:

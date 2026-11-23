@@ -11,6 +11,7 @@ import type { ProviderReadinessClientMsg, ProviderReadinessServerMsg } from './p
 import type { AccountsClientMsg, AccountsServerMsg, SignInsClientMsg, TeamClientMsg } from './protocol/accounts.js';
 import type { ChangesClientMsg, ChangesServerMsg } from './protocol/changes.js';
 import type { CostwallClientMsg, CostwallServerMsg } from './protocol/costwall.js';
+import type { DepartmentsClientMsg, DepartmentsServerMsg } from './protocol/departments.js';
 import type { DeploysClientMsg, DeploysServerMsg } from './protocol/deploys.js';
 import type { FloorClientMsg, FloorServerMsg, PlanClientMsg } from './protocol/floors.js';
 import type { GitHubClientMsg, GitHubServerMsg } from './protocol/github.js';
@@ -35,6 +36,7 @@ export * from './protocol/accounts.js';
 export * from './protocol/agents.js';
 export * from './protocol/changes.js';
 export * from './protocol/costwall.js';
+export * from './protocol/departments.js';
 export * from './protocol/deploys.js';
 export * from './protocol/floors.js';
 export * from './protocol/github.js';
@@ -67,6 +69,7 @@ export type ClientMsg =
   | PlanClientMsg
   | ChangesClientMsg
   | CostwallClientMsg
+  | DepartmentsClientMsg
   | DeploysClientMsg
   | TeamClientMsg
   | AccountsClientMsg
@@ -99,6 +102,7 @@ export type ServerMsg =
   | FloorServerMsg
   | ChangesServerMsg
   | CostwallServerMsg
+  | DepartmentsServerMsg
   | DeploysServerMsg
   | AccountsServerMsg
   | HarnessServerMsg

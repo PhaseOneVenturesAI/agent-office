@@ -14,6 +14,7 @@ import { TaskQueue } from './queue.js';
 import { Changes } from './changes.js';
 import { Decor } from './decor.js';
 import { FloorPlanStore } from './floorplan.js';
+import { Departments } from './departments.js';
 import { Docs } from './docs.js';
 import { Dog } from './dog.js';
 import { Court } from './court.js';
@@ -119,6 +120,7 @@ export class Floor {
   readonly decor: Decor;
   /** The signs over its desks, and how far its back office is built out. */
   readonly plan: FloorPlanStore;
+  readonly departments: Departments;
   readonly jukebox: Jukebox;
   /** The whiteboard everyone on the floor draws on together. */
   readonly whiteboard: Whiteboard;
@@ -156,6 +158,9 @@ export class Floor {
     this.docs = new Docs(def.dir);
     // Before the workers and the dog: the back office's desks are only there once it's built.
     this.plan = new FloorPlanStore(dataDir);
+    this.departments = new Departments(dataDir, def.dir, () =>
+      ctx.emit(this, { t: 'departments', state: this.departments.state() }),
+    );
     this.jail = new Jail(dataDir);
 
     // Before the workers, so it hears about the ones who wake up needing input.
