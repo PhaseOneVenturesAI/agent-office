@@ -69,6 +69,8 @@ export async function startServer(cfg: Config, opts: StartOptions = {}) {
     ctx.limits.close();
     for (const a of ctx.accountLimits.values()) a.reader.close();
     ctx.signins.shutdown();
+    ctx.nodes.close();
+    ctx.deliveries.close();
     for (const c of ctx.clients.values()) c.ws.close();
     server.close();
     hookServer.close();

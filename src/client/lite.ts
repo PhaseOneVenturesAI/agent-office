@@ -19,6 +19,7 @@ import { lostWorktreeDialog, openPrompt, routeWorktreeMessage, sendHomeDialog } 
 import { openBoard } from './ui/boards';
 import type { BoardActions } from './ui/github/prompts';
 import { openPull, routePullMessage } from './ui/pull';
+import { openNodes } from './ui/nodes';
 import { openQueue } from './ui/queue';
 import { openAsk } from './ui/ask';
 import { openMeeting, type MeetingPreset } from './ui/meeting';
@@ -319,6 +320,7 @@ function showMeeting(preset?: MeetingPreset) {
 
 $('btn-issues').addEventListener('click', () => openBoard('issues', net, boardActions()));
 $('btn-pulls').addEventListener('click', () => openBoard('pulls', net, boardActions()));
+$('btn-nodes').addEventListener('click', () => openNodes(net));
 $('btn-queue').addEventListener('click', () => openQueue(net, { openTerminal: openWorker }));
 $('btn-new').addEventListener('click', () => sendToWorker('✨ New task'));
 

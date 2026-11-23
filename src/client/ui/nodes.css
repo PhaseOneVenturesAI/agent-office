@@ -10,13 +10,17 @@
 .modal.nodes .nd-status {
   font-size: 12px;
   opacity: 0.65;
+  margin: 0 14px;
 }
+
+.modal.nodes > p.nd-spec { margin: 0 14px; overflow-wrap: anywhere; }
 
 .modal.nodes .nd-list {
   display: flex;
   flex-direction: column;
   gap: 10px;
   overflow-y: auto;
+  margin: 0 14px 14px;
 }
 
 .modal.nodes .nd-node {

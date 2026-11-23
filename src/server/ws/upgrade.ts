@@ -35,7 +35,7 @@ export function acceptWebSockets(ctx: Ctx, server: http.Server | https.Server) {
     }
     // A satellite node joining with its token (agent-office join): not a person, no session.
     if (url.pathname === '/ws/node') {
-      const token = url.searchParams.get('token') ?? '';
+      const token = (req.headers.authorization ?? '').replace(/^Bearer\s+/i, '') || url.searchParams.get('token') || '';
       if (!ctx.nodes.known(token)) return refuseUpgrade(socket);
       return wss.handleUpgrade(req, socket, head, (ws) => ctx.nodes.attach(ws, token));
     }
