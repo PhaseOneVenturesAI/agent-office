@@ -391,6 +391,7 @@ deploy/coolify.sh ssh 'node /opt/agent-office/bin/agent-office.js accounts invit
 | X | Send a worker home |
 | L | Hang a sign over a desk ("Operations", "Code cleanup") |
 | T / Enter | Chat |
+| G / 1–9, 0 | Emote: hold G for the wheel (point and let go), or tap G and click; a number key plays one straight away. Wave, thumbs up or down, clap, point, shrug, laugh, facepalm, the six seven — or a dance that loops until you move. Everyone on your floor sees it |
 | V | Join voice; then hold V to talk |
 | M | Mute / unmute in voice |
 | Ctrl + Space | Dictate into a terminal or a prompt box: hold it and talk (or hold the **🎤**) |

@@ -21,7 +21,7 @@ Back to the [README](../README.md).
 | Q | Put back the issue card you're carrying, or drop the basketball |
 | H | These controls; in a car, honk the horn |
 | T / Enter | Chat |
-| G / 1–6 | Emote: hold G for the wheel (point and let go) or press 1–6 to wave, give a thumbs up, clap, dance, point or facepalm; everyone on your floor sees it |
+| G / 1–9, 0 | Emote: hold G for the wheel (point at one and let go), or tap G and click; a number key plays one straight away (– for the last one). Wave, thumbs up or down, clap, point, shrug, laugh, facepalm, the six seven 🤲 — or the groove and spin dances, which loop until you move or pick another. Everyone on your floor sees it, and anyone arriving mid-dance sees it too; moving cancels any emote |
 | / | Search the chat and every terminal on your floor |
 | Ctrl + K (⌘K on a Mac) | Command palette: find a worker, issue, PR, service, board, teammate or action; Enter opens it, Shift+Enter walks you there first |
 | V | Join voice; in voice, hold to talk (you're muted when you let go) |

@@ -430,9 +430,9 @@ export class Person {
     this.thumb.visible = this.finger.visible = false;
   }
 
-  /** Poses the emote over whatever the arms were doing (see poseEmote), and puts it away once it's over. */
-  private emoteStep(dt: number, still: number) {
-    if (!poseEmote(this.rig, this.emoting!, dt, still, this.emojiLift)) this.endEmote();
+  /** Poses the emote over whatever the arms were doing (see poseEmote); moving cancels it, and a one-shot puts itself away once it's over. */
+  private emoteStep(dt: number, still: number, cancel = false) {
+    if (cancel || !poseEmote(this.rig, this.emoting!, dt, still, this.emojiLift)) this.endEmote();
   }
 
   get smoking(): boolean {
@@ -687,7 +687,7 @@ export class Person {
     this.head.rotation.x = -this.mouthOpen * 0.08 + (this.book ? 0.32 : 0);
     this.head.rotation.y = this.head.rotation.z = 0;
     this.body.rotation.y = this.body.rotation.z = 0;
-    if (this.emoting) this.emoteStep(dt, moving || airborne ? 0 : 1 - sit);
+    if (this.emoting) this.emoteStep(dt, 1 - sit, moving || airborne);
     if (this.golf && !sit && !airborne) this.golfStep(dt);
     if (this.oche && !sit) this.ocheStep(dt);
   }

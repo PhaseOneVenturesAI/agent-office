@@ -173,7 +173,7 @@ parts.seating = installSeating(ctx, { shares: () => parts.talk.currentShares(), 
 installGong(ctx, { burstOver: parts.views.burstOver, workerViews: parts.views.workerViews, court: () => parts.worlds.court(), idleAgents: () => parts.worlds.idleAgents() });
 
 parts.hintbar = installHintBar(ctx, core, parts);
-parts.emotes = installEmotes(ctx, { personOf });
+parts.emotes = installEmotes(ctx);
 installKeyboard(ctx, parts);
 parts.focus = installFocus(ctx, core, parts);
 parts.pointer = installPointer(ctx, core, parts);
