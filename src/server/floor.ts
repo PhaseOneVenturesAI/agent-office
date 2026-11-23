@@ -21,7 +21,8 @@ import { Departments, MAX_WRITERS } from './departments.js';
 import { FloorCeo } from './ceo.js';
 import { LeadDispatch } from './dept-dispatch.js';
 import { RoleChat } from './role-chat.js';
-import { acpCommand, qaContext, staffQaAsk, type QaOutcome } from './staff-qa.js';
+import { floorStaffQA } from './dept-staff-qa.js';
+import type { QaOutcome } from './staff-qa.js';
 import { Docs } from './docs.js';
 import { Dog } from './dog.js';
 import { Court } from './court.js';
@@ -431,32 +432,9 @@ export class Floor {
     };
   }
 
-  /**
-   * A staff read-only question about a department (see staff-qa.ts): answered on a SEPARATE
-   * one-shot ACP session with no tools — never the manager's provider session — from an approved
-   * context snapshot. The exchange is recorded under the staff scope and returned to the asker.
-   */
-  async staffQA(deptId: string, question: string, by: string): Promise<QaOutcome> {
-    const dept = this.departments.get(deptId);
-    if (!dept) return { ok: false, why: 'That department is gone' };
-    const clean = question.replace(/\r\n?/g, '\n').trim().slice(0, 4000);
-    if (!clean) return { ok: false, why: 'Ask a question first' };
-    const command = acpCommand();
-    if (!command) {
-      return { ok: false, why: 'Read-only staff Q&A needs a Kimi or DeepSeek Harness CLI on this office machine. It never uses the manager’s own session, so it is unavailable here rather than pretending.' };
-    }
-    const context = qaContext({ name: dept.name, brief: dept.brief as { rev: number; text: string }[], lead: dept.lead ? { objective: dept.lead.objective } : undefined, assets: dept.assets });
-    const prompt = [
-      `You are the read-only Q&A desk for the ${dept.name} department. You are not the manager and never speak for them.`,
-      'You have no tools: the office denies every tool request, so answer only from the approved context below and general knowledge. Never claim to have read files, run commands, assigned work, or made decisions. Keep the answer short, and say plainly when the context does not cover something.',
-      context,
-      `Question from ${by}: ${clean}`,
-    ].join('\n\n');
-    const outcome = await staffQaAsk({ ...command, cwd: this.dir, prompt });
-    const at = Date.now();
-    this.roleChat.append(`qa-${deptId}`, { id: `q-${at}`, role: 'user', text: clean, at, by, scope: 'staff' });
-    this.roleChat.append(`qa-${deptId}`, { id: `a-${at}`, role: 'assistant', text: outcome.ok ? outcome.answer : `Unavailable: ${outcome.why}`, at: at + 1, scope: 'staff' });
-    return outcome;
+  /** A staff read-only question about a department (see dept-staff-qa.ts): a separate session. */
+  staffQA(deptId: string, question: string, by: string): Promise<QaOutcome> {
+    return floorStaffQA(this, deptId, question, by);
   }
 
   /** A worker speaking for a role (the CEO or a department manager): protected from send-home. */
