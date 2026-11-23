@@ -28,7 +28,7 @@ import { openMeeting, type MeetingPreset } from './ui/meeting';
 import { openSignIns } from './ui/signins';
 import { modelBadge, providerLabel } from './ui/provider';
 import { byUrgency, waitingInOrder, waitingLabel } from './nextup';
-import { askNotifyPermission, DesktopNotifier, notifyPermission, waitingOnSomeone } from './notify';
+import { askNotifyPermission, alertsForMe, DesktopNotifier, notifyPermission, waitingOnSomeone } from './notify';
 import { repoChoices } from './shared/hiring';
 // The tab title counts the workers waiting on someone, on every floor, as the 3D office's does.
 import { renderTitle } from './shared/title';
@@ -185,12 +185,12 @@ function workerCard(w: WorkerInfo): HTMLElement {
   );
 }
 
-/** A worker needs input or is done: a notification while you're elsewhere, and a buzz. */
+/** A worker needs input or is done: a notification while you're elsewhere, and a buzz. Only for the workers you hired (see alertsForMe). */
 function noticeWorkers() {
   for (const w of store.workers.values()) {
     const before = lastStatus.get(w.id);
     lastStatus.set(w.id, w.status);
-    if (before === undefined || before === w.status || !waitingOnSomeone(w)) continue;
+    if (before === undefined || before === w.status || !waitingOnSomeone(w) || !alertsForMe(w, store.me)) continue;
     notifier.alert(w);
     if (w.status === 'needs_input') navigator.vibrate?.(200);
   }
