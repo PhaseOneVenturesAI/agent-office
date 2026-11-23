@@ -9,6 +9,7 @@ import { githubRoutes } from './github.js';
 import { pageRoutes } from './pages.js';
 import { searchRoutes } from './search.js';
 import { serviceRoutes } from './services.js';
+import { projectContextRoute } from './project-context.js';
 
 export const routes: readonly Route[] = [
   // Anyone.
@@ -34,6 +35,7 @@ export const routes: readonly Route[] = [
   fileRoutes.termDrop,
   fileRoutes.changedFile,
   fileRoutes.docs,
+  projectContextRoute,
   searchRoutes.search,
   serviceRoutes.forwards,
   githubRoutes.github,
