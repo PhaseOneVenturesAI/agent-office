@@ -1,3 +1,4 @@
+import { protectRoleHandoff } from '../../role-seats.js';
 // Engine swaps (see docs/department-leads.md): an explicit handoff of a worker's task to a
 // replacement worker on another engine. The source is reserved before anything spawns, the
 // replacement is seated idle, the handoff is prepared for review, and the existing acknowledge
@@ -40,6 +41,8 @@ export const handoffHandlers = {
     }
     const handoff = source.info.handoff;
     if (!handoff || !ownedWorker(ctx, c, handoff.to)) return;
+    const privacyError = protectRoleHandoff(source.floor, source.wid, handoff.to);
+    if (privacyError) return ctx.warn(c, privacyError);
     // A delivered swap can retry its seat persistence without sending the handoff twice.
     const retrySeat = source.info.swap && handoff.id === msg.handoffId && handoff.state === 'acknowledged';
     const err = retrySeat ? undefined : source.floor.workers.handoffs.acknowledge(source.wid, msg.handoffId, c.peer.name);

@@ -1,3 +1,4 @@
+import { canAccessRoleWorker } from './role-access.js';
 import type { AgentProvider, WorkerInfo } from '../shared/protocol.js';
 import type { Ctx } from './office/context.js';
 import { providerAdapter } from './providers/index.js';
@@ -26,5 +27,5 @@ export function publicWorker(ctx: Ctx, worker: WorkerInfo): WorkerInfo {
 export function canViewTerminal(ctx: Ctx, accountId: string | undefined, workerId: string): boolean {
   const floor = ctx.workerFloor(workerId);
   const worker = floor?.workers.get(workerId);
-  return !!worker && canUseWorker(ctx, accountId, floor?.workers.ownerOf(workerId), worker.provider);
+  return !!worker && !!floor && canAccessRoleWorker(ctx, floor, workerId, accountId) && canUseWorker(ctx, accountId, floor?.workers.ownerOf(workerId), worker.provider);
 }

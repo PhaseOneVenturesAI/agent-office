@@ -1,3 +1,4 @@
+import { roleOrigin } from './role-access.js';
 // Role seats (see docs/department-leads.md): who speaks for a role, and the swap handover. Kept
 // apart from floor.ts so the floor stays under the size budget; Floor delegates here.
 
@@ -23,11 +24,22 @@ export function isRoleWorkerOn(floor: RoleSeatFloor, workerId: string): { role: 
   return undefined;
 }
 
+/** Protect both histories before delivery; an unpersisted marker aborts the handoff. */
+export function protectRoleHandoff(floor: Floor, fromId: string, toId: string): string | undefined {
+  const origin = roleOrigin(floor, fromId);
+  if (!origin) return;
+  if (origin.kind === 'unavailable') return 'Private role ownership needs repair before handoff.';
+  if (!floor.roleChat?.privacy) return 'Private role storage is unavailable.';
+  return floor.roleChat.privacy.protect(fromId, origin) ?? floor.roleChat.privacy.protect(toId, origin);
+}
+
 /** Copy history before moving the authoritative seat. Keep the source record for recovery. */
 export function relinkRoleSeat(_ctx: FloorContext, floor: Floor, fromId: string, toId: string): string | undefined {
   const ceo = floor.ceo.get()?.workerId === fromId;
   const manager = floor.departments.leadDeptOfWorker(fromId);
   if (!ceo && !manager) return; // Ordinary personal-worker swaps have no role history to migrate.
+  const privacyError = protectRoleHandoff(floor, fromId, toId);
+  if (privacyError) return privacyError;
   if (!floor.roleChat.migrate(fromId, toId, true)) return 'Could not copy the role conversation. The original seat is unchanged; retry the pending swap.';
   const error = ceo ? floor.ceo.relinkWorker(fromId, toId) : floor.departments.relinkWorker(fromId, toId);
   return error ? `Could not save the replacement role: ${error}. The source history is retained; retry the pending swap.` : undefined;
