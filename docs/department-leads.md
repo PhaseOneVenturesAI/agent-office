@@ -38,15 +38,18 @@ question **never enters the manager's provider session**: the manager chat refus
 and the Ask box answers on a **separate one-shot ACP session** that is restricted by the provider,
 not by prompt text:
 
-- It runs on the **department's configured engine only** (Kimi ACP today) — never an arbitrary
-  binary from PATH, never a fallback to whatever is installed.
+- It runs on the **department's configured engine only** (Kimi ACP today), and only on CLI versions
+  whose tool-free behavior was **verified on the actual installed binary** (2.7.2) — never an
+  arbitrary binary from PATH, never an unverified version (the wildcard disable-all is an
+  implementation detail, not a stable API, and the deployed provider may differ).
 - The session boots from a **dedicated tool-free home**: the global tool switch removes every tool
   (verified against the installed Kimi's documented config), `session/new` declares no MCP servers,
   the office **additionally** auto-rejects any permission request that still fires, and the
   read-only framing lives in the home's SYSTEM.md.
 - The environment is **account-scoped to the department's billing custodian** (its custodian email's
-  account sign-in) — never the host's credentials; with accounts on and no custodian designated it
-  fails closed rather than spending silently.
+  account sign-in) — never the host's credentials; in accounts mode a missing or unknown custodian
+  is refused outright, no fallback. The session works in an **empty scratch directory**, so the CLI
+  cannot auto-load the project's AGENTS.md — only the approved snapshot reaches the prompt.
 - The prompt carries only the approved context snapshot (current brief, objective, reference
   labels), and the exchange is recorded under the staff scope.
 
