@@ -360,3 +360,29 @@ test('initial-view redaction is recipient-aware, and migration is chronological 
     rmSync(dir2, { recursive: true, force: true });
   }
 });
+
+test('controller role alone cannot spend or read another account runtime',()=>{
+ const f=fixture(IVAN); f.floor.workers.ownerOf=()=>OWNER as never;
+ for(const t of ['conversation.open','conversation.send','conversation.page'] as const)
+  (conversationHandlers[t] as Function)(f.ctx,f.client,{t,workerId:'mgr-w',text:'Spend',before:Date.now()});
+ assert.ok(!f.calls.some(c=>c.startsWith('conv.send')));
+ assert.equal(f.sent.length,0);
+});
+
+test('conversation stream and interruption recheck role and runtime custody',()=>{
+ const f=fixture(IVAN);let listener:Function|undefined;let closed=false;
+ f.floor.workers.ownerOf=()=>IVAN as never;
+ f.floor.workers.conversations.subscribe=((_id:string,fn:Function)=>{listener=fn;return()=>{closed=true;};}) as never;
+ (conversationHandlers['conversation.open'] as Function)(f.ctx,f.client,{t:'conversation.open',workerId:'mgr-w'});
+ const before=f.sent.length;
+ f.floor.workers.ownerOf=()=>OWNER as never;
+ listener!({id:'private',role:'assistant',text:'Private',at:1});
+ assert.equal(f.sent.length,before);assert.equal(closed,true);
+});
+
+test('credential owner cannot interrupt a role after losing role authority',()=>{
+ const f=fixture('pat@example.com'); f.floor.workers.ownerOf=()=> 'pat@example.com' as never;
+ Object.assign(f.floor.workers.conversations,{stop:()=>f.calls.push('stopped')});
+ (conversationHandlers['conversation.interrupt'] as Function)(f.ctx,f.client,{t:'conversation.interrupt',workerId:'mgr-w'});
+ assert.ok(!f.calls.includes('stopped'));
+});

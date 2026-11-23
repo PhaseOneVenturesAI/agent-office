@@ -502,7 +502,7 @@ export class Departments {
   }
 
   /** After a swap lands: the lead identity and roster rows move from the old worker to the replacement. */
-  relinkWorker(fromId: string, toId: string): void {
+  relinkWorker(fromId: string, toId: string): string | undefined {
     let changed = false;
     const next = this.departments.map((d) => {
       let dept = d;
@@ -516,7 +516,7 @@ export class Departments {
       }
       return dept;
     });
-    if (changed) this.commit(next);
+    if (changed) return this.commit(next);
   }
 
   /** The project's instruction sources, live-checked; paths and sizes only, never contents. */

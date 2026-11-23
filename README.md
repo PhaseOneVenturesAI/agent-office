@@ -472,3 +472,5 @@ work manually or explicitly start their own connected agent. Importing an issue 
 starts an agent, and an agent ending its turn does not complete the business task.
 The native server integration needs its own private OAuth app; a chat plugin connection
 is separate. See [Linear setup and task permissions](docs/linear.md).
+
+Role conversations and approvals both require role authority **and** access to the worker's signed-in account. Selecting a manager's billing custodian does not share that person's subscription. Worker discovery hides private role tasks from other accounts. If an engine swap cannot save the role/history, the existing seat and source record are retained and the swap can be retried without sending its handoff twice. See [department leads](docs/department-leads.md).

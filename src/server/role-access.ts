@@ -111,7 +111,8 @@ export function canEditManager(ctx: Ctx, floor: Floor, deptId: string, accountId
     if ((owner && email === owner) || dept.lead.controllers?.map((e) => e.toLowerCase()).includes(email ?? '')) return { ok: true };
     return { ok: false, why: `Only the ${dept.name} controllers (${dept.lead.controllers?.join(', ') || 'none named yet'}) or the CEO owner (${owner ?? 'none'}) may edit this manager.` };
   }
-  // No manager yet: naming the first one is office-admin setup; afterwards the delegation chain owns it.
+  if (owner) return email === owner ? { ok: true } : { ok: false, why: `Only ${owner} may name this project's first manager.` };
+  // Only an unowned project needs office-admin bootstrap.
   return isAdmin(ctx, accountId) ? { ok: true } : { ok: false, why: 'An office admin names the first manager; the controllers own it from there.' };
 }
 

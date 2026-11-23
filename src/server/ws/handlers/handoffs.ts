@@ -34,15 +34,22 @@ export const handoffHandlers = {
   'handoff.ack'(ctx, c, msg) {
     const source = ownedWorker(ctx, c, msg.workerId);
     if (!source) return;
+    if (source.floor.isRoleWorker?.(source.wid)) {
+      const access = roleAccess(ctx, source.floor, source.wid, c.accountId);
+      if (access.kind !== 'owner' && access.kind !== 'controller') return ctx.warn(c, 'Role access changed; the swap was not completed.');
+    }
     const handoff = source.info.handoff;
     if (!handoff || !ownedWorker(ctx, c, handoff.to)) return;
-    const err = source.floor.workers.handoffs.acknowledge(source.wid, msg.handoffId, c.peer.name);
+    // A delivered swap can retry its seat persistence without sending the handoff twice.
+    const retrySeat = source.info.swap && handoff.id === msg.handoffId && handoff.state === 'acknowledged';
+    const err = retrySeat ? undefined : source.floor.workers.handoffs.acknowledge(source.wid, msg.handoffId, c.peer.name);
     ctx.warn(c, err);
     if (!err && source.info.swap) {
       // The swap landed: the manager and CEO identities and the roster follow the replacement;
       // the source's reservation clears. The source keeps its own session, transcript and branch.
       const engine = source.info.swap.engine;
-      source.floor.relinkEverywhere(source.wid, handoff.to);
+      const seatError = source.floor.relinkEverywhere(source.wid, handoff.to);
+      if (seatError) return ctx.warn(c, seatError);
       source.floor.workers.handoffs.clearSwap(source.wid);
       ctx.toastFloor(source.floor, `🔁 ${handoff.toName} took over ${source.info.name}'s work on ${engine} — ${source.info.name} keeps its own session and branch; send it home when you're done with it`);
     } else if (err && source.info.swap && source.info.handoff?.state === 'delivery-failed') {

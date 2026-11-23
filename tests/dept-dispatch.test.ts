@@ -201,3 +201,29 @@ test('without a CEO or objective, nothing rolls up and nothing loops', () => {
   f.move(mgr, 'done');
   assert.equal(f.prompted.length, 1);
 });
+
+test('repeated manager done updates report once', () => {
+ const f=fixture({ceo:{name:'Avery',workerId:'ceo-1'},objective:true});
+ f.add(worker('ceo-1','idle')); const mgr=worker('mgr-1','done'); f.add(mgr);
+ f.dispatch.onWorker(mgr);f.dispatch.onWorker(mgr);f.dispatch.onWorker(mgr);
+ assert.equal(f.prompted.length,1);
+});
+
+test('removing a child durably cancels its held notice', () => {
+ const dir=mkdtempSync(path.join(tmpdir(),'office-held-remove-'));const file=path.join(dir,'held.json');
+ const f=fixture();f.add(worker('mgr-1','working'));f.dispatch.attachPersist(file);
+ f.dispatch.hold('mgr-1','child-1','obsolete');f.dispatch.onWorkerGone('child-1');
+ const resumed=fixture();resumed.add(worker('mgr-1','idle'));resumed.dispatch.attachPersist(file);
+ resumed.dispatch.onWorker(resumed.workers.get('mgr-1')!);assert.equal(resumed.prompted.length,0);
+});
+
+
+test('restart does not replay an already reported manager done state', () => {
+ const dir=mkdtempSync(path.join(tmpdir(),'office-done-restart-'));const file=path.join(dir,'held.json');
+ const first=fixture({ceo:{name:'Avery',workerId:'ceo-1'},objective:true});
+ first.add(worker('ceo-1','idle'));first.dispatch.attachPersist(file);first.dispatch.onWorker(worker('mgr-1','done'));
+ assert.equal(first.prompted.length,1);
+ const next=fixture({ceo:{name:'Avery',workerId:'ceo-1'},objective:true});next.add(worker('ceo-1','idle'));next.dispatch.attachPersist(file);
+ next.dispatch.onWorker(worker('mgr-1','done'));assert.equal(next.prompted.length,0);
+ next.dispatch.onWorker(worker('mgr-1','working'));next.dispatch.onWorker(worker('mgr-1','done'));assert.equal(next.prompted.length,1);
+});

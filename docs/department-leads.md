@@ -108,3 +108,11 @@ are the front door.
 - The Linear sync backend is owned by another worker; this branch deliberately carries no queue
   assignee/external-id fields.
 - Durable history pages the record; it never replays old turns into the provider's context window.
+
+### Recovery and account boundaries
+
+- Role Conversation open, send, history, streaming and interruption require both current role authority and runtime credential access, matching approvals. A controller cannot silently use another person's subscription.
+- Staff Q&A requires an explicit custodian in accounts mode, including direct floor-service calls. The floor forwards its account sign-ins; only an explicitly configured shared-password office may use the office login.
+- Worker discovery applies the same private-role redaction as the game. An ordinary worker's token does not expose the CEO's prompt or activity.
+- Swap history is copied and deduplicated before the role seat is saved; the source record is retained for recovery. A failed history or identity save leaves the swap reservation available to retry. A retry of a delivered handoff saves the seat without sending a second prompt. Ordinary worker swaps need no role record.
+- Manager completion reports fire once per observed transition, with remembered status across restarts. Removing a child also removes its held notice from durable storage. A project owner may create the first manager; only an unowned project falls back to office-admin setup.
