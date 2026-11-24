@@ -1,0 +1,10 @@
+.voice-failure { width: min(440px, calc(100vw - 24px)); box-sizing: border-box; pointer-events: auto; }
+.voice-failure-heading { display: flex; gap: 12px; align-items: start; }
+.voice-failure-heading strong { flex: 1; overflow-wrap: anywhere; }
+.voice-failure .close { flex: none; padding: 3px 8px; }
+.voice-failure p { margin: 8px 0 12px; font-size: 13px; font-weight: 500; line-height: 1.45; }
+.voice-failure-actions { display: flex; align-items: center; gap: 10px; }
+.voice-failure-actions .btn { flex: none; }
+.voice-failure-feedback { font-size: 12px; font-weight: 500; line-height: 1.35; }
+.voice-failure-dialog { width: min(600px, 100%); }
+.voice-failure-details { display: block; box-sizing: border-box; width: 100%; min-height: 240px; max-height: 55vh; padding: 10px; font: 12px/1.4 monospace; resize: vertical; }

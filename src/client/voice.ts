@@ -1,9 +1,11 @@
 import { VoiceIce, refreshPeerIce } from './voice-ice';
+import { VoicePeerDiagnostics, type VoiceDiagnosticSnapshot } from './voice-diagnostics';
 import type { Net } from './net';
 import { store } from './state';
 
 interface Conn {
   pc: RTCPeerConnection;
+  diagnostics: VoicePeerDiagnostics;
   polite: boolean;
   makingOffer: boolean;
   ignoreOffer: boolean;
@@ -31,7 +33,7 @@ export class Voice {
   private audioCtx: AudioContext | null = null;
   private localAnalyser: AnalyserNode | null = null;
   private listeners = new Set<() => void>();
-  private failListeners = new Set<(peerId: string) => void>();
+  private failListeners = new Set<(peerId: string, details: Promise<VoiceDiagnosticSnapshot>) => void>();
   /** Asking for the mic, so a second join waits for the first instead of asking again. */
   private joining: Promise<string | null> | null = null;
   /** Push to talk is held down: letting go mutes you. */
@@ -64,8 +66,8 @@ export class Voice {
     this.listeners.add(fn);
   }
 
-  /** A peer's call couldn't connect at all: neither direct nor through a TURN relay. */
-  onFailed(fn: (peerId: string) => void) {
+  /** Connection failure, with local evidence; this does not identify its cause. */
+  onFailed(fn: (peerId: string, details: Promise<VoiceDiagnosticSnapshot>) => void) {
     this.failListeners.add(fn);
   }
 
@@ -265,7 +267,7 @@ export class Voice {
     const pc = new RTCPeerConnection({ iceServers: this.ice.servers() });
     const audio = new Audio();
     audio.autoplay = true;
-    const c: Conn = { pc, polite: store.you < id, makingOffer: false, ignoreOffer: false, audio, level: 0 };
+    const c: Conn = { pc, diagnostics: new VoicePeerDiagnostics(pc), polite: store.you < id, makingOffer: false, ignoreOffer: false, audio, level: 0 };
     this.conns.set(id, c);
 
     pc.onnegotiationneeded = async () => {
@@ -284,7 +286,10 @@ export class Voice {
       if (pc.iceConnectionState === 'failed') pc.restartIce();
     };
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed') this.failListeners.forEach((fn) => fn(id));
+      if (pc.connectionState === 'failed') {
+        const details = c.diagnostics.snapshot(this.ice.diagnostics());
+        this.failListeners.forEach((fn) => fn(id, details));
+      }
     };
     pc.ontrack = ({ track, streams }) => {
       const stream = streams[0] ?? new MediaStream([track]);

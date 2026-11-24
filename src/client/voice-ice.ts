@@ -1,4 +1,5 @@
 import type { Net } from './net';
+import type { IssuerState, VoiceIceStatus } from './voice-diagnostics';
 
 /** Scoped to voice peers. No polling while disconnected, no permanent relay password in storage. */
 export class VoiceIce {
@@ -9,10 +10,14 @@ export class VoiceIce {
   private active = false;
   private retryAt = 0;
   private failures = 0;
+  private requestState: IssuerState = 'not-requested';
+  private serverReportedVersion?: string;
   constructor(private net: Net, private fallback: () => RTCIceServer[], private updated: (ice: RTCIceServer[]) => void, private now = Date.now) {
     net.onStatus((up) => { if (!up) this.stop(); });
     net.onMessage((msg) => {
+      if (msg.t === 'welcome') this.serverReportedVersion = msg.version;
       if (msg.t !== 'voice.ice' || msg.requestId !== this.pending?.id) return;
+      this.requestState = msg.error ? 'rejected' : 'received';
       this.failures = 0;
       this.ice = msg.error ? undefined : msg.ice;
       this.expiresAt = msg.expiresAt ?? 0;
@@ -24,15 +29,19 @@ export class VoiceIce {
   servers(): RTCIceServer[] {
     return this.ice && (!this.expiresAt || this.expiresAt > this.now()) ? this.ice : this.fallback();
   }
+  diagnostics(): VoiceIceStatus {
+    return { request: this.requestState, credentials: !this.ice ? 'unavailable' : !this.expiresAt ? 'not-expiring' : this.expiresAt > this.now() ? 'valid' : 'expired', serverReportedVersion: this.serverReportedVersion };
+  }
   async ready() {
     this.active = true;
     if (this.pending) return this.pending.promise;
     if (!this.net.up || this.failures >= 3 || this.now() < this.retryAt || (this.ice && (!this.expiresAt || this.expiresAt - this.now() > 120_000))) return;
     this.retryAt = this.now() + 15_000;
+    this.requestState = 'pending';
     const id = crypto.randomUUID();
     let done!: () => void;
     const promise = new Promise<void>((resolve) => { done = resolve; });
-    const timeout = setTimeout(() => { this.finish(); this.failures++; if (this.active && this.failures < 3) this.schedule(15_000); }, 3000);
+    const timeout = setTimeout(() => { this.requestState = 'timed-out'; this.finish(); this.failures++; if (this.active && this.failures < 3) this.schedule(15_000); }, 3000);
     this.pending = { id, done, promise, timeout };
     this.net.send({ t: 'voice.ice', requestId: id });
     return promise;
@@ -55,6 +64,7 @@ export class VoiceIce {
     this.expiresAt = 0;
     this.retryAt = 0;
     this.failures = 0;
+    this.requestState = 'not-requested';
   }
 }
 
