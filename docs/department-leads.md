@@ -41,21 +41,42 @@ credentials, project settings and user skills are not inherited.
 
 - **Kimi 2.7.2:** verified embedded tool-policy implementation; an isolated config disables all
   tools, ACP declares no MCP servers, and additional approval requests are rejected.
-- **Claude Code 2.1.330:** unavailable. Empty tools and strict MCP flags were verified, but
-  safe/restricted mode does not disable administrator-managed hooks or integrations. A local
-  file check cannot establish effective remote policy. No unverified native adapter is enabled.
-- **Codex 0.171.0-alpha.13:** unavailable. Read-only sandboxing and individual tool flags do not
-  establish a global text-only tool boundary. Office never silently switches providers.
+- **Codex 0.171.0 on Linux, `gpt-6.2-sol` only:** a pinned static model catalog removes shell,
+  patch and model-advertised tools; explicit capability controls remove MCP/apps, hooks,
+  delegation, memory, browser and other action tools. Native dummy transport verified an empty
+  tool catalog and rejection of forged tool calls. No project or source-home configuration is
+  copied. The native CLI receives a fresh home/cwd, strict config, an ephemeral session, and the
+  approved question on stdin. Unknown/unspecified models and changed versions are refused.
+- **Claude Code 2.1.331:** unavailable. `--safe-mode` preserves subscription auth, but a native
+  dummy test demonstrated that managed startup hooks still execute with an empty tool catalog.
+  A local managed `disableAllHooks` setting stops them only when that policy wins; remote policy
+  can override the local source. No Claude Q&A adapter is enabled.
+
+Codex requires an explicit personal custodian even in shared-password offices. Office reads only
+that account's canonical `auth.json`, requires a ChatGPT OAuth login and a consistent account ID,
+and copies only its current access token into native `chatgptAuthTokens` mode. It never copies
+or writes a refresh token, invokes refresh, or changes the canonical sign-in. If fewer than three
+minutes remain, refresh through the custodian's existing native session/sign-in and retry. A
+concurrent native refresh may make an in-flight Q&A fail; retry reads the new snapshot. This
+avoids rotating a disposable copy and losing the owner's renewable login. API keys, PAT/agent
+identity tokens, host-login fallback, inherited provider URLs and custom runtime configuration
+are refused. `CODEX_ACCESS_TOKEN` is not used: this version treats it as PAT/agent identity.
+
+The process has a two-minute deadline and one-megabyte output ceiling; unexpected tool events,
+invalid output, failed auth and cleanup failures return unavailable. Answers enter only the
+separate staff Q&A history. This native no-tools boundary is not advertised as an OS sandbox.
 
 Unsupported-provider messages direct staff to a manager controller. A separate Q&A provider
 choice needs explicit owner authorization and is not implemented. Version checks are refreshed
 at launch, including prerelease suffixes. Temporary Kimi homes are removed on setup failures;
 closure errors return a failure instead of leaving the caller waiting indefinitely.
 
-Only source/help inspection and fake executable tests were used; no paid provider turn or native
-authentication change was performed. Capability references: [Claude CLI](https://code.claude.com/docs/en/cli-reference),
+The Codex adapter also has a loopback-only native dummy-provider regression fixture (see
+`tests/fixtures/codex-qa-native/README.md`). It does not use real credentials or verify live
+subscription acceptance; the fixture performs no paid provider turn or real authentication
+change. Capability references: [Claude CLI](https://code.claude.com/docs/en/cli-reference),
 [managed hook scope](https://code.claude.com/docs/en/settings-reference#disableallhooks), and
-[Codex tool composition](https://github.com/openai/codex/blob/main/codex-rs/core/src/tools/spec_plan.rs).
+[Codex tool composition](https://github.com/openai/codex/blob/rust-v0.171.0/codex-rs/core/src/tools/spec_plan.rs).
 
 ## Talking to the characters
 

@@ -10,6 +10,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import type { Department } from '../shared/protocol.js';
 import { buildQaHome, qaContext, qaLaunch, staffQaAsk, type QaOutcome } from './staff-qa.js';
+import { codexStaffQaAsk } from './staff-qa-codex.js';
 import { qaBaseEnv } from './staff-qa.js';
 import type { RunAs } from './workers/types.js';
 
@@ -36,10 +37,11 @@ export async function floorStaffQA(floor: StaffQaFloor, deptId: string, question
   const provider = dept.policy?.provider ?? dept.lead?.provider;
   const model = dept.policy?.provider ? dept.policy.model : dept.lead?.model;
   const effort = dept.policy?.provider ? dept.policy.effort : dept.lead?.effort;
-  const launch = launchOverride ?? qaLaunch(provider);
+  const launch = launchOverride ?? qaLaunch(provider, model);
   if (typeof launch === 'string') return { ok: false, why: launch };
   // Start with runtime basics only; the selected account adds only its provider credentials.
-  if (provider !== 'kimi') return { ok: false, why: 'No verified tool-free Q&A adapter for this provider.' };
+  if (provider !== 'kimi' && provider !== 'codex') return { ok: false, why: 'No verified tool-free Q&A adapter for this provider.' };
+  if (provider === 'codex' && !custodianId) return { ok: false, why: 'Codex Q&A requires an explicitly authorized personal subscription custodian.' };
   const env = qaBaseEnv();
   delete env.KIMI_CODE_HOME;
   delete env.KIMI_API_KEY;
@@ -50,6 +52,11 @@ export async function floorStaffQA(floor: StaffQaFloor, deptId: string, question
   }
   const context = qaContext({ name: dept.name, brief: dept.brief as { rev: number; text: string }[], lead: dept.lead ? { objective: dept.lead.objective } : undefined, assets: dept.assets });
   const prompt = ['You are the read-only department Q&A desk. Answer from the approved context; do not assign work or claim to be the manager.', context, `Question from ${by}: ${clean}`].join('\n\n');
+  if (provider === 'codex') {
+    const outcome = await codexStaffQaAsk({ file: launch.file, env, prompt, model, effort });
+    recordAnswer(floor, deptId, clean, by, outcome);
+    return outcome;
+  }
   const sourceHome = env.KIMI_CODE_HOME ?? path.join(homedir(), '.kimi-code');
   const framing = [
     'You are a read-only Q&A desk inside Agent Office. You are not the department manager and never speak for them.',

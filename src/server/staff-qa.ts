@@ -1,4 +1,4 @@
-// Isolated staff Q&A. Only Kimi's verified exact-version tool policy is enabled;
+// Isolated staff Q&A. Kimi and Codex have qualified exact-version adapters;
 // providers without a verified isolation boundary fail closed.
 // Account credentials, scratch homes and cleanup are assembled in dept-staff-qa.ts.
 
@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { CODEX_QA_VERSION, codexQaModelProblem } from './staff-qa-codex-config.js';
 import { DshSession } from './dsh.js';
 import { resolveCommand } from './workers/process.js';
 import type { AgentEffort, AgentProvider } from '../shared/providers.js';
@@ -22,7 +23,7 @@ export function qaBaseEnv(): Record<string, string> {
 }
 
 /** Providers whose tool-free mode the office can actually enforce today. Others fail closed. */
-export const QA_SUPPORTED: ReadonlySet<AgentProvider> = new Set(['kimi']);
+export const QA_SUPPORTED: ReadonlySet<AgentProvider> = new Set(['kimi', 'codex']);
 
 /**
  * Kimi versions whose tool-free behavior was VERIFIED on the actual installed binary (the reviewer's
@@ -33,11 +34,11 @@ export const QA_SUPPORTED: ReadonlySet<AgentProvider> = new Set(['kimi']);
 export const QA_VERIFIED_VERSIONS: ReadonlySet<string> = new Set(['2.7.2']);
 
 /** Recheck the installed CLI version on each launch; undefined when it cannot be read. */
-export function cliVersion(file: string): string | undefined {
+export function cliVersion(file: string, env?: NodeJS.ProcessEnv): string | undefined {
   // Recheck on each launch: a CLI can auto-update in place.
   let found: string | undefined;
   try {
-    const out = execFileSync(file, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] });
+    const out = execFileSync(file, ['--version'], { env, encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] });
     found = /(\d+\.\d+\.\d+(?:-[\w.-]+)?)/.exec(out)?.[1];
   } catch {
     found = undefined;
@@ -82,8 +83,16 @@ export function buildQaHome(sourceHome: string, framing: string): { home: string
 }
 
 /** The launch for a department's Q&A: its configured engine's CLI — never an arbitrary PATH binary. */
-export function qaLaunch(provider: AgentProvider | undefined): { file: string; args: string[] } | string {
-  if (provider === 'codex') return 'Codex has no verified global zero-tools Q&A mode in Office. Ask a manager controller for help. Office will not switch your provider automatically.';
+export function qaLaunch(provider: AgentProvider | undefined, model?: string): { file: string; args: string[] } | string {
+  if (provider === 'codex') {
+    const problem = codexQaModelProblem(model);
+    if (problem) return problem;
+    if (process.platform !== 'linux') return 'Isolated Codex Q&A is currently qualified on Linux only. Office will not switch your provider automatically.';
+    const file = resolveCommand('codex');
+    if (!file) return 'The Codex CLI is not installed on this office machine.';
+    if (cliVersion(file, qaBaseEnv()) !== CODEX_QA_VERSION) return `Isolated Codex Q&A requires exactly ${CODEX_QA_VERSION}. Office will not switch your provider automatically.`;
+    return { file, args: [] };
+  }
   if (provider === 'claude') return 'Claude has no verified isolated Q&A mode in Office: managed hooks and MCP can remain active. Ask a manager controller for help. Office will not switch your provider automatically.';
   if (provider !== 'kimi') return `Read-only staff Q&A has no verified tool-free adapter for ${provider ?? 'an unconfigured manager'}.`;
   const file = resolveCommand('kimi');

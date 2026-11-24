@@ -481,7 +481,7 @@ Retired role workers retain their private-role access rules after an engine swap
 
 Engine swaps wait for server confirmation; an interrupted role update can be retried with **Finish role swap** without repeating its handoff.
 
-Staff Q&A currently supports verified Kimi2.7.2 only. Claude and Codex report why isolated Q&A is unavailable and direct staff to a manager controller; providers never switch automatically. See [Q&A capabilities](docs/department-leads.md#staff-qa--isolated-from-the-manager).
+Staff Q&A supports verified Kimi 2.7.2 and, on Linux, Codex 0.171.0 with explicitly selected `gpt-6.2-sol`. Codex uses the consenting custodian’s personal ChatGPT access token, without copying refresh credentials; expired or unsupported sign-ins fail closed. Claude remains unavailable because managed startup hooks can run outside its tool restrictions. Models and providers never switch automatically. See [Q&A capabilities](docs/department-leads.md#staff-qa--isolated-from-the-manager).
 Shared department managers use explicit subscription consent in **Roles**: the named custodian approves the exact project, department, provider and controllers, including same-provider department workers. Staff Q&A is a separate optional consent. Personal workers and private CEOs retain their ownership rules.
 
 Project CEOs and department managers are permanent: pause/continue in Conversation preserves the identity and history. Explicit autonomy settings now select verified provider modes at the next process start; the Roles view distinguishes saved policy from the current launch. See [role autonomy](docs/department-leads.md#runtime-autonomy).
