@@ -1,6 +1,6 @@
 // Applying a harness is a managed-file sync, not a mirror of the provider home. Only files this
 // service previously wrote may be replaced/retired, and only while their hash still matches.
-import { constants, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, constants, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { readHarnessSource } from './harness-history/paths.js';
@@ -142,7 +142,9 @@ export class HarnessSync {
         try {
           const content = desired.get(change.path)!;
           const mode = change.before === null ? content.mode : lstatSync(file).mode & 0o777;
-          writeFileSync(temp, content.bytes, { flag: 'wx', mode }); renameSync(temp, file);
+          writeFileSync(temp, content.bytes, { flag: 'wx', mode });
+          chmodSync(temp, mode); // File creation applies umask; preserve the explicitly selected source/local mode.
+          renameSync(temp, file);
         }
         finally { rmSync(temp, { force: true }); }
         result.written++;
