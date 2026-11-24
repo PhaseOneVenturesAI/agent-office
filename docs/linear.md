@@ -84,6 +84,11 @@ is atomically replaced with mode 0600. Tokens are never returned in public state
 One service performs sync; refreshing credentials is single-flight. OAuth reconnect
 is restricted to the configured owner and expected organization.
 
+Task creation, editing and reassignment recheck current authority after waiting for
+sync. User edits and conflict decisions enter the in-memory outbox only after their
+atomic save succeeds. A failed save leaves the prior pending work intact and cannot
+silently send the rejected action on the next sync.
+
 Incoming requests require a valid HMAC-SHA256 of the raw bytes, signed timestamp,
 workspace UUID and delivery UUID. Accepted events are persisted before acknowledgement;
 processing is asynchronous. Every three minutes, paginated incremental polling with an

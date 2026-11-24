@@ -92,22 +92,26 @@ export class LinearService {
     if (Object.keys(patch).some((k) => !['title','description','assigneeId','stateId'].includes(k))) throw new Error('Unsupported task field');
     await this.sync?.run();
     task = floor.queue.state().tasks.find((t) => t.id === taskId);
-    if (taskId && (!task?.linear || (!manage && task.linear.accountId !== account))) throw new Error('Task assignment changed; refresh the board');
+    const currentDept = task?.linear?.departmentId ?? departmentId;
+    const currentManage = this.canManage(account, floorId, currentDept, taskId ? 'edit' : 'create', taskId);
+    if (taskId && (!task?.linear || (!currentManage && task.linear.accountId !== account))) throw new Error('Task assignment or control permission changed; refresh the board');
+    if (!taskId && !currentManage) throw new Error('Task creation permission changed; refresh the board');
+    if ('assigneeId' in patch && !this.canManage(account, floorId, currentDept, 'assign', taskId)) throw new Error('Task assignment permission changed; refresh the board');
     if (taskId && revision !== undefined && task?.linear?.updatedAt !== revision) throw new Error('This task changed while you were editing. Refresh and review the new version');
-    if (taskId && task?.linear?.accountId !== account && !this.canManage(account, floorId, task?.linear?.departmentId, 'edit', taskId)) throw new Error('Task control permission changed');
     if (task?.linear?.archived) throw new Error('Reopen this task in Linear first');
     const issueId = task?.linear?.issueId ?? randomUUID(), id = task?.id ?? randomBytes(6).toString('hex');
     const pending = this.store.data.outbox.find((o) => o.issueId === issueId);
     if (pending?.conflict && !resolution) throw new Error('Resolve the conflicting changes first');
-    if (resolution === 'remote') { this.store.data.outbox = this.store.data.outbox.filter((o) => o !== pending); this.store.data.lastSync = undefined; this.store.save(); void this.sync?.run(); return; }
+    if (resolution === 'remote') { this.store.save({ ...this.store.data, outbox: this.store.data.outbox.filter((o) => o !== pending), lastSync: undefined }); void this.sync?.run(); return; }
     if (!task && !patch.title) throw new Error('Give the task a title');
     const base = this.store.data.bases[issueId] ?? { title: '', description: '', assigneeId: null, stateId: map.states.todo ?? '' };
     const next = { ...(pending?.patch ?? {}), ...patch };
-    this.store.data.outbox = [...this.store.data.outbox.filter((o) => o !== pending), { floorId, taskId: id, issueId, create: !task || pending?.create, base, patch: next }];
-    this.store.data.links[issueId] = { floorId, taskId: id, departmentId: dept };
-    this.store.save();
+    this.store.save({ ...this.store.data,
+      outbox: [...this.store.data.outbox.filter((o) => o !== pending), { floorId, taskId: id, issueId, create: !task || pending?.create, base, patch: next }],
+      links: { ...this.store.data.links, [issueId]: { floorId, taskId: id, departmentId: currentDept } },
+    });
     if (task?.linear) floor.queue.upsertLinear(task.id, next.title ?? task.title, next.description ?? task.prompt, { ...task.linear, pending: true, conflict: undefined });
-    if (!task) floor.queue.upsertLinear(id, next.title!, next.description ?? '', { departmentId: dept, organizationId: this.store.data.organization!.id, issueId, teamId: map.teamId, identifier: 'Pending sync', url: '', stateId: next.stateId ?? base.stateId, stateName: 'Pending sync', workStatus: 'todo', updatedAt: '', pending: true });
+    if (!task) floor.queue.upsertLinear(id, next.title!, next.description ?? '', { departmentId: currentDept, organizationId: this.store.data.organization!.id, issueId, teamId: map.teamId, identifier: 'Pending sync', url: '', stateId: next.stateId ?? base.stateId, stateName: 'Pending sync', workStatus: 'todo', updatedAt: '', pending: true });
     void this.sync?.run();
   }
   webhook(raw: Buffer, signature: string, delivery: string) {
