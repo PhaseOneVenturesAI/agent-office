@@ -131,8 +131,10 @@ export function mountHud(actions: HudAction[], settings: Settings, save: () => v
     const workers = [...store.workers.values()];
     // Hired onto desks, bean bags and the meeting room's table; the board agents at their kiosks don't count.
     const hired = workers.filter((w) => !DESK_BY_ID.get(w.deskId)?.station).length;
+    const boardAgents = workers.length - hired;
     const waiting = workers.filter(waitingOnSomeone).length;
-    const workersTitle = hired || waiting ? `${hired} worker${hired === 1 ? '' : 's'} on this floor${waiting ? `, ${waiting} waiting on someone` : ''}` : 'No workers on this floor yet';
+    const occupants = [hired ? `${hired} worker${hired === 1 ? '' : 's'}` : '', boardAgents ? `${boardAgents} board agent${boardAgents === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ');
+    const workersTitle = occupants ? `${occupants} on this floor${waiting ? `, ${waiting} waiting on someone` : ''}` : 'No workers on this floor yet';
     // Who's waiting has its own button on the bar (the 'waiting' action), so this just counts them.
     items.push(panelChip('workers', '🤖', 'Workers', hired, workersTitle));
     // Redrawn only when it looks different, so a busy worker's updates don't swap a button out from under a click.
