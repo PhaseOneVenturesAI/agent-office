@@ -37,6 +37,7 @@ export const tuneById = (id: string): JukeboxTune | undefined => JUKEBOX_TUNES.f
 /** What's on, for the hint bar and the jukebox's own display: a tune's title, or where the stream comes from. */
 export function trackTitle(s: Pick<JukeboxState, 'track' | 'url'>): string {
   if (s.track !== STREAM) return tuneById(s.track)?.title ?? 'A tune';
+  if (youtubeId(s.url)) return 'YouTube video';
   try {
     const u = new URL(s.url ?? '');
     const file = decodeURIComponent(u.pathname.split('/').filter(Boolean).pop() ?? '');
@@ -58,4 +59,26 @@ export function checkStreamUrl(raw: unknown): { url: string } | { error: string 
   }
   if (u.protocol !== 'https:' && u.protocol !== 'http:') return { error: 'Only http and https links can play on the jukebox' };
   return { url: u.href };
+}
+
+/**
+ * The video in a YouTube link (watch, youtu.be, shorts, live, embed or music.youtube.com), or null for
+ * anything else. A YouTube link is a web page, not audio, so the jukebox plays it through YouTube's player.
+ */
+export function youtubeId(raw: unknown): string | null {
+  let u: URL;
+  try {
+    u = new URL(typeof raw === 'string' ? raw.trim() : '');
+  } catch {
+    return null;
+  }
+  const host = u.hostname.toLowerCase().replace(/^(www|m|music)\./, '');
+  const parts = u.pathname.split('/').filter(Boolean);
+  let id: string | null | undefined;
+  if (host === 'youtu.be') id = parts[0];
+  else if (host === 'youtube.com' || host === 'youtube-nocookie.com') {
+    if (parts[0] === 'watch') id = u.searchParams.get('v');
+    else if (['shorts', 'live', 'embed', 'v'].includes(parts[0] ?? '')) id = parts[1];
+  }
+  return id && /^[\w-]{11}$/.test(id) ? id : null;
 }
