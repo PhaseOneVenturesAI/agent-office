@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac, randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { TaskQueue, type QueueWorkers } from '../src/server/queue.js';
@@ -168,6 +168,47 @@ test('stale browser revisions cannot silently overwrite newer Linear edits', asy
   item.title = 'Updated elsewhere'; item.updatedAt = new Date(Date.now() + 60000).toISOString();
   await assert.rejects(f.service.edit('ivan', 'floor', task.id, { title: 'Old browser edit' }, undefined, undefined, revision), /changed while/);
   assert.equal(item.title, 'Updated elsewhere'); assert.equal(f.service.store.data.outbox.length, 0);
+});
+
+test('a controller revoked during sync cannot create project work', async (t) => {
+  let authorized = true;
+  const f = fixture(t, (account, scope) => authorized && account === 'eddie' && scope.departmentId === 'development');
+  t.mock.method(f.service.sync!, 'run', async () => { authorized = false; });
+  await assert.rejects(f.service.edit('eddie', 'floor', undefined, { title: 'Revoked request' }, undefined, 'development'), /permission changed/);
+  assert.equal(f.service.store.data.outbox.length, 0);
+  assert.equal(f.queue.state().tasks.length, 0);
+});
+
+test('an assignee whose controller role is revoked during sync cannot reassign their task', async (t) => {
+  let authorized = true;
+  const f = fixture(t, (account, scope) => authorized && account === 'ivan' && scope.departmentId === 'development');
+  const item = issue(); f.remote.set(item.id, item);
+  f.service.store.data.links[item.id] = { floorId: 'floor', taskId: 'dev-task', departmentId: 'development' };
+  await f.service.sync!.run();
+  t.mock.method(f.service.sync!, 'run', async () => { authorized = false; });
+  await assert.rejects(f.service.edit('ivan', 'floor', 'dev-task', { assigneeId: 'eddie-linear' }), /permission changed/);
+  assert.equal(f.service.store.data.outbox.length, 0);
+  assert.equal(f.queue.state().tasks[0].linear?.accountId, 'ivan');
+});
+
+test('failed Linear task saves cannot execute later from memory or after restart', async (t) => {
+  for (const existing of [false, true]) await t.test(existing ? 'edit existing task' : 'create task', async (t) => {
+    const f = fixture(t), item = issue(), originalTitle = item.title;
+    if (existing) { f.remote.set(item.id, item); await f.service.sync!.run(); }
+    const task = f.queue.state().tasks[0], before = structuredClone(f.service.store.data);
+    const sync = t.mock.method(f.service.sync!, 'run', async () => {});
+    // A real filesystem failure at the atomic-write path, without touching real Office state.
+    mkdirSync(path.join(f.dir, 'linear.json.tmp'));
+    await assert.rejects(f.service.edit('owner', 'floor', task?.id, { title: 'Must not be sent' }), /EISDIR/);
+    assert.deepEqual(f.service.store.data, before);
+    assert.equal(new LinearStore(f.dir).data.outbox.length, 0);
+    rmSync(path.join(f.dir, 'linear.json.tmp'), { recursive: true }); sync.mock.restore();
+    await f.service.sync!.run();
+    assert.equal(f.calls.some((c) => /issueCreate|issueUpdate/.test(c.query)), false);
+    assert.equal(f.remote.size, existing ? 1 : 0);
+    if (existing) assert.equal(f.remote.get(item.id)?.title, originalTitle);
+    else assert.equal(f.queue.state().tasks.length, 0);
+  });
 });
 
 test('reassignment withdraws an approved run that is still queued rather than billing the previous employee', async (t) => {

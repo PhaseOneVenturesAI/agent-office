@@ -25,10 +25,11 @@ export class LinearStore {
     this.data = existsSync(this.file) ? JSON.parse(readFileSync(this.file, 'utf8')) : { people: [], teams: [], mappings: [], userMap: {}, links: {}, bases: {}, outbox: [], inbox: {}, deliveries: [] };
     this.data.links ??= {};
   }
-  save() {
+  save(next: LinearData = this.data) {
     const tmp = `${this.file}.tmp`;
-    writeFileSync(tmp, JSON.stringify(this.data), { mode: 0o600 });
+    writeFileSync(tmp, JSON.stringify(next), { mode: 0o600 });
     renameSync(tmp, this.file); // Fail loudly: never acknowledge a task or token rotation we didn't persist.
+    this.data = next; // Staged user actions become visible to sync only after persistence succeeds.
   }
 }
 export const fields = (i: LinearIssue): IssueFields => ({ title: i.title, description: i.description ?? '', assigneeId: i.assignee?.id ?? null, stateId: i.state.id });
