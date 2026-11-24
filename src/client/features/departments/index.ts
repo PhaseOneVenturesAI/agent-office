@@ -58,6 +58,7 @@ export function installDepartments(ctx: Ctx) {
         model.root.userData.interact = it; world.interactables.push(it);
         view = { model, badge, it, world, name: role.name }; avatars.set(role.key, view);
       }
+      view.model.setRole(role.department ? { kind: 'manager', department: store.departments.departments.find(d => d.id === role.department)?.name ?? role.title.replace(/ manager$/i, '') } : { kind: 'ceo' });
       const sharedHome = roles.filter(r => r.deskId === role.deskId && !workerFor(r)).map(r => r.key).sort().indexOf(role.key);
       const occupied = !!store.workerAtDesk(role.deskId);
       if (occupied || sharedHome > 0) {

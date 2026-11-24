@@ -92,7 +92,11 @@ session stays the bounded execution context), clickable artifact links, supporte
 choices, and honest status labels (turn ended ≠ reviewed; stopped ≠ completed). Unsupported questions
 open in Terminal. Dictation and read-aloud reuse the existing browser speech and say so.
 
-Off-shift characters use the existing worker appearance and desks on the original map. Each role's
+Off-shift characters use the existing worker appearance and desks on the original map.
+Gold nameplates identify the CEO (with a small crown) and each department manager, whether
+active or off shift. The role and personal name appear once; a default name such as `CEO` or
+`MarketingManager` does not repeat the title. Regular worker tags keep their existing colors.
+Nameplate sprites and textures are reused until the displayed name or role changes. Each role's
 display home is retained in `.agent-office/role-homes.json`: first from its retained worker's seat,
 otherwise from an existing built department/office desk. It is a display reference, not a runtime
 worker or reserved seat. If the desk is occupied, the character stands beside it; shared home

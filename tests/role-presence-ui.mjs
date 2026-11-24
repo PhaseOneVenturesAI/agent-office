@@ -14,7 +14,7 @@ import * as THREE from '/@fs/${process.cwd()}/node_modules/three/build/three.mod
 import {buildOffice} from '/world/office/build.ts'; import {officeWorld} from '/world/world.ts';
 import {store} from '/state/index.ts'; import {installDepartments} from '/features/departments/index.ts';
 import {installWorkerActions} from '/features/workers/actions.ts'; import {installPointer} from '/input/pointer.ts';
-import {Messages,Interactions,Ticks,Usables} from '/core/registry.ts'; import {Worker} from '/world/character/index.ts';
+import {Messages,Interactions,Ticks,Usables} from '/core/registry.ts'; import {Worker} from '/world/character/index.ts'; import {nameplateRoleForWorker} from '/world/character/worker-nameplate.ts';
 const scene=new THREE.Scene();scene.background=new THREE.Color('#cbdfe5');const office=buildOffice();scene.add(office.group);
 const world=officeWorld(office,()=>false,()=>0);let currentWorld=world;
 scene.add(new THREE.HemisphereLight('#fff8e8','#6c8595',2));const sun=new THREE.DirectionalLight('#fff3db',2);sun.position.set(-4,18,9);scene.add(sun);
@@ -37,7 +37,9 @@ addEventListener('keydown',e=>{if(e.code==='KeyT'||e.code==='KeyE')pointer.use(p
 const focus=key=>{const view=presence.avatars.get(key);const role=window.roles.find(r=>r.key===key);const desk=world.desks.get(role.deskId);const at=view?view.model.root.getWorldPosition(new THREE.Vector3()):desk.seatAnchor.getWorldPosition(new THREE.Vector3());player.pos.set(at.x,0,at.z);camera.position.set(at.x-1,at.y+3.2,at.z-4.7);camera.lookAt(at.x,at.y+.8,at.z);camera.updateMatrixWorld();return at};
 window.focusRole=focus;window.presence=presence;window.store=store;window.receive=receive;window.world=world;window.ctx=ctx;
 window.update=()=>{store.emit('ceo');store.emit('departments');store.emit('workers')};
-window.makeActive=(key,provider='kimi')=>{const role=window.roles.find(r=>r.key===key);const id='active-'+key;const record={id,kind:'agent',provider,status:'idle',deskId:role.deskId,name:role.name,color:'#2b6f4e',viewers:[],viewerIds:[],acked:true,createdBy:'Owner',createdAt:1,cols:80,rows:24};store.workers.set(id,record);if(key==='ceo')store.ceo.ceo.workerId=id;else store.departments.departments.find(d=>d.id===role.department).lead.workerId=id;Object.assign(role,{workerId:id,talk:true,start:false});const model=new Worker(role.name,'#2b6f4e');model.setStatus('idle',false);world.desks.get(role.deskId).seatAnchor.add(model.root);window.update();return id};
+window.activeModels=new Map();
+window.tagFor=key=>{const model=presence.avatars.get(key)?.model??window.activeModels.get(key);return model?.root.children.find(c=>c.userData.nameplate)};
+window.makeActive=(key,provider='kimi')=>{const role=window.roles.find(r=>r.key===key);const id='active-'+key;const record={id,kind:'agent',provider,status:'idle',deskId:role.deskId,name:role.name,color:'#2b6f4e',viewers:[],viewerIds:[],acked:true,createdBy:'Owner',createdAt:1,cols:80,rows:24};store.workers.set(id,record);if(key==='ceo')store.ceo.ceo.workerId=id;else store.departments.departments.find(d=>d.id===role.department).lead.workerId=id;Object.assign(role,{workerId:id,talk:true,start:false});const model=new Worker(role.name,'#2b6f4e');model.setStatus('idle',false);model.setRole(nameplateRoleForWorker(id,store.ceo.ceo,store.departments.departments));window.activeModels.set(key,model);world.desks.get(role.deskId).seatAnchor.add(model.root);window.update();return id};
 window.connection=up=>{net.up=up;for(const f of statuses)f(up)};
 window.changeFloor=()=>{store.floor='other-floor';window.roles=[];store.ceo={};store.departments={departments:[],sources:[]};store.workers.clear();store.emit('floor');window.update()};
 window.switchWorld=()=>{currentWorld=currentWorld===world?{...world,desks:new Map(),interactables:[]}:world};
@@ -48,7 +50,14 @@ window.update();let first=true;const frame=()=>{ticks.run({dt:1/60,t:performance
   await page.waitForFunction(() => window.presence?.avatars.size === 4);
   assert.equal(await page.evaluate(() => window.store.workers.size), 0);
   await page.waitForTimeout(400);
+  assert.deepEqual(await page.evaluate(()=>window.tagFor('ceo').userData.nameplate),{name:'Avery',title:'CEO',crown:true,role:'ceo'});
+  assert.equal(await page.evaluate(()=>window.tagFor('manager:dev').userData.nameplate.title),'Product Manager');
+  const tagIds=await page.evaluate(()=>window.roles.map(r=>[window.tagFor(r.key).uuid,window.tagFor(r.key).material.map.uuid]));
+  await page.evaluate(()=>{for(let n=0;n<20;n++)window.update()});await page.waitForTimeout(100);
+  assert.deepEqual(await page.evaluate(()=>window.roles.map(r=>[window.tagFor(r.key).uuid,window.tagFor(r.key).material.map.uuid])),tagIds);
+
   await page.screenshot({animations: 'disabled', path: out+'/office-off-shift-desktop.png' });
+  await page.evaluate(()=>window.focusRole('manager:dev'));await page.waitForTimeout(100);await page.screenshot({path:out+'/gold-manager-desktop.png'});await page.evaluate(()=>window.focusRole('ceo'));
   // Real raycast click opens a character, never a hire or a provider call.
   const point = await page.evaluate(() => window.clickPoint('ceo'));
   await page.mouse.click(point.x, point.y);
@@ -81,6 +90,8 @@ window.update();let first=true;const frame=()=>{ticks.run({dt:1/60,t:performance
   // Runtime replaces presence exactly once and desk E routes directly into existing Conversation.
   await page.evaluate(()=>window.makeActive('ceo','claude'));
   await page.waitForFunction(()=>window.presence.avatars.size===3);
+  assert.equal(await page.evaluate(()=>window.tagFor('ceo').userData.nameplate.role),'ceo');
+  await page.screenshot({path:out+'/gold-ceo-active-desktop.png'});
   for(const provider of ['claude','codex','kimi']){
     await page.evaluate(provider=>{const id=window.roles[0].workerId;window.store.workers.get(id).provider=provider;window.ctx.interactions.use(window.world.interactables.find(it=>it.kind==='desk'&&it.deskId==='desk-1'),'E',null)},provider);
     await page.getByRole('dialog',{name:'Avery conversation',exact:true}).waitFor();
@@ -117,7 +128,20 @@ window.update();let first=true;const frame=()=>{ticks.run({dt:1/60,t:performance
   // Map and floor changes dispose old hit targets; returning to the map restores presence.
   await page.evaluate(()=>window.switchWorld());await page.waitForFunction(()=>window.presence.avatars.size===0);
   await page.evaluate(()=>window.switchWorld());await page.waitForFunction(()=>window.presence.avatars.size===3);
+
+  // Active manager uses the same gold label; role-only names never double up, including after reconnect.
+  await page.evaluate(()=>{window.roles.forEach((r,i)=>r.deskId='desk-'+(i+1));window.update()});
+  await page.evaluate(()=>document.getElementById('toasts').replaceChildren());
+  await page.evaluate(()=>window.makeActive('manager:dev','codex'));await page.waitForFunction(()=>window.presence.avatars.size===2);
+  await page.evaluate(()=>window.focusRole('manager:dev'));await page.waitForTimeout(100);
+  await page.screenshot({path:out+'/gold-manager-active-390.png'});
+  assert.equal(await page.evaluate(()=>window.tagFor('manager:dev').userData.nameplate.title),'Product Manager');
+  await page.evaluate(()=>{const model=window.activeModels.get('ceo');model.setName('CEO');window.connection(false);window.connection(true);window.update()});
+  assert.deepEqual(await page.evaluate(()=>window.tagFor('ceo').userData.nameplate),{name:'CEO',crown:true,role:'ceo'});
+  await page.evaluate(()=>{const r=window.roles.find(r=>r.department==='marketing');r.name='MarketingManager';window.update()});await page.waitForTimeout(100);
+  assert.deepEqual(await page.evaluate(()=>window.tagFor('manager:marketing').userData.nameplate),{name:'Marketing Manager',crown:false,role:'manager'});
+  await page.setViewportSize({width:1440,height:1000});await page.evaluate(()=>window.focusRole('manager:dev'));await page.waitForTimeout(100);await page.screenshot({path:out+'/gold-manager-active-desktop.png'});
   await page.evaluate(()=>window.changeFloor());await page.waitForFunction(()=>window.presence.avatars.size===0);
   assert.equal(await page.evaluate(()=>window.world.interactables.filter(it=>it.kind==='role').length),0);
-  assert.deepEqual(errors,[]);console.log('PASS original-map role presence, click/E/T, explicit launch, isolated Ask, all-provider Conversation, privacy, occupied homes, map/floor cleanup, desktop + 390px');
+  assert.deepEqual(errors,[]);console.log('PASS original-map role presence, click/E/T, explicit launch, isolated Ask, all-provider Conversation, privacy, occupied homes, map/floor cleanup, cached gold role tags, desktop + 390px');
 } finally {await browser.close();await server.close()}
