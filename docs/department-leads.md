@@ -147,8 +147,8 @@ Verified installed modes:
 
 | Provider | Automatic | Manual (`off` / `supervised`) |
 | --- | --- | --- |
-| Claude Code 2.1.330 | `--permission-mode auto` | `--permission-mode manual` |
-| Codex 0.171.0-alpha.13 | `--approve-for-me --sandbox workspace-write` | `--ask-for-approval on-request --sandbox read-only` |
+| Claude Code 2.1.330 / 2.1.331 | `--permission-mode auto` | `--permission-mode manual` |
+| Codex 0.171.0-alpha.13 / 0.171.0 | `--approve-for-me --sandbox workspace-write` | `--ask-for-approval on-request --sandbox read-only` |
 | Kimi 2.7.2 ACP | `session/set_mode` with `auto` | `session/set_mode` with `default` |
 
 Kimi's ACP subcommand ignores root `--yolo` and `--auto` flags. ACP advertises `auto` for safe
@@ -171,3 +171,5 @@ For agents, desk **E**, the workers sidebar and waiting notifications open Conve
 Roles settings are saved explicitly and confirmed by a correlated server response. Rejected saves retain the entered values and show an inline error; typing a newer draft while a save is pending does not make that draft “saved.” Worker and department updates preserve the mounted editors, focus, pending staff question and unsubmitted consent choice. A changed consent scope is fetched again for review rather than silently authorizing its new people/provider. Ask refusals and provider failures end the pending indicator with an inline reason and retain the question for retry.
 
 Requested autonomy and current-session launch settings are displayed separately. Saving a preference does not claim to change an existing process. Legacy unconfirmed labels are identified as such and need an explicit save. Runtime launch details come from the provider adapter; missing details remain “not reported,” not an inferred effective permission mode.
+
+The 23 November 2026 deployment check inspected Claude 2.1.331 and Codex 0.171.0 help on the actual VPS. Both retain the launch modes above. These exact versions are accepted alongside the earlier inspected versions; unknown versions and conflicting permission flags still fail closed. This verifies the requested launch configuration, not runtime permission acknowledgment or isolated staff Q&A support.
