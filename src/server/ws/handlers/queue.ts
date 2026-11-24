@@ -1,3 +1,6 @@
+import { canUseWorker, OWN_WORKER } from '../../worker-ownership.js';
+import type { Ctx } from '../../office/context.js';
+import type { Client } from '../../office/client.js';
 // The floor's task queue: adding, moving and retrying tasks, and how many workers it keeps busy.
 import { isAgentEffort, isAgentProvider, type QueueClientMsg } from '../../../shared/protocol.js';
 import { OPEN_CODE_MODEL_MAX } from '../../../shared/providers.js';
@@ -6,6 +9,16 @@ import { here } from './common.js';
 import type { HandlerMap, ViewPieces } from './types.js';
 
 export const queueView: ViewPieces['queue'] = (_ctx, floor) => floor?.queue.state() ?? { tasks: [], maxWorkers: 0 };
+
+function ownTask(ctx: Ctx, c: Client, id: string, quietMissing = false) {
+  const floor = here(ctx, c);
+  const task = floor?.queue.state().tasks.find((t) => t.id === id);
+  if (!floor || !task) { if (!quietMissing) ctx.warn(c, 'No such task'); return; }
+  if (!canUseWorker(ctx, c.accountId, task.owner, task.provider ?? floor.workers.defaultProvider)) {
+    ctx.warn(c, OWN_WORKER); return;
+  }
+  return floor;
+}
 
 export const queueHandlers = {
   'queue.add'(ctx, c, msg) {
@@ -27,20 +40,23 @@ export const queueHandlers = {
     });
   },
   'queue.remove'(ctx, c, msg) {
-    const floor = here(ctx, c);
+    const floor = ownTask(ctx, c, str(msg.taskId, 32));
     if (floor) ctx.warn(c, floor.queue.remove(str(msg.taskId, 32)));
   },
   'queue.move'(ctx, c, msg) {
-    ctx.floorOf(c)?.queue.move(str(msg.taskId, 32), num(msg.delta) < 0 ? -1 : 1);
+    ownTask(ctx, c, str(msg.taskId, 32), true)?.queue.move(str(msg.taskId, 32), num(msg.delta) < 0 ? -1 : 1);
   },
   'queue.retry'(ctx, c, msg) {
-    const floor = here(ctx, c);
+    const floor = ownTask(ctx, c, str(msg.taskId, 32));
     if (floor) ctx.warn(c, floor.queue.retry(str(msg.taskId, 32)));
   },
   'queue.clear'(ctx, c) {
-    ctx.floorOf(c)?.queue.clear();
+    const floor = here(ctx, c);
+    if (floor?.queue.state().tasks.some((t) => !canUseWorker(ctx, c.accountId, t.owner, t.provider ?? floor.workers.defaultProvider))) return ctx.warn(c, 'Clear only your own tasks individually; this queue also contains other accounts’ work.');
+    floor?.queue.clear();
   },
   'queue.limit'(ctx, c, msg) {
+    if (!ctx.meOf(c.accountId).admin) return ctx.warn(c, 'Only an admin can change the shared queue limit');
     ctx.floorOf(c)?.queue.setLimit(num(msg.maxWorkers));
   },
 } satisfies HandlerMap<QueueClientMsg>;
