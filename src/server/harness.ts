@@ -10,13 +10,13 @@
 // Everything is jailed to the root: a path with `..`, an absolute path, a file over the size cap
 // or an extension an agent never reads is turned away.
 
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import type { HarnessFile, HarnessState } from '../shared/protocol.js';
 import { HarnessSources, allowedHarnessSource, type HarnessChange } from './harness-history/index.js';
 import { harnessSourcePath, readHarnessSource } from './harness-history/paths.js';
-import { composeHarness, HarnessSync } from './harness-sync.js';
 
 /** The file kinds an agent's instructions and skills are made of. */
 const EXTENSIONS = new Set(['.md', '.txt', '.json', '.toml', '.yaml', '.yml']);
@@ -128,14 +128,14 @@ export class Harness {
   /**
    * Pushes equivalent shared defaults and overlays shared skill files into the office's own and
    * every account's agent homes. Changed files get unique backups; unrelated files are retained.
-   * Accounts that opted out are skipped. Retired unchanged managed outputs are backed up; local edits conflict.
+   * Accounts that opted out are skipped. This is a one-way push, not deletion sync.
    * Returns a line for the toast.
    */
   apply(by: string): string {
+    const skills = path.join(this.root, 'skills');
     const instructions = this.instructions();
-    const sync = new HarnessSync(this.dataDir);
-    const conflicts: string[] = [];
-    let retired = 0;
+    const backup = `.harness-${Date.now()}-${randomBytes(4).toString('hex')}.bak`;
+    let skippedFiles = 0;
     // One entry per home: Claude gets CLAUDE.md, Kimi and Codex get AGENTS.md; all get skills/.
     const targets: { dir: string; instructions: 'CLAUDE.md' | 'AGENTS.md' }[] = [];
     const office = this.officeHomes();
@@ -156,11 +156,10 @@ export class Harness {
     } catch {
       // no accounts yet: just the office's own
     }
-    // Validate all sources before applying the first target. An unsafe source is not a deletion.
-    const previews = targets.map((t) => sync.preview(t.dir, this.root, t.instructions, instructions));
-    for (const [i, t] of targets.entries()) {
-      const result = sync.apply(t.dir, this.root, t.instructions, instructions, previews[i]);
-      conflicts.push(...result.conflicts); retired += result.retired;
+    for (const t of targets) {
+      if (!pushDirectory(t.dir)) { skippedFiles++; continue; }
+      if (instructions !== undefined && !pushFile(path.join(t.dir, t.instructions), Buffer.from(instructions), backup)) skippedFiles++;
+      if (existsSync(skills)) skippedFiles += pushSkills(skills, path.join(t.dir, 'skills'), backup);
     }
     this.applied = { by, at: Date.now(), homes: targets.length };
     try {
@@ -171,13 +170,73 @@ export class Harness {
     this.onChange();
     const homes = accounts + 1;
     const note = skipped ? `, ${skipped} running their own` : '';
-    const skippedNote = conflicts.length ? `; skipped ${conflicts.length} conflict(s), files preserved: ${[...new Set(conflicts)].slice(0, 3).join('; ')}` : '';
-    return `pushed shared defaults to ${homes} agent home${homes === 1 ? '' : 's'} (Claude, Kimi and Codex${note}) — workers pick it up on their next start; changed files backed up, ${retired} retired managed file(s), unrelated files retained${skippedNote}`;
+    const skippedNote = skippedFiles ? `; skipped ${skippedFiles} symlink or non-file/directory path(s)` : '';
+    return `pushed shared defaults to ${homes} agent home${homes === 1 ? '' : 's'} (Claude, Kimi and Codex${note}) — workers pick it up on their next start; changed files backed up, unrelated files retained${skippedNote}`;
   }
 
   /** Identical defaults for every provider. Never inject project/taste/history files by glob. */
-  private instructions(): string | undefined { return composeHarness(this.sources().root, SHARED_INSTRUCTIONS); }
+  private instructions(): string | undefined {
+    const parts: string[] = [];
+    const seen = new Set<string>();
+    let found = false;
+    for (const name of SHARED_INSTRUCTIONS) {
+      const file = path.join(this.root, name);
+      if (!existsSync(file)) continue;
+      const source = readHarnessSource(this.sources().root, name).text;
+      if (source === null) continue;
+      found = true;
+      // Preserve legacy evidence in the source, but do not turn it back into global rules.
+      const text = source.replace(/\r\n?/g, '\n')
+        .replace(/<!-- review-ratchet:start -->[\s\S]*?<!-- review-ratchet:end -->/g, '').trim();
+      if (text.includes('<!-- review-ratchet:')) throw new Error(`Cannot push ${name}: incomplete legacy review block; preserve it separately before pushing`);
+      if (text && !seen.has(text)) {
+        seen.add(text);
+        parts.push(text);
+      }
+    }
+    return found ? (parts.length ? `${parts.join('\n\n')}\n` : '') : undefined;
+  }
 
+}
+
+/** Never follow a destination symlink when updating instructions or skills. */
+export function pushDirectory(dir: string): boolean {
+  try {
+    const stat = lstatSync(dir);
+    return stat.isDirectory() && !stat.isSymbolicLink();
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    return true;
+  }
+}
+
+/** Back up each changed destination once per push, including personal instructions/skill files. */
+export function pushFile(file: string, contents: Buffer, backup: string, mode = 0o600): boolean {
+  try {
+    const stat = lstatSync(file);
+    if (stat.isSymbolicLink() || !stat.isFile()) return false;
+    if (readFileSync(file).equals(contents)) return true;
+    cpSync(file, `${file}${backup}`, { errorOnExist: true, force: false });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+  }
+  writeFileSync(file, contents, { mode });
+  return true;
+}
+
+/** Overlay regular skill files only. Removed source files and unrelated destination files stay. */
+export function pushSkills(source: string, into: string, backup: string): number {
+  if (lstatSync(source).isSymbolicLink() || !pushDirectory(into)) return 1;
+  let skipped = 0;
+  for (const entry of readdirSync(source, { withFileTypes: true })) {
+    if (entry.name.endsWith('.bak')) continue;
+    const from = path.join(source, entry.name);
+    const file = path.join(into, entry.name);
+    if (entry.isDirectory()) skipped += pushSkills(from, file, backup);
+    else if (!entry.isFile() || !pushFile(file, readFileSync(from), backup, statSync(from).mode)) skipped++;
+  }
+  return skipped;
 }
 
 /** The editable sources under a Harness root (jailed, bounded), plus paths only history still knows. */

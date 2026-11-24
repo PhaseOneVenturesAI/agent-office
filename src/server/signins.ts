@@ -89,16 +89,13 @@ export class SignIns {
     private gh: string | null,
     /** The office's own environment, which everyone's is built on. */
     private base: () => Record<string, string>,
-    /** Whether the host owner granted this admin account use of a specific office sign-in. */
-    readonly officeAllowed: (accountId: string, which: SignInKind) => boolean,
+    /** Whether the account may use the office's own sign-ins (admins). */
+    private mayUseOffice: (accountId: string) => boolean,
     private onChange: (accountId: string) => void,
   ) {
     this.homes = path.join(dataDir, 'homes');
   }
 
-  officeRevoked(id: string, which: SignInKind): boolean {
-    return this.load(id)[which]?.use === 'office' && !this.officeAllowed(id, which);
-  }
   state(id: string): SignInsState {
     const s = this.load(id);
     const l = this.get(id);
@@ -107,14 +104,14 @@ export class SignIns {
       kimi: { ...l.kimi, how: this.how(id, s, 'kimi') },
       codex: { ...l.codex, how: this.how(id, s, 'codex') },
       github: { ...l.github, how: this.how(id, s, 'github') },
-      office: KINDS.some((which) => this.officeAllowed(id, which)),
+      office: this.mayUseOffice(id),
     };
   }
 
   /** Whether `id` has a sign-in of `which` its workers can start on, as far as the last look knows. */
   ready(id: string, which: SignInKind): boolean {
     const s = this.load(id);
-    return s[which]?.use === 'office' ? this.officeAllowed(id, which) : this.how(id, s, which) !== 'login' || !!s.seen?.[which];
+    return this.how(id, s, which) !== 'login' || !!s.seen?.[which];
   }
 
   /** What to tell someone who needs `which` signed in first. */
@@ -265,7 +262,7 @@ export class SignIns {
 
   /** Uses the office machine's own sign-in (admins only). */
   useOffice(id: string, which: SignInKind): string | undefined {
-    if (!this.officeAllowed(id, which)) return "Office credentials require an explicit grant from the host owner for this account and provider; admin status alone is not enough.";
+    if (!this.mayUseOffice(id)) return "Only admins can use the office's own sign-ins";
     this.stop(id, which);
     const s = this.load(id);
     s[which] = { use: 'office' };
@@ -323,7 +320,7 @@ export class SignIns {
   /** How `which` signs `id` in. A demoted admin's 'office' no longer counts: back to their own. */
   private how(id: string, s: Saved, which: SignInKind): SignInState['how'] {
     const use = s[which]?.use;
-    if (use === 'office') return this.officeAllowed(id, which) ? 'office' : 'login';
+    if (use === 'office') return this.mayUseOffice(id) ? 'office' : 'login';
     return use === 'token' ? 'token' : 'login';
   }
 

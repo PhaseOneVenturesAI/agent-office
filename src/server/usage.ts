@@ -315,11 +315,8 @@ export class Ledger {
   add(delta: Usage) {
     if (isZero(delta)) return;
     const day = localDay();
-    // A cumulative session correction may cover estimates from an earlier day. Keep the
-    // all-time correction, but never turn a bucket negative or grant future budget credit.
-    // Use the same nonnegative counters as load(), so a restart does not change the result.
-    this.total = asUsage(addUsage(this.total, delta))!;
-    this.days[day] = asUsage(addUsage(this.days[day] ?? zeroUsage(), delta))!;
+    this.total = addUsage(this.total, delta);
+    this.days[day] = addUsage(this.days[day] ?? zeroUsage(), delta);
     for (const d of Object.keys(this.days).sort().slice(0, -KEEP_DAYS)) delete this.days[d];
     this.save();
     this.emit();

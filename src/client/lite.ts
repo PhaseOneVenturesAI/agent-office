@@ -1,6 +1,6 @@
 // The 2D view (/lite): the office without the 3D, for a phone or a computer the 3D office is too
 // much for. Every worker on the floor and how it's doing, the ones waiting on someone first; its
-// Conversation, with an explicit terminal and the keys a phone's keyboard hasn't got; and the boards
+// terminal, with the keys a phone's keyboard hasn't got and a box to send it a prompt; and the boards
 // and the task queue. You're in the office as someone on the 2D view (PeerInfo.lite), not standing
 // anywhere in it.
 
@@ -14,7 +14,6 @@ import { isAsleep } from '../shared/status';
 import type { AgentEffort, AgentProvider, FloorInfo, WorkerInfo } from '../shared/protocol';
 import { $, clip, closeAllModals, doingNow, h, onDoingChange, onModalChange, openModal, readingNow, STATUS_LABEL, timeAgo, toast } from './ui/dom';
 import { openTerminal, openTerminalFor, routeTerminalMessage } from './ui/terminal';
-import { openWorkerConversation } from './ui/worker-conversation';
 import { openChanges, openChangesFor, routeChangesMessage } from './ui/changes';
 import { lostWorktreeDialog, openPrompt, routeWorktreeMessage, sendHomeDialog } from './ui/prompt';
 import { openBoard } from './ui/boards';
@@ -29,7 +28,7 @@ import { openMeeting, type MeetingPreset } from './ui/meeting';
 import { openSignIns } from './ui/signins';
 import { modelBadge, providerLabel } from './ui/provider';
 import { byUrgency, waitingInOrder, waitingLabel } from './nextup';
-import { askNotifyPermission, alertsForMe, DesktopNotifier, notifyPermission, waitingOnSomeone } from './notify';
+import { askNotifyPermission, DesktopNotifier, notifyPermission, waitingOnSomeone } from './notify';
 import { repoChoices } from './shared/hiring';
 // The tab title counts the workers waiting on someone, on every floor, as the 3D office's does.
 import { renderTitle } from './shared/title';
@@ -169,7 +168,7 @@ function workerCard(w: WorkerInfo): HTMLElement {
     { class: `${w.status}${waiting ? ' waiting' : ''}` },
     h(
       'button.lite-card',
-      { type: 'button', onclick: () => openWorker(w.id), 'aria-label': `${w.name}, ${STATUS_LABEL[w.status] ?? w.status}: open its ${w.kind === 'agent' ? 'conversation' : 'terminal'}` },
+      { type: 'button', onclick: () => openWorker(w.id), 'aria-label': `${w.name}, ${STATUS_LABEL[w.status] ?? w.status}: open its terminal` },
       h('span.dot', { style: `background:${w.color}` }),
       h(
         'span.lite-info',
@@ -181,17 +180,17 @@ function workerCard(w: WorkerInfo): HTMLElement {
       ),
       h('span.lite-state', {}, h('span.pill', { class: w.status }, STATUS_LABEL[w.status] ?? w.status), waiting && w.waitingSince ? h('small', {}, timeAgo(w.waitingSince)) : null),
     ),
-    // Open a waiting worker's Conversation for supported approvals, with Terminal as fallback.
+    // One that's asking something is answered in its terminal, where the question is.
     asleep || w.lost || w.status === 'needs_input' ? null : h('button.btn.lite-say', { type: 'button', title: `Send ${w.name} a prompt`, 'aria-label': `Send ${w.name} a prompt`, onclick: () => promptWorker(w.id) }, '✍️'),
   );
 }
 
-/** A worker needs input or is done: a notification while you're elsewhere, and a buzz. Only for the workers you hired (see alertsForMe). */
+/** A worker needs input or is done: a notification while you're elsewhere, and a buzz. */
 function noticeWorkers() {
   for (const w of store.workers.values()) {
     const before = lastStatus.get(w.id);
     lastStatus.set(w.id, w.status);
-    if (before === undefined || before === w.status || !waitingOnSomeone(w) || !alertsForMe(w, store.me)) continue;
+    if (before === undefined || before === w.status || !waitingOnSomeone(w)) continue;
     notifier.alert(w);
     if (w.status === 'needs_input') navigator.vibrate?.(200);
   }
@@ -206,8 +205,8 @@ store.on('project', renderWorkers);
 // "3m ago" moves on by itself.
 setInterval(renderWorkers, 30_000);
 
-/** Agent cards, board links and notifications open Conversation; shells keep their terminal. */
-function openWorker(id: string, terminal = false) {
+/** Its terminal, with the keypad, waking it up first if it's asleep. */
+function openWorker(id: string) {
   const w = store.workers.get(id);
   if (!w) return;
   if (w.lost) return fixLostWorktree(w);
@@ -215,12 +214,8 @@ function openWorker(id: string, terminal = false) {
     if (!w.sessionId && w.kind !== 'shell') toast(`${w.name} has no saved session — starting a fresh one`, 'warn');
     net.send({ t: 'worker.resume', workerId: id });
   }
-  if (w.kind === 'agent' && !terminal) openWorkerConversation(net, id, () => openWorkerTerminal(id));
-  else openTerminal(net, id, () => openChanges(net, id, () => openWorkerTerminal(id)), undefined, { keypad: true });
+  openTerminal(net, id, () => openChanges(net, id, () => openWorker(id)), undefined, { keypad: true });
 }
-
-/** Explicit Terminal actions retain the keypad, lost-worktree check and existing resume behavior. */
-function openWorkerTerminal(id: string): void { openWorker(id, true); }
 
 /** Its worktree was deleted outside agent-office: put it back (everyone's who lost theirs), or send it home. */
 function fixLostWorktree(w: WorkerInfo) {
@@ -233,7 +228,7 @@ function fixLostWorktree(w: WorkerInfo) {
     lost: w.lost,
     workspace: w.repos?.length ? worktree.path.replace(/[\\/][^\\/]*$/, '') : undefined,
     others: others.map((o) => o.name),
-    openTerminal: isAsleep(w.status) ? undefined : () => openTerminal(net, w.id, () => openChanges(net, w.id, () => openWorkerTerminal(w.id)), undefined, { keypad: true }),
+    openTerminal: isAsleep(w.status) ? undefined : () => openTerminal(net, w.id, () => openChanges(net, w.id, () => openWorker(w.id)), undefined, { keypad: true }),
     rebuild: (all) => {
       toast(all ? `Rebuilding ${others.length + 1} worktrees…` : `Rebuilding ${w.name}'s worktree…`);
       net.send({ t: 'worker.rebuild', workerId: w.id, all });
@@ -296,7 +291,7 @@ function boardActions(): BoardActions {
     queue: (prompt, title, issue, provider, model, effort) => net.send({ t: 'queue.add', prompt, title, issue, provider, model, effort }),
     assign: (prompt, title, issue) => sendToWorker(`🤖 ${title}`, { initial: prompt }, issue),
     ask: (context, title) => sendToWorker(`✍️ ${title}`, { context }),
-    // There's no desk to walk to from here: open the worker's conversation instead.
+    // There's no desk to walk to from here: its terminal instead.
     goToDesk: (deskId) => {
       const w = store.workerAtDesk(deskId);
       if (!w) return;
@@ -311,7 +306,7 @@ function showMeeting(preset?: MeetingPreset) {
   openMeeting(
     net,
     {
-      openTerminal: openWorkerTerminal,
+      openTerminal: openWorker,
       openPr: (id) => {
         const w = store.workers.get(id);
         if (!w) return;
@@ -329,7 +324,7 @@ $('btn-issues').addEventListener('click', () => openBoard('issues', net, boardAc
 $('btn-pulls').addEventListener('click', () => openBoard('pulls', net, boardActions()));
 $('btn-nodes').addEventListener('click', () => openNodes(net));
 $('btn-context').addEventListener('click', () => openProjectContext(net));
-$('btn-queue').addEventListener('click', () => openQueue(net, { openTerminal: openWorkerTerminal }));
+$('btn-queue').addEventListener('click', () => openQueue(net, { openTerminal: openWorker }));
 $('btn-departments').addEventListener('click', () => openDepartments(net));
 $('btn-new').addEventListener('click', () => sendToWorker('✨ New task'));
 

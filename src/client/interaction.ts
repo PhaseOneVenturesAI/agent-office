@@ -1,10 +1,9 @@
 import { canLabel } from '../shared/floorplan';
 import type { GhIssue, WorkerInfo } from '../shared/protocol';
 import { isAsleep } from '../shared/status';
-import { store } from './state';
 import type { Interactable } from './world/types';
 
-export const DESK_KEYS = { KeyE: 'E', KeyP: 'P', KeyR: 'R', KeyX: 'X', KeyB: 'B', KeyC: 'C', KeyO: 'O', KeyL: 'L', KeyT: 'T' } as const;
+export const DESK_KEYS = { KeyE: 'E', KeyP: 'P', KeyR: 'R', KeyX: 'X', KeyB: 'B', KeyC: 'C', KeyO: 'O', KeyL: 'L' } as const;
 export type DeskKey = (typeof DESK_KEYS)[keyof typeof DESK_KEYS];
 
 export interface InteractionState {
@@ -17,7 +16,6 @@ export interface InteractionState {
 /** Whether a desk key has an action at the interaction currently in reach. */
 export function interactionAvailable(it: Interactable | null, key: DeskKey, state: InteractionState): boolean {
   if (!it) return false;
-  if (it.kind === 'role') return key === 'E' || key === 'T';
 
   // A carried issue can be handed to any desk, queued, returned/swapped, or taken into a meeting.
   if (key === 'E' && state.carrying && (it.kind === 'desk' || it.kind === 'queue' || it.kind === 'issues' || it.kind === 'meeting')) {
@@ -32,13 +30,6 @@ export function interactionAvailable(it: Interactable | null, key: DeskKey, stat
     if (key === 'B') return !state.worker;
     if (key === 'P' || key === 'E') return true;
     if (key === 'R') return !!state.worker && isAsleep(state.worker.status);
-    // T talks to a manager's or the CEO's character; the handler ignores it elsewhere.
-    if (key === 'T')
-      return (
-        !!state.worker &&
-        state.worker.kind === 'agent' &&
-        (store.ceo.ceo?.workerId === state.worker.id || store.departments.departments.some((d) => d.lead?.workerId === state.worker!.id))
-      );
     return !!state.worker && (key === 'C' || key === 'X' || key === 'O');
   }
 

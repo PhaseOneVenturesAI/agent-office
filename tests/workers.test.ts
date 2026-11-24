@@ -1462,25 +1462,6 @@ test('stopping the office on purpose (Ctrl+C) leaves nothing to carry on', async
   assert.equal(promptOf(resumed), undefined);
 });
 
-test('named managers create safe git worktrees without changing their displayed names', async (t) => {
-  const f = carryOnFixture(t);
-  const git = (...args: string[]) => execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd: f.root, encoding: 'utf8' }).trim();
-  git('init', '-q', '-b', 'main');
-  writeFileSync(path.join(f.root, 'README.md'), 'Acceptance fixture');
-  git('add', 'README.md'); git('commit', '-qm', 'init');
-  const workers = manager(f, f.claude, []);
-  t.after(() => workers.shutdown());
-  for (const [i, name] of ['Marketing Manager', '../Review / QA: lead?', '👑'].entries()) {
-    const worker = workers.spawn(`desk-${i + 1}`, 'test', 'Read only', true, 'agent', undefined, undefined, undefined, undefined, undefined, [], undefined, name);
-    assert.notEqual(typeof worker, 'string', String(worker));
-    if (typeof worker === 'string') continue;
-    assert.equal(worker.name, name);
-    assert.match(worker.worktree!.branch, /^office\/[a-z0-9-]+-[a-f0-9]{4}$/);
-    assert.equal(git('check-ref-format', worker.worktree!.branch), '');
-    assert.equal(path.dirname(path.resolve(f.root, worker.worktree!.path)), path.join(f.root, '.agent-office', 'worktrees'));
-  }
-});
-
 test('a worktree worker that makes its own branch is followed there: O finds the PR it opened, and sending it home tidies both branches', async (t) => {
   const f = carryOnFixture(t);
   const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd, encoding: 'utf8' }).trim();

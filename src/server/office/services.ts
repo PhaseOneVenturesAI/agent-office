@@ -1,9 +1,3 @@
-import { RoleSubscriptions } from '../role-subscriptions/store.js';
-import { PersonalAutonomy } from '../personal-autonomy/store.js';
-import { canControlLinear } from '../linear/access.js';
-import { LinearService } from '../linear/service.js';
-import { linearConfig } from '../linear/client.js';
-import { officeCredentialGrant } from '../office-credential-grants.js';
 import path from 'node:path';
 import os from 'node:os';
 import { childEnv, resolveCommand } from '../workers.js';
@@ -40,7 +34,6 @@ import type { Client } from './client.js';
 /** What the whole building shares, made before any floor opens: the sky, ⚙️ Settings, spend, sign-ins, limits. */
 export function createServices(ctx: Ctx): BuildingServices {
   const { cfg, accounts, clients, floors } = ctx;
-  const linear = new LinearService(cfg.dataDir, linearConfig(), () => floors.values(), () => accounts.state(new Set()).accounts.map(({ id, name }) => ({ id, name })), (account, scope) => canControlLinear(ctx, account, scope));
   // Day, night and the weather outside the windows, the same for everyone.
   const sky = new Sky({ city: cfg.city, weather: cfg.weather, realTime: cfg.realTimeSky, placeFile: path.join(cfg.dataDir, 'sky-place.json'), clockFile: path.join(cfg.dataDir, 'sky-clock.json') }, (state) => ctx.broadcast({ t: 'sky', state }));
   sky.start();
@@ -74,13 +67,11 @@ export function createServices(ctx: Ctx): BuildingServices {
     resolveCommand('codex'),
     resolveCommand('gh'),
     childEnv,
-    (id, which) => accounts.get(id)?.role === 'admin' && officeCredentialGrant(cfg.dataDir, id, which),
+    (id) => accounts.get(id)?.role === 'admin',
     (id) => {
       for (const c of clients.values()) if (c.accountId === id && !c.out) ctx.sendTo(c, { t: 'signins', state: signins.state(id) });
     },
   );
-  const personalAutonomy = new PersonalAutonomy(cfg.dataDir);
-  Object.assign(signins, { autonomy: (owner: string, provider: string) => (provider === 'claude' || provider === 'kimi' || provider === 'codex') && signins.state(owner)[provider].how !== 'office' ? personalAutonomy.mode(owner) : undefined });
   // Accounts revoked from the terminal while the office was closed leave their sign-ins behind.
   if (!accounts.unreadableFile) signins.prune(new Set(accounts.state(new Set()).accounts.map((a) => a.id)));
 
@@ -192,7 +183,7 @@ export function createServices(ctx: Ctx): BuildingServices {
     });
   };
 
-  return { personalAutonomy, roleSubscriptions: new RoleSubscriptions(cfg.dataDir), linear, sky, themes, maps, prompts, leaveOnMerge, ledger, signins, harness, personalHarness, reviews, deploys, hygiene, costwall, nodes, deliveries, cloudflare, limits, accountLimits, webhook, machine, limitsOf, pumpQueues };
+  return { sky, themes, maps, prompts, leaveOnMerge, ledger, signins, harness, personalHarness, reviews, deploys, hygiene, costwall, nodes, deliveries, cloudflare, limits, accountLimits, webhook, machine, limitsOf, pumpQueues };
 }
 
 /** What's made once the floors are open: the SSH team, the tailnet, workers' web servers, pictures and upgrades. */

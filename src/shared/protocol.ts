@@ -1,18 +1,9 @@
-import type { RolePresenceClientMsg, RolePresenceServerMsg } from './protocol/role-presence.js';
-import type { PersonalAutonomyClientMsg, PersonalAutonomyServerMsg } from './protocol/personal-autonomy.js';
-export * from './protocol/personal-autonomy.js';
-export * from './protocol/role-presence.js';
-import type { VoiceIceClientMsg, VoiceIceServerMsg } from './protocol/voice-ice.js';
-export * from './protocol/voice-ice.js';
-import type { RoleSubscriptionClientMsg, RoleSubscriptionServerMsg } from './protocol/role-subscriptions.js';
-export * from './protocol/role-subscriptions.js';
 // Wire protocol between browser and server. Every WebSocket frame is one JSON object.
 //
 // Each part of the office keeps its state types and its messages in ./protocol/<domain>.ts; this
 // file puts them back together, so everything is still imported from here, and makes the two
 // unions every frame is one of.
 
-import type { ApprovalClientMsg, ApprovalServerMsg } from './protocol/approvals.js';
 import type { DeliveryClientMsg, DeliveryServerMsg } from './protocol/delivery.js';
 import type { ConversationClientMsg, ConversationServerMsg } from './protocol/conversations.js';
 import type { HandoffClientMsg, HandoffServerMsg } from './protocol/handoffs.js';
@@ -21,7 +12,6 @@ import type { AccountsClientMsg, AccountsServerMsg, SignInsClientMsg, TeamClient
 import type { ChangesClientMsg, ChangesServerMsg } from './protocol/changes.js';
 import type { CostwallClientMsg, CostwallServerMsg } from './protocol/costwall.js';
 import type { DepartmentsClientMsg, DepartmentsServerMsg } from './protocol/departments.js';
-import type { CeoClientMsg, CeoServerMsg } from './protocol/ceo.js';
 import type { DeploysClientMsg, DeploysServerMsg } from './protocol/deploys.js';
 import type { FloorClientMsg, FloorServerMsg, PlanClientMsg } from './protocol/floors.js';
 import type { GitHubClientMsg, GitHubServerMsg } from './protocol/github.js';
@@ -39,7 +29,6 @@ import type { BallClientMsg, CabinetClientMsg, CarClientMsg, DecorClientMsg, Dog
 import type { UsageClientMsg, UsageServerMsg } from './protocol/usage.js';
 import type { WorkerClientMsg, WorkerServerMsg } from './protocol/workers.js';
 
-export * from './protocol/approvals.js';
 export * from './protocol/conversations.js';
 export * from './protocol/delivery.js';
 export * from './protocol/handoffs.js';
@@ -49,7 +38,6 @@ export * from './protocol/agents.js';
 export * from './protocol/changes.js';
 export * from './protocol/costwall.js';
 export * from './protocol/departments.js';
-export * from './protocol/ceo.js';
 export * from './protocol/deploys.js';
 export * from './protocol/floors.js';
 export * from './protocol/github.js';
@@ -68,11 +56,6 @@ export * from './protocol/usage.js';
 export * from './protocol/workers.js';
 
 export type ClientMsg =
-  | PersonalAutonomyClientMsg
-  | RolePresenceClientMsg
-  | VoiceIceClientMsg
-  | RoleSubscriptionClientMsg
-  | ApprovalClientMsg
   | DeliveryClientMsg
   | ConversationClientMsg
   | HandoffClientMsg
@@ -89,7 +72,6 @@ export type ClientMsg =
   | ChangesClientMsg
   | CostwallClientMsg
   | DepartmentsClientMsg
-  | CeoClientMsg
   | DeploysClientMsg
   | TeamClientMsg
   | AccountsClientMsg
@@ -109,11 +91,6 @@ export type ClientMsg =
   | DogClientMsg;
 
 export type ServerMsg =
-  | PersonalAutonomyServerMsg
-  | RolePresenceServerMsg
-  | VoiceIceServerMsg
-  | RoleSubscriptionServerMsg
-  | ApprovalServerMsg
   | DeliveryServerMsg
   | ConversationServerMsg
   | HandoffServerMsg
@@ -129,7 +106,6 @@ export type ServerMsg =
   | ChangesServerMsg
   | CostwallServerMsg
   | DepartmentsServerMsg
-  | CeoServerMsg
   | DeploysServerMsg
   | AccountsServerMsg
   | HarnessServerMsg

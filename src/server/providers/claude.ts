@@ -1,6 +1,5 @@
 // Claude Code: hooks from a settings file the office writes (its own hook route, /hooks/claude),
 // usage read off the session transcript and booked in the budget, and tasks the office names.
-import { writeApprovalHelper } from '../approvals/helper.js';
 import { homedir } from 'node:os';
 import { readAssistantReply } from '../assistant-text.js';
 import { writeFileSync } from 'node:fs';
@@ -34,7 +33,6 @@ interface ClaudeSetup {
 /** Claude Code's --settings for every worker: each hook event posted to the office, with curl or else the office's own node. */
 function writeHookSettings(dataDir: string): string {
   const settingsPath = path.join(dataDir, 'claude-hooks.json');
-  const approvalHelper = writeApprovalHelper(dataDir);
   const events: [string, string | undefined][] = [
     ['SessionStart', undefined],
     ['UserPromptSubmit', undefined],
@@ -72,10 +70,6 @@ process.stdin.on('end', () => {
   );
   const hooks: Record<string, unknown[]> = {};
   for (const [event, matcher] of events) {
-    if (event === 'PermissionRequest') {
-      hooks[event] = [{ hooks: [{ type: 'command', command: `${shq(process.execPath)} ${shq(approvalHelper)} claude`, timeout: 305 }] }];
-      continue;
-    }
     const curl =
       `curl -sS -m 3 --retry ${HOOK_TRIES - 1} --retry-delay 1 --retry-connrefused -X POST -H "Authorization: Bearer $AGENT_OFFICE_HOOK_TOKEN" -H "Content-Type: application/json" ` +
       `--data-binary @- "$AGENT_OFFICE_HOOK_URL/hooks/claude?worker=$AGENT_OFFICE_WORKER_ID&event=${event}"`;

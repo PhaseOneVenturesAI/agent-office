@@ -3,47 +3,10 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { Ledger, newTracker, restoreTracker, scanTracker, trackerUsage, zeroUsage } from '../src/server/usage.js';
+import { newTracker, restoreTracker, scanTracker, trackerUsage } from '../src/server/usage.js';
 
 const assistant = (id: string, model: string, more: Record<string, unknown> = {}) =>
   JSON.stringify({ type: 'assistant', timestamp: new Date(Date.UTC(2026, 9, 1, 12, 0, Number(id))).toISOString(), ...more, message: { id: `msg_${id}`, model, usage: { input_tokens: 10, output_tokens: 5 } } });
-
-test('a correction to prior usage cannot make today negative or grant new budget credit', (t) => {
-  const dir = mkdtempSync(path.join(tmpdir(), 'ao-ledger-'));
-  const previous = { ...zeroUsage(), input: 500_000, cost: 1, calls: 2 };
-  writeFileSync(path.join(dir, 'usage.json'), JSON.stringify({ total: previous, days: { '2000-01-01': previous } }));
-  const ledger = new Ledger(dir, { budget: 0.2, pauseHiring: true }, () => {}, () => {});
-  t.after(() => { ledger.flush(); rmSync(dir, { recursive: true, force: true }); });
-
-  // Claude's cumulative cost-state can correct an estimate booked on an earlier day.
-  ledger.add({ ...zeroUsage(), input: -366_195, cost: -0.56 });
-  assert.deepEqual(ledger.state().today, zeroUsage());
-  assert.equal(ledger.state().total.input, 133_805);
-  assert.ok(Math.abs(ledger.state().total.cost - 0.44) < 1e-10, 'all-time keeps the correction');
-
-  const spentToday = { ...zeroUsage(), input: 120, cost: 0.2, calls: 1 };
-  ledger.add(spentToday);
-  assert.deepEqual(ledger.state().today, spentToday, 'new spend is not offset by an earlier-day correction');
-  assert.equal(ledger.overBudget, true);
-  assert.match(ledger.hiringPaused!, /budget is spent/);
-  ledger.flush();
-  const restored = new Ledger(dir, { budget: 0.2, pauseHiring: true }, () => {}, () => {});
-  t.after(() => restored.flush());
-  assert.deepEqual(restored.state(), ledger.state(), 'the correction and daily floor survive restart');
-});
-
-test('same-day usage corrections still lower each counter, with zero as the lower bound', (t) => {
-  const dir = mkdtempSync(path.join(tmpdir(), 'ao-ledger-'));
-  const ledger = new Ledger(dir, { pauseHiring: false }, () => {}, () => {});
-  t.after(() => { ledger.flush(); rmSync(dir, { recursive: true, force: true }); });
-  ledger.add({ input: 10, output: 20, cacheWrite: 30, cacheRead: 40, cost: 2, calls: 3 });
-  ledger.add({ input: -5, output: -10, cacheWrite: -15, cacheRead: -20, cost: -0.5, calls: -1 });
-  assert.deepEqual(ledger.state().today, { input: 5, output: 10, cacheWrite: 15, cacheRead: 20, cost: 1.5, calls: 2 });
-  assert.deepEqual(ledger.state().total, ledger.state().today);
-  ledger.add({ input: -10, output: -20, cacheWrite: -30, cacheRead: -40, cost: -2, calls: -3 });
-  assert.deepEqual(ledger.state().today, zeroUsage());
-  assert.deepEqual(ledger.state().total, zeroUsage());
-});
 
 test('a Claude session\'s usage names the model its own latest message ran on', (t) => {
   const dir = mkdtempSync(path.join(tmpdir(), 'ao-usage-'));

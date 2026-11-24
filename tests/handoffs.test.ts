@@ -52,7 +52,7 @@ test('cancel permits a new explicit preview and malformed persisted records are 
 test('private worker features reject another account and another floor', () => {
   const floor: any = { workers: { ownerOf: () => 'owner', get: () => ({ id: 'w' }) } };
   let warned = 0;
-  const ctx: any = { signins: { officeRevoked: () => false, officeAllowed: () => false }, workerFloor: () => floor, floorOf: () => floor, meOf: () => ({ admin: true }), warn: () => warned++ };
+  const ctx: any = { workerFloor: () => floor, floorOf: () => floor, meOf: () => ({ admin: true }), warn: () => warned++ };
   assert.equal(ownedWorker(ctx, { accountId: 'other' } as any, 'w'), undefined);
   ctx.floorOf = () => ({});
   assert.equal(ownedWorker(ctx, { accountId: 'owner' } as any, 'w'), undefined);

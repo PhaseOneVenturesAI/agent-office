@@ -50,61 +50,6 @@ export interface DeptRosterEntry {
   at: number;
 }
 
-/**
- * The department's lead: one persistent identity that talks to the person and orchestrates the
- * department's real workers (see docs/department-leads.md). `workerId` is set only while the lead's
- * worker is live; the identity survives restarts and its worker going home.
- */
-export interface DeptLead {
-  /** e.g. "Maya". */
-  name: string;
-  /** The live worker speaking for the lead, when its shift is running. */
-  workerId?: string;
-  /** The engine the lead last ran on; the next launch offers it as the saved default. */
-  provider?: AgentProvider;
-  model?: string;
-  effort?: AgentEffort;
-  /** The CEO's current objective for this manager, when one is active; results roll up to it. */
-  objective?: { text: string; by: string; at: number };
-  /** Human controller emails: may edit the manager and give it major objectives. */
-  controllers?: string[];
-  /** Emails allowed read-only Q&A; empty/absent means any signed-in colleague may ask. */
-  audience?: string[];
-  /** Billing/credential custodian for this manager's runs (visible, never inferred). */
-  custodian?: string;
-  /** Saved autonomy preference; only explicitly confirmed choices configure future launches. */
-  autonomy?: string;
-  /** Explicit choice since runtime autonomy support; legacy labels never enable it. */
-  autonomyConfirmed?: boolean;
-  by: string;
-  at: number;
-}
-
-/** The department's team engine policy: chosen once, used for lead launches and delegations. */
-export interface DeptPolicy {
-  provider: AgentProvider;
-  model?: string;
-  effort?: AgentEffort;
-  /** 'policy': use this silently. 'ask': the picker shows each time, prefilled from this. */
-  mode: 'policy' | 'ask';
-  by: string;
-  at: number;
-}
-
-/**
- * A delegation the engine policy held for a person: an agent-triggered delegation under an 'ask'
- * policy cannot choose an engine itself, so it waits here until someone approves it (picking the
- * engine) or rejects it.
- */
-export interface DeptRequest {
-  id: string;
-  title: string;
-  task: string;
-  /** The lead worker that asked. */
-  by: string;
-  at: number;
-}
-
 export interface Department {
   id: string;
   preset: DeptPreset;
@@ -120,12 +65,6 @@ export interface Department {
   briefArchived: number;
   roster: DeptRosterEntry[];
   assets: DeptAsset[];
-  /** The department's lead, when one has been named; one at most, resumed rather than duplicated. */
-  lead?: DeptLead;
-  /** The team engine policy for lead launches and delegations. */
-  policy?: DeptPolicy;
-  /** Engine decisions waiting for a person (agent-triggered delegations under an 'ask' policy). */
-  requests?: DeptRequest[];
   by: string;
   at: number;
 }
@@ -159,30 +98,9 @@ export type DepartmentsClientMsg =
   /** Hire a worker into a role: a desk in its corner, the brief and skills in its prompt. */
   | { t: 'departments.launch'; id: string; role: string; prompt?: string; provider?: AgentProvider; model?: string; effort?: AgentEffort }
   /** Take a worker off the roster (the worker itself stays). */
-  | { t: 'departments.release'; id: string; workerId: string }
-  /** Name (or replace) the department's lead identity and its saved engine. Never launches. */
-  /** Name (or replace) the lead identity and its saved engine; never launches. */
-  | { t: 'departments.lead'; requestId?: string; id: string; name: string; provider?: AgentProvider; model?: string; effort?: AgentEffort; autonomy?: string }
-  /** Admins: set who controls a manager, who may ask it read-only questions, and the billing custodian. */
-  | { t: 'departments.access'; requestId?: string; id: string; controllers?: string[]; audience?: string[]; custodian?: string }
-  /** Take the lead identity away (a live lead worker keeps its desk). */
-  | { t: 'departments.lead.clear'; id: string }
-  /** Start the lead's shift explicitly: seats its worker with the lead prompt on the policy engine. */
-  | { t: 'departments.lead.launch'; id: string; prompt?: string; provider?: AgentProvider; model?: string; effort?: AgentEffort }
-  /** Set the team engine policy: 'policy' runs it silently, 'ask' shows the picker prefilled from it. */
-  | { t: 'departments.policy'; id: string; provider: AgentProvider; model?: string; effort?: AgentEffort; mode: 'policy' | 'ask' }
-  /** The lead delegates a job to the floor queue: the project's one task source, deduped per department. */
-  | { t: 'departments.delegate'; id: string; title: string; task: string; provider?: AgentProvider; model?: string; effort?: AgentEffort }
-  /** Approve a pending engine request: seats the delegation on the picked engine (a person decides). */
-  | { t: 'departments.request.approve'; id: string; request: string; provider?: AgentProvider; model?: string; effort?: AgentEffort }
-  /** Reject a pending engine request: the delegation is dropped. */
-  | { t: 'departments.request.reject'; id: string; request: string }
-  /** A read-only staff question about the department: answered on a separate no-tools session. */
-  | { t: 'departments.ask'; requestId?: string; id: string; question: string };
+  | { t: 'departments.release'; id: string; workerId: string };
 
 export type DepartmentsServerMsg =
   | { t: 'departments'; state: DepartmentsState }
   /** The archived brief revisions of one department, as asked (newest first). */
-  | { t: 'departments.brief.history'; id: string; revs: DeptBriefRev[]; archived: number; next?: number }
-  /** The answer to a read-only staff question (separate no-tools session), or why it's unavailable. */
-  | { t: 'departments.qa'; requestId?: string; error?: string; id: string; question: string; answer: string; at: number };
+  | { t: 'departments.brief.history'; id: string; revs: DeptBriefRev[]; archived: number; next?: number };

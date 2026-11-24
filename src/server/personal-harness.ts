@@ -10,12 +10,12 @@
 // personal root is just another HarnessSources root, with its history kept under its own hash.
 
 import { lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import type { PersonalHarnessState } from '../shared/protocol/personal-harness.js';
-import { ACCOUNT_ID, listHarnessFiles, type Harness } from './harness.js';
+import { ACCOUNT_ID, listHarnessFiles, pushDirectory, pushFile, pushSkills, type Harness } from './harness.js';
 import { HarnessSourceError, HarnessSources, allowedHarnessSource, type HarnessChange, type HarnessSource } from './harness-history/index.js';
 import { harnessSourcePath, readHarnessSource, safeHarnessText } from './harness-history/paths.js';
-import { composeHarness, HarnessSync } from './harness-sync.js';
 
 /** The files a personal harness starts from when copied from the office's. */
 const SEED = /^(?:CLAUDE\.md|WORKFLOW\.md|AGENTS\.md|skills\/.+)$/;
@@ -115,25 +115,27 @@ export class PersonalHarness {
     const sources = this.sources(id);
     if (!sources) throw new HarnessSourceError(404, 'Your harness has no files yet. Add one, or start from the office’s.');
     const home = this.homeOf(id);
-    const claude = composeHarness(sources.root, CLAUDE_SOURCES);
-    const agents = composeHarness(sources.root, readHarnessSource(sources.root, 'AGENTS.md').text === null ? CLAUDE_SOURCES : AGENTS_SOURCES);
-    const sync = new HarnessSync(this.dataDir);
-    const conflicts: string[] = [];
-    let retired = 0;
+    const claude = compose(sources.root, CLAUDE_SOURCES);
+    const agents = compose(sources.root, readHarnessSource(sources.root, 'AGENTS.md').text === null ? CLAUDE_SOURCES : AGENTS_SOURCES);
+    const skills = path.join(sources.root, 'skills');
+    const backup = `.harness-${Date.now()}-${randomBytes(4).toString('hex')}.bak`;
+    let skippedFiles = 0;
     const targets = [
       { dir: path.join(home, 'claude'), name: 'CLAUDE.md', text: claude },
       { dir: path.join(home, 'kimi'), name: 'AGENTS.md', text: agents },
       { dir: path.join(home, 'codex'), name: 'AGENTS.md', text: agents },
     ];
-    const previews = targets.map((t) => sync.preview(t.dir, sources.root, t.name, t.text));
-    for (const [i, t] of targets.entries()) {
-      const result = sync.apply(t.dir, sources.root, t.name, t.text, previews[i]);
-      conflicts.push(...result.conflicts); retired += result.retired;
+    let hasSkills = false;
+    try { hasSkills = realDirectory(skills, false); } catch { skippedFiles++; }
+    for (const t of targets) {
+      if (!pushDirectory(t.dir)) { skippedFiles++; continue; }
+      if (t.text !== undefined && !pushFile(path.join(t.dir, t.name), Buffer.from(t.text), backup)) skippedFiles++;
+      if (hasSkills) skippedFiles += pushSkills(skills, path.join(t.dir, 'skills'), backup);
     }
     const applied: Applied = { at: Date.now(), homes: targets.length };
     try { writeFileSync(path.join(home, '.harness-applied.json'), JSON.stringify(applied), { mode: 0o600 }); } catch { /* only the note on the panel */ }
-    const skippedNote = conflicts.length ? `; skipped ${conflicts.length} conflict(s), files preserved: ${[...new Set(conflicts)].slice(0, 3).join('; ')}` : '';
-    return `applied your harness to your Claude, Kimi and Codex — your workers pick it up on their next start; changed files backed up, ${retired} retired managed file(s)${skippedNote}`;
+    const skippedNote = skippedFiles ? `; skipped ${skippedFiles} link or non-file path(s)` : '';
+    return `applied your harness to your Claude, Kimi and Codex — your workers pick it up on their next start; changed files backed up${skippedNote}`;
   }
 
   private homeOf(id: string): string {
@@ -171,4 +173,18 @@ function realDirectory(dir: string, create: boolean): boolean {
     mkdirSync(dir, { mode: 0o700 });
     return true;
   }
+}
+
+/** The named files' text joined, duplicates dropped; undefined when none of them is there. */
+function compose(root: string, names: string[]): string | undefined {
+  const parts: string[] = [];
+  let found = false;
+  for (const name of names) {
+    const text = readHarnessSource(root, name).text;
+    if (text === null) continue;
+    found = true;
+    const clean = text.replace(/\r\n?/g, '\n').trim();
+    if (clean && !parts.includes(clean)) parts.push(clean);
+  }
+  return found ? (parts.length ? `${parts.join('\n\n')}\n` : '') : undefined;
 }

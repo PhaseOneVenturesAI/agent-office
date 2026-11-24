@@ -98,26 +98,4 @@ WantedBy=multi-user.target
 
 If you don't have a domain, `--self-signed` serves HTTPS directly. Browsers will warn once per person.
 
-### Voice across strict NATs
-
-Peers try direct connections using STUN. A TURN relay provides a fallback across restrictive NATs; it does not fix microphone permission, muted devices or blocked audio playback. A failed connection displays one compact notice with **Copy details**, rather than assuming a missing TURN server. Leave voice and join again; if it still fails, have everyone in that call reload the office.
-
-**Copy details** copies a local snapshot of the latest failed connection. It distinguishes relay configuration from an observed local relay candidate and a selected relay path, and includes issuer request/expiry status, connection states, candidate types, bounded numeric candidate-error codes and selected transport when available. A relay candidate proves allocation was observed, not that audio reached the other person. Missing stats are marked unavailable or timed out; a missing selected pair is not a diagnosis. The version, when present, is the existing server-reported welcome version, not a verified browser-bundle hash. Details exclude credentials, names/peer IDs, SDP, addresses, server URLs and raw errors. Nothing is persisted or sent automatically; share the copied text explicitly with the office owner. If clipboard access fails, a selectable local dialog provides the same safe text.
-
-Existing `--turn turn:user:pass@turn.example.com:3478` and `AGENT_OFFICE_TURN` (space-separated URLs) remain supported. These static credentials are distributed to signed-in browsers, so prefer expiring credentials for a shared office:
-
-```sh
-AGENT_OFFICE_TURN_URLS="turn:turn.example.com:3478?transport=udp turns:turn.example.com:5349?transport=tcp"
-AGENT_OFFICE_TURN_SECRET="<at least 32 random characters; server-only>"
-AGENT_OFFICE_TURN_TTL=3600
-```
-
-Configure coturn with the same server-only `static-auth-secret`, `use-auth-secret`, a realm, authenticated allocations, TLS certificate, restricted relay ports, quotas and private/link-local peer address restrictions. Never put the signing secret in `AGENT_OFFICE_TURN`, a browser bundle, or Git. Store it in a restricted service environment file. Worker/shell environments strip these `AGENT_OFFICE_` settings. This is environment isolation, not an OS sandbox against shell access to host files.
-
-The office issues timestamp/HMAC credentials only to a still-authenticated 3D office session asking to establish or maintain voice peers, including receive-only listeners. Named accounts are rechecked on renewal; shared-password access must still be enabled. TTL is 600–86400 seconds (default one hour). Derived credentials remain usable until expiration even after sign-out; revoking an Office account prevents fresh issuance, not immediate relay termination.
-
-Clients refresh two minutes before expiry, update peer configurations, and restart ICE for relay-selected calls (or failed connections); healthy direct calls are not restarted. Requests are deduplicated, time out after three seconds, and stop after three unanswered attempts until reconnection or a new voice-peer lifecycle. No refresh timer runs after disconnect or after the last peer leaves. Expired cached credentials are not used to create new connections. Static ICE fallback still works if a server does not support expiring credentials. Browser microphone consent remains unchanged.
-
-Use a directly reachable relay hostname. The ordinary HTTP Cloudflare tunnel used for the office is not a browser TURN relay. Allow only configured TURN listener and UDP relay ports in host/provider firewalls; do not expose the Office's localhost port. A TLS listener on 5349 may still fail on networks restricted to 443. Decide 443 ownership before changing an existing HTTPS service.
-
-Before calling the relay verified, force `iceTransportPolicy: 'relay'` in a controlled test with synthetic audio on two independent networks. Check the selected ICE pair and bidirectional received bytes/audio energy for UDP, TCP and TLS, plus long-call renewal, invalid/expired credential rejection and private-address denial. A two-tab direct call proves neither cross-network routing nor TURN operation. Installing this app support alone does not provision a relay.
+**Voice across strict NATs.** Peers connect directly using public STUN. If some teammates can't hear each other (common on corporate networks), run a TURN server such as coturn and pass `--turn turn:user:pass@turn.example.com:3478`, or set `AGENT_OFFICE_TURN` (several separated by spaces), which is how an office in a container (Railway, Fly.io, Dokploy) gets one. When a call can't connect at all, the office says so in a toast instead of leaving people talking to silence.

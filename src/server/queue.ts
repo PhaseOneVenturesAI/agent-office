@@ -1,4 +1,3 @@
-import { personalProviderError } from './worker-ownership.js';
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -25,7 +24,6 @@ export interface QueueWorkers {
 }
 
 export interface QueueEvents {
-  beforeStart?(task: QueueTask): string | undefined;
   update(state: QueueState): void;
   toast(text: string, level: 'info' | 'warn' | 'error'): void;
   /** Mark the issue as taken, on the board at once and on GitHub (as `owner`, when it's an account's task), which keeps it In progress. Resolves to an error message when it can't. */
@@ -34,12 +32,8 @@ export interface QueueEvents {
   refreshGitHub(): void;
   /** Why no workers may be hired right now (today's budget is spent), if that's so. */
   hiringPaused(): string | undefined;
-  /** Why no implementation writer may start right now (the project's two-writer cap), if that's so. */
-  writersFull?(): string | undefined;
   /** How many more workers the office has room for under its worker limit (Infinity without one). */
   room?(): number;
-  /** A task just finished, done or not; the lead dispatch turns this into the lead's next message. */
-  finished?(task: QueueTask): void;
   /** The last task on the queue just finished, done: nothing is left queued or running. */
   emptied(): void;
   /** What's added after a task that runs in its own worktree ('queue.worktree' in shared/prompts.ts); empty for nothing. */
@@ -93,37 +87,27 @@ export class TaskQueue {
 
   /** Queues a task. With no `provider`, it runs on the office's default worker, model and effort included. */
   /** Queues a task; `owner` is the account adding it, whose sign-ins its worker will run on. */
-  add(prompt: string, by: string, title?: string, issue?: number, provider?: AgentProvider, model?: string, effort?: AgentEffort, owner?: string, dept?: string, parentId?: string, contextRev?: QueueTask['contextRev']): string | undefined {
+  add(prompt: string, by: string, title?: string, issue?: number, provider?: AgentProvider, model?: string, effort?: AgentEffort, owner?: string): string | undefined {
     if (provider === undefined) ({ provider, model, effort } = this.workers.officeDefault ?? { provider: this.workers.defaultProvider });
     if (!isAgentProvider(provider) || (provider === 'custom' && this.workers.defaultProvider !== 'custom')) return 'Unknown agent provider';
-    const unsupported = personalProviderError(owner, 'agent', provider);
-    if (unsupported) return unsupported;
     const modelError = validateWorkerModel('agent', provider, model);
     if (modelError) return modelError;
     const effortError = validateWorkerEffort('agent', provider, effort);
     if (effortError) return effortError;
     const clean = prompt.replace(/\r\n?/g, '\n').trim();
     if (!clean) return 'Empty task';
-    const cleanTitle = (title?.trim() || firstLine(clean)).slice(0, 120);
     if (issue !== undefined && this.tasks.some((t) => t.issue === issue && t.status !== 'done')) return `Issue #${issue} is already on the queue`;
-    // One job, one owner: any live task with the same normalized title blocks the claim, whatever
-    // department asked. The check and the claim are one synchronous step, so two delegations can't
-    // both pass. Deliberately exact-title only — reworded duplicates are not detected.
-    if (this.tasks.some((t) => activeTask(t) && normTitle(t.title) === normTitle(cleanTitle))) return `“${cleanTitle}” is already assigned on this project`;
-    if (this.tasks.filter((t) => t.status === 'queued' || t.status === 'running').length >= MAX_TASKS) return `The queue is full (${MAX_TASKS} tasks)`;
+    if (this.tasks.filter((t) => t.status !== 'done').length >= MAX_TASKS) return `The queue is full (${MAX_TASKS} tasks)`;
     const task: QueueTask = {
       id: randomBytes(6).toString('hex'),
       provider,
       model: takesModel(provider) ? model : undefined,
       effort: takesEffort(provider) ? effort : undefined,
       issue,
-      title: cleanTitle,
+      title: (title?.trim() || firstLine(clean)).slice(0, 120),
       prompt: clean,
       addedBy: by,
       ...(owner ? { owner } : {}),
-      ...(dept ? { dept } : {}),
-      ...(parentId ? { parentId } : {}),
-      ...(contextRev ? { contextRev } : {}),
       addedAt: Date.now(),
       status: 'queued',
     };
@@ -133,45 +117,9 @@ export class TaskQueue {
     return undefined;
   }
 
-  /** Syncing business tasks never pumps the execution queue. */
-  upsertLinear(id: string, title: string, prompt: string, linear: NonNullable<QueueTask['linear']>) {
-    let task = this.tasks.find((t) => t.id === id);
-    if (!task) {
-      task = { id, title, prompt, addedBy: 'Linear', addedAt: Date.now(), status: 'planned' };
-      this.tasks.push(task);
-    }
-    // Reassignment withdraws a not-yet-started run, but never transfers a running worker.
-    if (task.status === 'queued' && task.linear?.accountId !== linear.accountId) { task.status = 'planned'; task.owner = undefined; }
-    Object.assign(task, { title, prompt, linear });
-    this.changed(true);
-  }
-
-  manualTask(id: string): string | undefined {
-    const task = this.tasks.find((t) => t.id === id && t.linear);
-    if (!task) return 'No linked task';
-    if (task.status === 'running' || task.status === 'queued') return 'An agent already has this task';
-    task.manual = true; this.changed();
-  }
-
-  startOwn(id: string, account: string, by: string, provider?: AgentProvider, model?: string, effort?: AgentEffort): string | undefined {
-    const task = this.tasks.find((t) => t.id === id);
-    if (!task?.linear || task.linear.accountId !== account) return 'Only the assigned employee can start their own agent';
-    if (task.linear.pending) return 'Wait for the pending Linear changes to sync first';
-    if (task.linear.archived || task.linear.conflict || ['completed', 'canceled'].includes(task.linear.workStatus)) return 'Resolve or reopen this task before starting an agent';
-    if (task.status === 'running' || task.status === 'queued') return 'This task already has an agent run';
-    if (this.tasks.some((other) => other !== task && activeTask(other) && normTitle(other.title) === normTitle(task.title))) return `“${task.title}” is already assigned on this project`;
-    provider ??= this.workers.officeDefault?.provider ?? this.workers.defaultProvider;
-    const error = personalProviderError(account, 'agent', provider) || validateWorkerModel('agent', provider, model) || validateWorkerEffort('agent', provider, effort);
-    if (error) return error;
-    if (this.tasks.filter((t) => t.status === 'queued' || t.status === 'running').length >= MAX_TASKS) return 'The agent queue is full';
-    Object.assign(task, { owner: account, addedBy: by, provider, model, effort, status: 'queued', manual: false, workerId: undefined, workerName: undefined, outcome: undefined, error: undefined, finishedAt: undefined, startedAt: undefined });
-    this.changed(); this.pump();
-  }
-
   remove(taskId: string): string | undefined {
     const t = this.tasks.find((x) => x.id === taskId);
     if (!t) return 'No such task';
-    if (t.linear) return 'Keep linked tasks on the board; archive them in Linear';
     if (t.status === 'running') return `${t.workerName ?? 'Its worker'} is on it — send the worker home to stop it`;
     this.tasks.splice(this.tasks.indexOf(t), 1);
     this.changed();
@@ -201,39 +149,14 @@ export class TaskQueue {
     this.pump();
   }
 
-  /**
-   * Puts a finished task back at the end of the queue as a NEW task: the original record (and its
-   * outcome) stays as the audit. `refresh` re-binds the approved context — when the referenced
-   * sources changed, the new task is marked staleContext so nobody trusts it blindly.
-   */
-  retry(taskId: string, refresh?: (task: QueueTask) => { prompt: string; contextRev?: QueueTask['contextRev'] } | undefined): string | undefined {
+  /** Puts a finished task back at the end of the queue. */
+  retry(taskId: string): string | undefined {
     const t = this.tasks.find((x) => x.id === taskId);
     if (!t) return 'No such task';
-    if (t.linear) return 'Use Start my agent on the linked task';
-    if (this.tasks.some((other) => other !== t && other.linear && activeTask(other) && normTitle(other.title) === normTitle(t.title))) return `“${t.title}” is already assigned on this project`;
     if (t.status !== 'done') return 'That task is still on the queue';
     if (t.issue !== undefined && this.tasks.some((x) => x !== t && x.issue === t.issue && x.status !== 'done')) return `Issue #${t.issue} is already on the queue`;
-    if (t.issue !== undefined && this.tasks.some((x) => x !== t && x.issue === t.issue && x.supersedes === t.id)) return `That task is already retried`;
-    const rebound = refresh?.(t);
-    const stale = !!rebound && !!t.contextRev && !!rebound.contextRev && rebound.contextRev.brief !== t.contextRev.brief;
-    const fresh: QueueTask = {
-      id: randomBytes(6).toString('hex'),
-      provider: t.provider,
-      model: t.model,
-      effort: t.effort,
-      issue: t.issue,
-      title: t.title,
-      prompt: rebound?.prompt ?? t.prompt,
-      addedBy: t.addedBy,
-      owner: t.owner,
-      dept: t.dept,
-      parentId: t.parentId,
-      contextRev: rebound?.contextRev ?? t.contextRev,
-      ...(stale ? { staleContext: true } : {}),
-      supersedes: t.id,
-      addedAt: Date.now(),
-      status: 'queued',
-    };
+    this.tasks.splice(this.tasks.indexOf(t), 1);
+    const fresh: QueueTask = { id: t.id, provider: t.provider, model: t.model, effort: t.effort, issue: t.issue, title: t.title, prompt: t.prompt, addedBy: t.addedBy, owner: t.owner, addedAt: Date.now(), status: 'queued' };
     this.tasks.push(fresh);
     this.changed();
     this.pump();
@@ -243,7 +166,7 @@ export class TaskQueue {
   /** Forgets the finished tasks. */
   clear() {
     const before = this.tasks.length;
-    this.tasks = this.tasks.filter((t) => t.linear || t.status !== 'done');
+    this.tasks = this.tasks.filter((t) => t.status !== 'done');
     if (this.tasks.length !== before) this.changed();
   }
 
@@ -345,7 +268,6 @@ export class TaskQueue {
       // The worker most likely just opened the PR; go and link it.
       this.events.refreshGitHub();
     } else if (outcome === 'exited') this.events.toast(`📋 ${who} stopped before finishing ${label(t)} — requeue it from the queue board`, 'warn');
-    this.events.finished?.(t);
     return outcome === 'done';
   }
 
@@ -401,9 +323,6 @@ export class TaskQueue {
       if (this.busy() >= this.maxWorkers) break;
       // A spent budget holds the queue instead of failing every task; the pump seats them once hiring resumes.
       if (this.events.hiringPaused()) break;
-      // So does the project's two-writer cap: the task waits for a desk writer to go home, rather
-      // than seating a third writer. The stall is visible on the queue board and the dept writers count.
-      if (this.events.writersFull?.()) break;
       // So does an office at its worker limit (--max-workers), unless one of the queue's own finished
       // workers going home makes room. Over the limit (it was just lowered), it waits for people to send some home.
       const room = this.events.room?.() ?? Infinity;
@@ -420,8 +339,7 @@ export class TaskQueue {
       const desk = free ?? this.recycleDesk();
       if (!desk) break;
       const note = this.useWorktree ? this.events.worktreeNote?.() ?? PROMPTS['queue.worktree'].text : '';
-      const denied = this.events.beforeStart?.(t);
-      const r = denied ?? this.workers.spawn(desk, `${t.addedBy} (queue)`, note ? `${t.prompt}\n\n${note}` : t.prompt, this.useWorktree, 'agent', t.provider ?? this.workers.defaultProvider, t.model, t.effort, undefined, t.owner);
+      const r = this.workers.spawn(desk, `${t.addedBy} (queue)`, note ? `${t.prompt}\n\n${note}` : t.prompt, this.useWorktree, 'agent', t.provider ?? this.workers.defaultProvider, t.model, t.effort, undefined, t.owner);
       changed = true;
       if (typeof r === 'string') {
         t.status = 'done';
@@ -449,16 +367,15 @@ export class TaskQueue {
     if (changed) this.changed();
   }
 
-  private changed(strict = false) {
-    this.persist(strict);
+  private changed() {
+    this.persist();
     this.events.update(this.state());
   }
 
-  private persist(strict = false) {
+  private persist() {
     try {
       writeFileSync(this.statePath, JSON.stringify({ maxWorkers: this.maxWorkers, tasks: this.tasks }, null, 2), { mode: 0o600 });
-    } catch (error) {
-      if (strict) throw error;
+    } catch {
       // disk issues shouldn't take the office down
     }
   }
@@ -482,8 +399,7 @@ export class TaskQueue {
           addedBy: s.addedBy ?? '?',
           owner: typeof s.owner === 'string' && s.owner ? s.owner : undefined,
           addedAt: s.addedAt ?? Date.now(),
-          status: s.status === 'planned' || s.status === 'running' || s.status === 'done' ? s.status : 'queued',
-          linear: s.linear, manual: s.manual,
+          status: s.status === 'running' || s.status === 'done' ? s.status : 'queued',
           workerId: s.workerId,
           workerName: s.workerName,
           branch: s.branch,
@@ -492,11 +408,6 @@ export class TaskQueue {
           outcome: s.outcome,
           error: s.error,
           pr: s.pr,
-          dept: typeof s.dept === 'string' ? s.dept : undefined,
-          parentId: typeof s.parentId === 'string' ? s.parentId : undefined,
-          contextRev: s.contextRev && typeof s.contextRev.brief === 'number' && Number.isFinite(s.contextRev.at) ? { brief: s.contextRev.brief, at: s.contextRev.at } : undefined,
-          staleContext: s.staleContext === true ? true : undefined,
-          supersedes: typeof s.supersedes === 'string' ? s.supersedes : undefined,
         };
         // Whatever was running died with the old office process; its worker comes back asleep at best.
         if (t.status === 'running') {
@@ -517,16 +428,6 @@ function label(t: QueueTask): string {
   return t.issue !== undefined ? `#${t.issue}` : `“${t.title.length > 40 ? `${t.title.slice(0, 39)}…` : t.title}”`;
 }
 
-/** The ownership key: case- and whitespace-insensitive, deliberately nothing fancier. */
-export function normTitle(title: string): string {
-  return title.toLowerCase().replace(/\s+/g, ' ').trim();
-}
-
 function firstLine(s: string): string {
   return s.split('\n')[0].trim();
-}
-
-/** A linked business task stays claimed after an agent turn, until accepted or archived. */
-function activeTask(t: QueueTask): boolean {
-  return t.linear ? !t.linear.archived && !['completed', 'canceled'].includes(t.linear.workStatus) : t.status !== 'done';
 }

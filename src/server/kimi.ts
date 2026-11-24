@@ -1,6 +1,3 @@
-import { randomUUID } from 'node:crypto';
-import { KimiAutonomy } from './kimi-autonomy.js';
-import type { ApprovalRequest, ApprovalState } from '../shared/protocol/approvals.js';
 import { stopAcpChild } from './acp-shutdown.js';
 import { AssistantTurn } from './assistant-text.js';
 // Kimi as a provider, over ACP: the same wire DeepSeek Harness speaks (see dsh.ts and
@@ -73,12 +70,8 @@ export class KimiSession {
   private sessionId?: string;
   private buffer = '';
   private line = '';
-  private permissions: { id: unknown; options: DshPermissionOption[]; card: string; approval?: ApprovalRequest }[] = [];
-  private get permission() { return this.permissions[0]; }
+  private permission?: { id: unknown; options: DshPermissionOption[] };
   private configOptions: Rec[] = [];
-  private modes = new KimiAutonomy((mode, source) => this.events.autonomy?.(this.autonomyVerified ? mode : undefined, source));
-  private nativeVersion?: string;
-  private get autonomyVerified() { return this.nativeVersion ? this.nativeVersion === '2.7.2' : this.launch.autonomy !== undefined; }
   private renderer = new DshRenderer();
   private assistantTurn = new AssistantTurn();
   private prompting = false;
@@ -94,19 +87,6 @@ export class KimiSession {
 
   get id(): string | undefined {
     return this.sessionId;
-  }
-
-  /** Only the real FIFO head is answerable; no terminal text is parsed for this view. */
-  approvals(): ApprovalState {
-    return { request: this.permission?.approval ? structuredClone(this.permission.approval) : undefined, queued: this.permissions.length,
-      fallback: this.permission && !this.permission.approval ? 'This ACP request cannot be shown safely here; use Terminal.' : undefined };
-  }
-
-  answerApproval(requestId: string, optionId: string): string | undefined {
-    const pending = this.permission;
-    if (this.closing || this.finished || !this.child?.stdin.writable || pending?.approval?.id !== requestId) return 'This approval is no longer current; refresh the conversation';
-    if (!pending.approval.options.some((o) => o.id === optionId)) return 'That choice is not offered for this request';
-    this.answerPermission(optionId);
   }
 
   get running(): boolean {
@@ -208,13 +188,8 @@ export class KimiSession {
     if (this.finished) return;
     if (this.permission) {
       const reject = rejectOption(this.permission.options);
-      if (reject) this.answerPermission(reject.optionId);
-      else {
-        this.cancelPermissions();
-        this.events.output(notice('quiet', 'permissions cancelled'));
-        this.events.status(this.prompting ? 'working' : 'idle');
-        this.notify('session/cancel', { sessionId: this.sessionId });
-      }
+      this.answerPermission(reject?.optionId, !reject);
+      if (!reject) this.notify('session/cancel', { sessionId: this.sessionId });
       return;
     }
     if (this.prompting) {
@@ -231,7 +206,6 @@ export class KimiSession {
     if (this.closeDone) return this.closeDone;
     if (this.finished) return Promise.resolve();
     this.closing = true;
-    this.cancelPermissions();
     return this.closeDone = stopAcpChild(this.child, () => {
       if (this.sessionId) this.send({ jsonrpc: '2.0', id: ++this.nextId, method: 'session/close', params: { sessionId: this.sessionId } });
     });
@@ -241,12 +215,11 @@ export class KimiSession {
 
   private async handshake(): Promise<void> {
     try {
-      const initialized = await this.request('initialize', {
+      await this.request('initialize', {
         protocolVersion: 1,
         clientCapabilities: { fs: { readTextFile: false, writeTextFile: false } },
         clientInfo: { name: 'agent-office', version: '0.1.0' },
       });
-      this.nativeVersion = isRec(initialized) && isRec(initialized.agentInfo) ? str(initialized.agentInfo.version) : undefined;
     } catch (err) {
       this.fail(`Kimi did not answer initialize: ${reason(err)}`);
       return;
@@ -258,7 +231,6 @@ export class KimiSession {
     if (this.launch.resumeSessionId) ready = await this.tryResume(this.launch.resumeSessionId);
     if (!ready && !(await this.newSession())) return;
 
-    if (!(await this.applyAutonomy())) return;
     await this.applyChoices();
     if (this.launch.firstPrompt) this.prompt(this.launch.firstPrompt);
     else this.events.status('idle');
@@ -270,7 +242,6 @@ export class KimiSession {
       const id = isRec(result) ? str(result.sessionId) : undefined;
       if (!id) throw new Error('session/new returned no session id');
       this.adopt(id, isRec(result) ? result.configOptions : undefined);
-      this.modes.adopt(result);
       this.events.output(notice('info', 'Kimi ready'));
       return true;
     } catch (err) {
@@ -283,7 +254,6 @@ export class KimiSession {
     try {
       const result = await this.request('session/resume', { sessionId: id, cwd: this.launch.cwd, mcpServers: [] });
       this.adopt(id, isRec(result) ? result.configOptions : undefined);
-      this.modes.adopt(result);
       this.events.output(notice('info', `resumed session ${id}`));
       return true;
     } catch (err) {
@@ -296,19 +266,6 @@ export class KimiSession {
     this.sessionId = id;
     this.configOptions = Array.isArray(configOptions) ? configOptions.filter(isRec) : [];
     this.events.session(id);
-  }
-
-  /** Live changes retain the current prompt and every already waiting approval. */
-  setAutonomy(mode: 'off' | 'supervised' | 'autonomous') {
-    if (!this.autonomyVerified) return Promise.resolve({ applied: false, detail: 'This live Kimi version is not verified. Saved for the next checked launch.' });
-    return this.modes.set(mode, modeId => this.request('session/set_mode', { sessionId: this.sessionId, modeId }), () => !!this.sessionId && !this.closing && !this.finished);
-  }
-  private async applyAutonomy(): Promise<boolean> {
-    const mode = this.launch.autonomy;
-    if (!mode) return true;
-    const outcome = await this.setAutonomy(mode);
-    if (!outcome.applied) this.fail(outcome.detail ?? 'Kimi permission mode was not confirmed.');
-    return outcome.applied;
   }
 
   /** Model and thinking effort chosen for this worker, if the live catalog offers them. */
@@ -346,7 +303,6 @@ export class KimiSession {
     this.request('session/prompt', { sessionId: this.sessionId, prompt: [{ type: 'text', text: clean }] }, 0)
       .then((result) => {
         this.prompting = false;
-        this.cancelPermissions();
         const stop = isRec(result) ? str(result.stopReason) : undefined;
         const reply = this.assistantTurn.finish();
         if (stop === 'end_turn' && reply) this.events.assistant?.(reply);
@@ -357,7 +313,6 @@ export class KimiSession {
       })
       .catch((err) => {
         this.prompting = false;
-        this.cancelPermissions();
         this.events.output(this.renderer.endTurn('Failed'));
         this.events.output(notice('bad', `prompt failed: ${oneLine(reason(err), 300)}`));
         this.events.action(undefined);
@@ -396,55 +351,26 @@ export class KimiSession {
   private answerPermission(optionId: string | undefined, cancelled = false): void {
     const permission = this.permission;
     if (!permission) return;
-    this.permissions.shift();
-    this.line = '';
+    this.permission = undefined;
     const outcome = cancelled || !optionId ? { outcome: 'cancelled' } : { outcome: 'selected', optionId };
     this.send({ jsonrpc: '2.0', id: permission.id, result: { outcome } });
     const label = cancelled || !optionId ? 'permission cancelled' : `permission answered: ${oneLine(optionId, 80)}`;
     this.events.output(notice('quiet', label));
     // Answering a prompt's question puts the turn back to work; answering autonomous work leaves the
     // session ready for the next prompt.
-    if (this.permission) this.showPermission();
-    else this.events.status(this.prompting ? 'working' : 'idle');
+    this.events.status(this.prompting ? 'working' : 'idle');
   }
 
   private onPermission(id: unknown, params: unknown): void {
-    if (this.closing) {
-      this.send({ jsonrpc: '2.0', id, result: { outcome: { outcome: 'cancelled' } } });
-      return;
-    }
     const options = permissionOptions(params);
+    this.permission = { id, options };
     const toolCall = isRec(params) && isRec(params.toolCall) ? params.toolCall : undefined;
-    const card = renderPermission(params, options, this.renderer.toolDetail(toolCall ? str(toolCall.toolCallId) : undefined));
-    const detail = JSON.stringify(toolCall ?? {}, null, 2);
-    const choices = options.filter((o) => ['allow_once', 'allow_always', 'reject_once', 'reject_always'].includes(o.kind));
-    const approval: ApprovalRequest | undefined = this.sessionId && isRec(params) && params.sessionId === this.sessionId && (typeof id === 'string' || typeof id === 'number') && detail.length <= 20000 && choices.length
-      ? { id: randomUUID(), nativeRequestId: id, source: 'acp', provider: 'kimi', sessionId: this.sessionId,
-          title: str(toolCall?.title) ?? 'Kimi requests permission', detail,
-          options: choices.map((o) => ({ id: o.optionId, label: o.name, kind: o.kind as ApprovalRequest['options'][number]['kind'] })) }
-      : undefined;
-    this.permissions.push({ id, options, card, approval });
-    if (this.permissions.length === 1) this.showPermission();
-  }
-
-  /** Only the oldest request is displayed, so the person's choice matches the visible tool. */
-  private showPermission(): void {
-    this.events.output(this.permission!.card);
+    this.events.output(renderPermission(params, options, this.renderer.toolDetail(toolCall ? str(toolCall.toolCallId) : undefined)));
     this.events.status('needs_input');
-  }
-
-  /** Ending a turn or session must settle every request, never silently approve it. */
-  private cancelPermissions(): void {
-    for (const permission of this.permissions) {
-      this.send({ jsonrpc: '2.0', id: permission.id, result: { outcome: { outcome: 'cancelled' } } });
-    }
-    this.permissions = [];
-    this.line = '';
   }
 
   private onUpdate(params: unknown): void {
     const update = isRec(params) ? params.update : undefined;
-    if (isRec(params) && params.sessionId === this.sessionId) this.modes.update(update);
     if (this.prompting && isRec(params) && params.sessionId === this.sessionId) this.assistantTurn.append(update);
     const rendered = this.renderer.render(update);
     if (rendered.text) this.events.output(rendered.text);
@@ -536,18 +462,12 @@ export class KimiSession {
   }
 
   private fail(message: string): void {
-    // Retain the child reference until shutdown is scheduled; finish clears it.
-    this.closeDone ??= stopAcpChild(this.child, () => {
-      if (this.sessionId) this.send({ jsonrpc: '2.0', id: ++this.nextId, method: 'session/close', params: { sessionId: this.sessionId } });
-    });
     this.events.output(notice('bad', message));
     this.finish(-1, message);
   }
 
   private finish(code: number | null, error?: string): void {
     if (this.finished) return;
-    this.permissions = [];
-    this.line = '';
     this.finished = true;
     const quiet = this.closing;
     for (const waiter of this.pending.values()) waiter.reject(new Error('the Kimi process ended'));

@@ -206,7 +206,7 @@ test('legacy review-only defaults clear old generated rules without losing surro
   }
 });
 
-test('push conflicts with unmanaged personal files and preserves unrelated skills', () => {
+test('push preserves unrelated skills and personal instructions in backups, without pruning removed shared files', () => {
   const { root, office, harness, cleanup } = setup();
   try {
     writeFileSync(path.join(root, 'CLAUDE.md'), '# shared\n');
@@ -223,12 +223,14 @@ test('push conflicts with unmanaged personal files and preserves unrelated skill
     harness.apply('Jonathan');
     assert.equal(readFileSync(path.join(target, 'notes.md'), 'utf8'), 'personal notes');
     assert.equal(readFileSync(path.join(office.claude, 'skills', 'personal', 'SKILL.md'), 'utf8'), 'unrelated skill');
-    assert.equal(readFileSync(path.join(target, 'SKILL.md'), 'utf8'), '# personal version\n');
-    assert.equal(readFileSync(path.join(office.claude, 'CLAUDE.md'), 'utf8'), '# personal instructions\n');
+    const backup = readdirSync(target).find((n) => n.endsWith('.bak'))!;
+    assert.equal(readFileSync(path.join(target, backup), 'utf8'), '# personal version\n');
+    const instructionsBackup = readdirSync(office.claude).find((n) => n.startsWith('CLAUDE.md.harness-'))!;
+    assert.equal(readFileSync(path.join(office.claude, instructionsBackup), 'utf8'), '# personal instructions\n');
     rmSync(path.join(source, 'SKILL.md'));
     harness.apply('Jonathan');
-    assert.equal(readFileSync(path.join(target, 'SKILL.md'), 'utf8'), '# personal version\n', 'untracked content is not owned by the sync');
-    assert.equal(readdirSync(target).filter((n) => n.endsWith('.bak')).length, 0, 'conflicts never mutate personal files');
+    assert.equal(readFileSync(path.join(target, 'SKILL.md'), 'utf8'), '# shared skill\n', 'push does not silently remove files');
+    assert.equal(readdirSync(target).filter((n) => n.endsWith('.bak')).length, 1, 'unchanged pushes do not overwrite historical backups');
   } finally {
     cleanup();
   }
@@ -243,7 +245,7 @@ test('push reports and skips destination symlinks instead of overwriting their t
     writeFileSync(personal, 'personal instructions');
     symlinkSync(personal, path.join(office.claude, 'CLAUDE.md'));
     const line = harness.apply('Jonathan');
-    assert.match(line, /skipped 1 conflict.*symlink/);
+    assert.match(line, /skipped 1 symlink/);
     assert.equal(readFileSync(personal, 'utf8'), 'personal instructions');
   } finally {
     cleanup();

@@ -46,14 +46,6 @@ They're in `core/registry.ts`, and each is a field of `ctx`. Every registration 
 
 `style.css` is the 3D office's sheet. It pulls in `styles/base.css` (the colors, the reset, panels, buttons and the window frame, which the 2D view's `lite.css` loads too), `styles/hud.css` and `styles/loading.css`. Every other sheet sits next to its module and comes in with it. A module's sheet loads in no fixed order against `base.css`, so a module rule that overrides a base rule of the same specificity has to be more specific, or live at the end of `base.css` with the others there.
 
-### Walking and picking checks
-
-Mouse-look and walking use the upstream player controller without local changes. Scene aiming uses upstream recursive raycasting, and desk/chair construction uses the upstream individual meshes. The experimental visibility-pruned picking and furniture batching were rolled back after a report of skipping during mouse-look. No additional camera smoothing, sensitivity changes or manager roaming is enabled by this rollback.
-
-`OFFICE_PERF_BASELINE=1 node tests/walking-performance-ui.mjs` runs the real `main.ts` scene and player controller at 1440px/DPR2 and checks desk/board picking at 1440px and 390px. It uses synthetic server/worker data and disables microphone access; it never starts a provider. Results and screenshots go to `/tmp/agent-office-walking-performance` (`OFFICE_PERF_OUTPUT` overrides it). Set `CHROME_BIN` when Chrome is elsewhere. Native and 4×/6× CPU-throttled samples record frame/CPU/GPU timings, draw calls and continuous aisle movement. Timings are diagnostic, not a hardware-independent pass threshold or proof of a reported user's device problem.
-
-To compare with an archived checkout, give it `node_modules`, run with `OFFICE_PERF_ROOT=/absolute/baseline OFFICE_PERF_BASELINE=1 OFFICE_PERF_OUTPUT=/tmp/office-baseline`, then run the candidate with `OFFICE_PERF_REFERENCE=/tmp/office-baseline/report.json`. The comparison checks static furniture triangle positions, materials, shadow flags and anchors independently of mesh batching. `OFFICE_PERF_BEHAVIOR_ONLY=1` skips timing samples; `OFFICE_PERF_ROLES=1` adds four off-shift role characters when that checkout supports them. The fixture also replays own `peer.update`/`peer.move` messages and checks that they leave local pose untouched. It does not reproduce real network traffic, every map/weather state or the user's hardware.
-
 ## Server
 
 - **`server.ts`** is the composition root: `startServer` builds the office's context a stage at a time, starts the hook server, opens the floors, and hands the context to the HTTP handler and the WebSocket.

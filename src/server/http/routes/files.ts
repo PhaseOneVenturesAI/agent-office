@@ -1,4 +1,3 @@
-import { canViewTerminal, OWN_WORKER } from '../../worker-ownership.js';
 // Files a floor's windows show or take: pictures on the walls and the whiteboard, files dropped into
 // a terminal, changed pictures in the Changes window, and the bookshelf's Markdown.
 import type { Floor } from '../../floor.js';
@@ -61,7 +60,7 @@ export const fileRoutes = {
   termDrop: {
     path: '/api/term/drop',
     auth: 'session',
-    async handle(ctx, { req, res, url, session }) {
+    async handle(ctx, { req, res, url }) {
       const floor = floorParam(ctx, url);
       // A file dropped or pasted into a worker's terminal, kept on this machine for the terminal to type its path.
       if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed' });
@@ -69,7 +68,6 @@ export const fileRoutes = {
       if (!floor) return send(res, 404, { error: 'No such floor' });
       const workerId = str(url.searchParams.get('worker'), 32);
       if (!floor.workers.get(workerId)) return send(res, 404, { error: 'No such worker' });
-      if (!canViewTerminal(ctx, session.account?.id, workerId)) return send(res, 403, { error: OWN_WORKER });
       const tooBig = `That file is too big to drop into a terminal (${DROP_MAX_BYTES / 1024 / 1024} MB at most)`;
       if (Number(req.headers['content-length']) > DROP_MAX_BYTES) return send(res, 413, { error: tooBig });
       let body: Buffer;
