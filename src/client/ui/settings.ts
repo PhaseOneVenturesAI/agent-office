@@ -12,6 +12,7 @@ import { agentFields, choiceLabel, officeChoice } from './provider';
 import { openPromptEditor, rewrittenPrompts } from './prompts';
 import { outsideSetting } from './settings-sky';
 import { choiceRow } from './settings-rows';
+import { myAgentsSetting } from './settings-my-agents';
 
 const VIEWS: [ViewMode, string, string][] = [
   ['first', '👀 First person', 'See through your own eyes. Click the office to look around with the mouse and click things to use them. Esc frees the mouse.'],
@@ -23,10 +24,11 @@ const THEME_LABEL: Record<ThemePick, string> = { auto: '📅 By the calendar', h
 const WEBHOOK_NAME: Record<WebhookKind, string> = { slack: 'Slack', discord: 'Discord', other: 'a webhook' };
 
 /** The categories down the side of ⚙️ Settings. */
-export type SettingsPane = 'you' | 'sound' | 'notify' | 'building' | 'workers';
+export type SettingsPane = 'you' | 'agents' | 'sound' | 'notify' | 'building' | 'workers';
 
 const PANES: { id: SettingsPane; icon: string; label: string; blurb: string }[] = [
   { id: 'you', icon: '🧍', label: 'You', blurb: 'How you look, how you see the office, and how you’re signed in.' },
+  { id: 'agents', icon: '🤖', label: 'My agents', blurb: 'How your own agents approve work, saved to your account.' },
   { id: 'sound', icon: '🔊', label: 'Sound & voice', blurb: 'How loud the office is for you, and how voice chat works.' },
   { id: 'notify', icon: '🔔', label: 'Notifications', blurb: 'Hear about a worker that needs someone, or finished, while you’re somewhere else.' },
   { id: 'building', icon: '🏢', label: 'Building', blurb: 'The map, the decorations, the sky, the dog, and where new floors are cloned.' },
@@ -442,7 +444,9 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
   const signOut = h('button.btn', { type: 'button' }, '🚪 Sign out');
   signOut.addEventListener('click', onSignOut);
   const character = h('button.btn', { type: 'button' }, account ? '🧍 Change your look' : '🧍 Change your look & name');
+  const myAgents = myAgentsSetting(net);
   const panes: Record<SettingsPane, Node[]> = {
+    agents: [myAgents.section],
     you: [
       setting('Your character', null, character),
       setting('Camera view', 'you', seg, note),
@@ -519,6 +523,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
   const modal = openModal(el, {
     doing: '⚙️ in settings',
     onClose: () => {
+      myAgents.close();
       offNotify();
       offDog();
       offTheme();

@@ -1,4 +1,5 @@
 import { prepareAutonomy, type AutonomyMode } from '../providers/autonomy.js';
+import { applyWorkerAutonomy, autonomyChoice, queueWorkerAutonomy, refreshPersonalAutonomy } from './autonomy.js';
 import { WorkerApprovals } from '../approvals/service.js';
 import { personalProviderError } from '../worker-ownership.js';
 import { WorkerRemovals } from './removal.js';
@@ -208,13 +209,11 @@ export class WorkerManager {
     return this.workers.get(id)?.info;
   }
 
-  /** Save a permission preference for the next process start; never changes a running turn. */
   queueAutonomy(id: string, mode: AutonomyMode): string | undefined {
-    const w = this.workers.get(id); if (!w) return 'The role preference was saved; its worker is no longer seated.';
-    const before = w.info.autonomyRequested; w.info.autonomyRequested = mode;
-    if (!this.persist()) { w.info.autonomyRequested = before; return 'Role preference saved, but worker permission settings could not be saved. Retry before restarting.'; }
-    this.emitUpdate(w);
+    return queueWorkerAutonomy(this.workers.get(id), () => this.persist(), w => this.emitUpdate(w), mode);
   }
+  applyAutonomy(id: string, mode: AutonomyMode, source: 'account' | 'explicit' = 'account') { return applyWorkerAutonomy({ ...this.ctx, persist: () => this.persist() }, id, mode, source); }
+  autonomyDetails(id: string) { return { pendingApproval: this.approvals.state(id).queued > 0 }; }
 
   /** The account a worker runs as (see RunAs), if not the office. */
   ownerOf(id: string): string | undefined {
@@ -305,7 +304,7 @@ export class WorkerManager {
       id,
       kind,
       provider: selectedProvider,
-      autonomyRequested: autonomy,
+      ...autonomyChoice(autonomy, kind, owner, selectedProvider, this.runAs),
       model: takesModel(selectedProvider) ? model : undefined,
       effort: takesEffort(selectedProvider) ? effort : undefined,
       deskId,
@@ -684,6 +683,7 @@ export class WorkerManager {
     const command = this.command(info);
     const commandPath = isShell ? undefined : configured ? this.agentPath : resolveCommand(command);
     const base = isShell ? (WIN && !process.env.SHELL ? [] : ['-l']) : configured ? [...this.agentArgs] : [];
+    refreshPersonalAutonomy(info, w.owner, this.runAs);
     const autonomyError = prepareAutonomy(info, commandPath ?? undefined, base);
     if (autonomyError) return this.startFailed(w, autonomyError);
     // Its provider's command line, and anything it sets for this run (see ProviderAdapter.launch).

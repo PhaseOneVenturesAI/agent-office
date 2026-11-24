@@ -45,6 +45,7 @@ export interface OpenedPr {
  * sign-ins (see signins.ts). Workers hired without an account run as the office, as they always have.
  */
 export interface RunAs {
+  autonomy?(owner: string, provider: import('../../shared/protocol.js').AgentProvider): import('../providers/autonomy.js').AutonomyMode | undefined;
   /** Whether the account has a sign-in of `which` its workers can start on. */
   ready(owner: string, which: SignInKind): boolean;
   /** What to tell the account when it hasn't. */

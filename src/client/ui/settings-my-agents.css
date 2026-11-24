@@ -1,0 +1,9 @@
+.my-agents-switch { display: flex; align-items: center; gap: 12px; font-weight: 800; cursor: pointer; }
+.my-agents-switch input { width: 22px; height: 22px; flex: none; accent-color: var(--accent); }
+.my-agents-list { display: grid; gap: 10px; padding: 0; margin: 16px 0 0; list-style: none; }
+.my-agents-list li { padding: 12px; border: 1px solid rgba(43,45,66,.2); border-radius: 10px; }
+.my-agents-name { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.my-agents-name span { font-size: 12px; color: var(--muted); }
+.my-agents-status { display: inline-block; margin-top: 8px; font-size: 12px; font-weight: 800; }
+.my-agents-status[data-autonomy-status=applied] { color: #26704d; }
+.my-agents .setting-note { overflow-wrap: anywhere; }

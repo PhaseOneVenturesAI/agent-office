@@ -1,4 +1,5 @@
 import { RoleSubscriptions } from '../role-subscriptions/store.js';
+import { PersonalAutonomy } from '../personal-autonomy/store.js';
 import { canControlLinear } from '../linear/access.js';
 import { LinearService } from '../linear/service.js';
 import { linearConfig } from '../linear/client.js';
@@ -78,6 +79,8 @@ export function createServices(ctx: Ctx): BuildingServices {
       for (const c of clients.values()) if (c.accountId === id && !c.out) ctx.sendTo(c, { t: 'signins', state: signins.state(id) });
     },
   );
+  const personalAutonomy = new PersonalAutonomy(cfg.dataDir);
+  Object.assign(signins, { autonomy: (owner: string, provider: string) => (provider === 'claude' || provider === 'kimi' || provider === 'codex') && signins.state(owner)[provider].how !== 'office' ? personalAutonomy.mode(owner) : undefined });
   // Accounts revoked from the terminal while the office was closed leave their sign-ins behind.
   if (!accounts.unreadableFile) signins.prune(new Set(accounts.state(new Set()).accounts.map((a) => a.id)));
 
@@ -189,7 +192,7 @@ export function createServices(ctx: Ctx): BuildingServices {
     });
   };
 
-  return { roleSubscriptions: new RoleSubscriptions(cfg.dataDir), linear, sky, themes, maps, prompts, leaveOnMerge, ledger, signins, harness, personalHarness, reviews, deploys, hygiene, costwall, nodes, deliveries, cloudflare, limits, accountLimits, webhook, machine, limitsOf, pumpQueues };
+  return { personalAutonomy, roleSubscriptions: new RoleSubscriptions(cfg.dataDir), linear, sky, themes, maps, prompts, leaveOnMerge, ledger, signins, harness, personalHarness, reviews, deploys, hygiene, costwall, nodes, deliveries, cloudflare, limits, accountLimits, webhook, machine, limitsOf, pumpQueues };
 }
 
 /** What's made once the floors are open: the SSH team, the tailnet, workers' web servers, pictures and upgrades. */

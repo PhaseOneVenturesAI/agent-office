@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { KimiAutonomy } from './kimi-autonomy.js';
 import type { ApprovalRequest, ApprovalState } from '../shared/protocol/approvals.js';
 import { stopAcpChild } from './acp-shutdown.js';
 import { AssistantTurn } from './assistant-text.js';
@@ -75,7 +76,9 @@ export class KimiSession {
   private permissions: { id: unknown; options: DshPermissionOption[]; card: string; approval?: ApprovalRequest }[] = [];
   private get permission() { return this.permissions[0]; }
   private configOptions: Rec[] = [];
-  private modes: string[] = [];
+  private modes = new KimiAutonomy((mode, source) => this.events.autonomy?.(this.autonomyVerified ? mode : undefined, source));
+  private nativeVersion?: string;
+  private get autonomyVerified() { return this.nativeVersion ? this.nativeVersion === '2.7.2' : this.launch.autonomy !== undefined; }
   private renderer = new DshRenderer();
   private assistantTurn = new AssistantTurn();
   private prompting = false;
@@ -238,11 +241,12 @@ export class KimiSession {
 
   private async handshake(): Promise<void> {
     try {
-      await this.request('initialize', {
+      const initialized = await this.request('initialize', {
         protocolVersion: 1,
         clientCapabilities: { fs: { readTextFile: false, writeTextFile: false } },
         clientInfo: { name: 'agent-office', version: '0.1.0' },
       });
+      this.nativeVersion = isRec(initialized) && isRec(initialized.agentInfo) ? str(initialized.agentInfo.version) : undefined;
     } catch (err) {
       this.fail(`Kimi did not answer initialize: ${reason(err)}`);
       return;
@@ -266,7 +270,7 @@ export class KimiSession {
       const id = isRec(result) ? str(result.sessionId) : undefined;
       if (!id) throw new Error('session/new returned no session id');
       this.adopt(id, isRec(result) ? result.configOptions : undefined);
-      this.modes = isRec(result) && isRec(result.modes) && Array.isArray(result.modes.availableModes) ? result.modes.availableModes.filter(isRec).map(m => String(m.id)) : [];
+      this.modes.adopt(result);
       this.events.output(notice('info', 'Kimi ready'));
       return true;
     } catch (err) {
@@ -279,7 +283,7 @@ export class KimiSession {
     try {
       const result = await this.request('session/resume', { sessionId: id, cwd: this.launch.cwd, mcpServers: [] });
       this.adopt(id, isRec(result) ? result.configOptions : undefined);
-      this.modes = isRec(result) && isRec(result.modes) && Array.isArray(result.modes.availableModes) ? result.modes.availableModes.filter(isRec).map(m => String(m.id)) : [];
+      this.modes.adopt(result);
       this.events.output(notice('info', `resumed session ${id}`));
       return true;
     } catch (err) {
@@ -294,17 +298,17 @@ export class KimiSession {
     this.events.session(id);
   }
 
-  /** ACP mode names differ from CLI flags: auto is safe, yolo approves everything. */
+  /** Live changes retain the current prompt and every already waiting approval. */
+  setAutonomy(mode: 'off' | 'supervised' | 'autonomous') {
+    if (!this.autonomyVerified) return Promise.resolve({ applied: false, detail: 'This live Kimi version is not verified. Saved for the next checked launch.' });
+    return this.modes.set(mode, modeId => this.request('session/set_mode', { sessionId: this.sessionId, modeId }), () => !!this.sessionId && !this.closing && !this.finished);
+  }
   private async applyAutonomy(): Promise<boolean> {
     const mode = this.launch.autonomy;
     if (!mode) return true;
-    const modeId = mode === 'autonomous' ? 'auto' : 'default';
-    if (!this.modes.includes(modeId)) { this.fail(`Kimi did not advertise ${modeId} permission mode. No prompt was sent.`); return false; }
-    try {
-      await this.request('session/set_mode', { sessionId: this.sessionId, modeId });
-      this.events.autonomy?.(mode);
-      return true;
-    } catch (err) { this.fail(`Kimi rejected the permission mode: ${reason(err)}`); return false; }
+    const outcome = await this.setAutonomy(mode);
+    if (!outcome.applied) this.fail(outcome.detail ?? 'Kimi permission mode was not confirmed.');
+    return outcome.applied;
   }
 
   /** Model and thinking effort chosen for this worker, if the live catalog offers them. */
@@ -440,6 +444,7 @@ export class KimiSession {
 
   private onUpdate(params: unknown): void {
     const update = isRec(params) ? params.update : undefined;
+    if (isRec(params) && params.sessionId === this.sessionId) this.modes.update(update);
     if (this.prompting && isRec(params) && params.sessionId === this.sessionId) this.assistantTurn.append(update);
     const rendered = this.renderer.render(update);
     if (rendered.text) this.events.output(rendered.text);
