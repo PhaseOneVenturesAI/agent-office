@@ -141,6 +141,21 @@ test('initial and updated worker labels resolve the stored credential owner, not
   assert.equal(workersView(f.ctx, f.floor as any)[0].ownerName, 'Office');
 });
 
+test('restored worker updates wait for the floor constructor to assign its manager', () => {
+  const f = fixture('alice');
+  const sent: any[] = [];
+  f.client.ws.send = ((json: string) => sent.push(JSON.parse(json))) as any;
+  f.ctx.clients = new Map([[f.client.id, f.client]]);
+  const buildingFloor = { id: f.floor.id } as any;
+  const send = messaging(f.ctx).toFloor;
+  assert.doesNotThrow(() => send(buildingFloor, { t: 'worker.update', worker: f.info }));
+  assert.deepEqual(sent, []); // Never invent an Office owner during restoration.
+  buildingFloor.workers = f.floor.workers;
+  send(buildingFloor, { t: 'worker.update', worker: f.info });
+  assert.equal(sent[0].worker.ownerName, 'Alice');
+  assert.equal(workersView(f.ctx, buildingFloor)[0].ownerName, 'Alice');
+});
+
 test('unsupported providers never silently use the host account; shared-password mode is unchanged', () => {
   for(const provider of ['cursor','grok','muse','opencode','dsh','pi','custom'] as const) {
     assert.match(personalProviderError('alice','agent',provider)!,/personal sign-in/);
