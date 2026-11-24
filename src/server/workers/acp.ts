@@ -33,11 +33,17 @@ export function launchAcp(ctx: WorkerContext, w: Worker, term: HeadlessTerminal,
       cwd: options.cwd,
       env: options.env,
       model: info.model,
+      autonomy: info.autonomyRequested,
       effort: info.effort,
       resumeSessionId: options.resumeSessionId,
       firstPrompt: options.prompt,
     },
     {
+      autonomy: (mode) => {
+        if (w.dsh !== session) return;
+        info.autonomyApplied = { mode, provider: 'kimi', acknowledged: true, detail: `Kimi ACP acknowledged ${mode === 'autonomous' ? 'safe automatic approvals' : 'manual approvals'}` };
+        ctx.emit(w); ctx.persist();
+      },
       assistant: (text) => { if (w.dsh === session) ctx.assistant(w, { id: `${info.sessionId}:${randomUUID()}`, text }); },
       output: (data) => {
         if (w.dsh !== session) return;

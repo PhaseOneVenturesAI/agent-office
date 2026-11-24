@@ -16,6 +16,7 @@ import { openBoard } from '../../ui/boards';
 import { openCharacter } from '../../ui/character';
 import { openCostwall } from '../../ui/costwall';
 import { openDepartments } from '../../ui/departments';
+import { openRoles } from '../../ui/admin-roles';
 import { openDeploys } from '../../ui/deploys';
 import { $ } from '../../ui/dom';
 import { toggleFloorMenu } from '../../ui/floormenu';
@@ -113,8 +114,17 @@ export function installHud(ctx: Ctx, core: CoreState, parts: HudParts) {
         section: 'Office',
         shown: () => !!store.floor,
         count: () => store.departments.departments.length,
-        title: () => 'The floor’s corners of work: briefs, roles, brand assets — hiring into a role seats a worker with all of it in the prompt',
+        title: () => 'Talk to the CEO and the department managers, see their teams and work — briefs, brand and history underneath',
         run: () => openDepartments(net),
+      },
+      {
+        id: 'roles',
+        icon: '🛡️',
+        label: 'Roles',
+        section: 'Office',
+        shown: () => !!store.floor,
+        title: () => 'Who controls the project’s characters: the CEO’s owner, each manager’s controllers, Q&A audience, custodian, engine, autonomy',
+        run: () => openRoles(net),
       },
       { id: 'deploys', icon: '🚀', label: 'Deploy board', section: 'Office', title: () => 'The Cloudflare Pages and Workers projects, each one click from staging it for review', run: () => openDeploys(net) },
       { id: 'costwall', icon: '💸', label: 'Cost wall', section: 'Office', title: () => 'Who is spending what, per person and per provider, next to the office ledger', run: () => openCostwall(net) },

@@ -49,8 +49,8 @@ export interface RunAs {
   ready(owner: string, which: SignInKind): boolean;
   /** What to tell the account when it hasn't. */
   why(which: SignInKind): string;
-  /** Puts the account's sign-ins in place of the office's in `env`; `dirs` are where the worker starts. */
-  apply(owner: string, env: Record<string, string>, dirs: string[]): Record<string, string>;
+  /** Puts the account's sign-ins in place of the office's in `env`; `dirs` are where the worker starts. `only` restricts to one sign-in kind. */
+  apply(owner: string, env: Record<string, string>, dirs: string[], only?: 'claude' | 'kimi' | 'codex' | 'github'): Record<string, string>;
 }
 
 export interface Worker {

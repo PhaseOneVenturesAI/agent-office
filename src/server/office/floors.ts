@@ -1,3 +1,5 @@
+import { managerExecution, roleDispatchError, queuedDepartmentError } from '../role-subscriptions/access.js';
+import { canViewTerminal } from '../worker-ownership.js';
 import { existsSync } from 'node:fs';
 import { WebSocket } from 'ws';
 import type { FloorDef } from '../building.js';
@@ -96,7 +98,7 @@ export async function openFloors(ctx: Ctx, hookPort: number): Promise<FloorsOpen
       const json = JSON.stringify({ t: 'term.data', workerId, data } satisfies ServerMsg);
       for (const id of viewers) {
         const c = clients.get(id);
-        if (!c || c.ws.readyState !== WebSocket.OPEN) continue;
+        if (!c || c.ws.readyState !== WebSocket.OPEN || !canViewTerminal(ctx, c.accountId, workerId)) continue;
         // A viewer on a slow link skips output and gets a fresh snapshot once it catches up,
         // instead of queueing unbounded data in server memory.
         if (c.stale.has(workerId) || c.ws.bufferedAmount > SLOW_CLIENT_BYTES) c.stale.add(workerId);
@@ -131,6 +133,10 @@ export async function openFloors(ctx: Ctx, hookPort: number): Promise<FloorsOpen
     lent: (floor) => [...floors.values()].some((f) => f !== floor && worksIn(f, floor)),
     locksUp: () => !!ctx.maps.plan().sendHome?.keeps,
     runAs: ctx.signins,
+    accountsEnabled: () => ctx.accounts.any,
+    managerExecution: (floor, department, actor, provider) => managerExecution(ctx, floor, department, actor, provider),
+    queuedDepartmentError: (floor, task) => queuedDepartmentError(ctx, floor, task),
+    roleDispatchError: (floor, workerId) => roleDispatchError(ctx, floor, workerId),
     ghAs: (owner) => (owner ? ctx.signins.ghAs(owner) : undefined),
   };
   /** Whether a worker on `from` works in `on`'s project too (see WorkerInfo.repos). */

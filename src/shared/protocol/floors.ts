@@ -10,6 +10,7 @@ import type { JukeboxState } from '../jukebox.js';
 import type { WhiteboardView } from '../whiteboard.js';
 import type { AgentProvider } from './agents.js';
 import type { DepartmentsState } from './departments.js';
+import type { CeoState } from './ceo.js';
 import type { GhIssue, GhPull, GhState } from './github.js';
 import type { MeetingState } from './meetings.js';
 import type { PeerInfo } from './presence.js';
@@ -127,6 +128,8 @@ export interface FloorView {
   jail: JailState;
   /** The floor's departments: their briefs, rosters, brand assets, and the project's instruction files. */
   departments: DepartmentsState;
+  /** The floor's CEO: one persistent identity per project, directing the managers. None named yet. */
+  ceo: CeoState;
 }
 
 export type FloorClientMsg =
@@ -167,4 +170,6 @@ export type FloorServerMsg =
   /** Your floor's signs changed, or its back office was built out or walled up. */
   | { t: 'plan'; plan: FloorPlan }
   /** Your floor's departments changed. */
-  | { t: 'departments'; state: DepartmentsState };
+  | { t: 'departments'; state: DepartmentsState }
+  /** Your floor's CEO changed (named, launched, cleared). */
+  | { t: 'ceo'; state: CeoState };

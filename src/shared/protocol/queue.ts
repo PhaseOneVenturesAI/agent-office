@@ -2,11 +2,14 @@
 
 import type { AgentEffort, AgentProvider } from './agents.js';
 
-export type TaskStatus = 'queued' | 'running' | 'done';
+export type TaskStatus = 'planned' | 'queued' | 'running' | 'done';
 
 /** A task on the 📋 queue whiteboard: a GitHub issue or free text, seated to a worker by itself. */
 export interface QueueTask {
   id: string;
+  /** External business task; its human assignee is independent from execution owner. */
+  linear?: import('./linear.js').LinearLink;
+  manual?: boolean;
   provider?: AgentProvider;
   /** Model requested for this task, instead of the office's configured default: an id its provider takes (see WorkerInfo.model). */
   model?: string;
@@ -33,6 +36,16 @@ export interface QueueTask {
   error?: string;
   /** The pull request that closes the issue, or was opened from the worker's branch. */
   pr?: { number: number; url: string; state: string; title: string };
+  /** The department that delegated it (its id): one task source per project, deduped per department. */
+  dept?: string;
+  /** The lead worker that delegated it: the dispatch reports the child's results and blockers here. */
+  parentId?: string;
+  /** The approved context snapshot this attempt started from (brief revision, time). */
+  contextRev?: { brief: number; at: number };
+  /** Set when the context changed between the original attempt and this retry — review before trusting. */
+  staleContext?: boolean;
+  /** The earlier task this one retries: the original record (and its outcome) stays in the audit. */
+  supersedes?: string;
 }
 
 export interface QueueState {
@@ -43,6 +56,7 @@ export interface QueueState {
 
 export type QueueClientMsg =
   | { t: 'queue.add'; prompt: string; title?: string; issue?: number; provider?: AgentProvider; model?: string; effort?: AgentEffort }
+  | { t: 'queue.startOwn'; taskId: string; provider?: AgentProvider; model?: string; effort?: AgentEffort }
   | { t: 'queue.remove'; taskId: string }
   /** Move a queued task up (-1) or down (+1) the queue. */
   | { t: 'queue.move'; taskId: string; delta: number }

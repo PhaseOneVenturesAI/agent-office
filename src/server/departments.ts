@@ -1,3 +1,4 @@
+import { isAutonomy } from './providers/autonomy.js';
 // Departments: a floor's own corners of work (see shared/protocol/departments.ts), persistent in
 // the floor's .agent-office/departments.json. A department is paperwork and furniture, never an
 // auto-running team: creating one launches nothing. Launching a worker into a role composes the
@@ -15,7 +16,8 @@
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
-import type { Department, DepartmentsState, DeptBriefRev, DeptPreset, DeptRole, ProjectSource } from '../shared/protocol.js';
+import type { AgentEffort, AgentProvider } from '../shared/providers.js';
+import type { Department, DepartmentsState, DeptBriefRev, DeptLead, DeptPolicy, DeptPreset, DeptRequest, DeptRole, ProjectSource } from '../shared/protocol.js';
 
 /** Implementation writers one project staffs at a time, across all its departments. */
 export const MAX_WRITERS = 2;
@@ -84,6 +86,15 @@ export class Departments {
         d.brief.forEach((r, i) => (r.rev ??= d.brief.length - i));
         d.rev ??= d.brief.length;
         d.briefArchived ??= 0;
+        // A malformed lead or policy is dropped from the live view; the file is rewritten clean on
+        // the next real change, and a stale live link self-heals at launch time.
+        if (d.lead && (typeof d.lead.name !== 'string' || !d.lead.name || typeof d.lead.by !== 'string' || !Number.isFinite(d.lead.at))) delete d.lead;
+        if (d.lead?.objective && (typeof d.lead.objective.text !== 'string' || !d.lead.objective.text || typeof d.lead.objective.by !== 'string' || !Number.isFinite(d.lead.objective.at))) delete d.lead.objective;
+        if (d.lead?.controllers && (!Array.isArray(d.lead.controllers) || d.lead.controllers.some((e) => typeof e !== 'string'))) delete d.lead.controllers;
+        if (d.lead?.audience && (!Array.isArray(d.lead.audience) || d.lead.audience.some((e) => typeof e !== 'string'))) delete d.lead.audience;
+        if (d.lead?.custodian && typeof d.lead.custodian !== 'string') delete d.lead.custodian;
+        if (d.policy && (typeof d.policy.provider !== 'string' || (d.policy.mode !== 'policy' && d.policy.mode !== 'ask'))) delete d.policy;
+        if (d.requests && (!Array.isArray(d.requests) || d.requests.some((r) => !r || typeof r.id !== 'string' || typeof r.title !== 'string' || typeof r.task !== 'string' || typeof r.by !== 'string' || !Number.isFinite(r.at)))) delete d.requests;
       }
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') this.loadError = "Couldn't load departments; preserving the original file. Repair it and reload the floor.";
@@ -135,6 +146,7 @@ export class Departments {
   remove(id: string, live: (workerId: string) => boolean): string | undefined {
     const dept = this.get(id);
     if (!dept) return 'That department is gone';
+    if (dept.lead) return 'This department has a permanent manager. Pause their conversation instead of deleting the department.';
     const staffed = dept.roster.filter((r) => live(r.workerId));
     if (staffed.length) return `Send its ${staffed.length} worker${staffed.length === 1 ? '' : 's'} home first`;
     return this.commit(this.departments.filter((d) => d.id !== id));
@@ -288,6 +300,223 @@ export class Departments {
     this.commit(this.departments.map((d) => (d.id === id ? next : d)));
   }
 
+  /** Name (or replace) the lead identity and its saved engine; never launches anything. */
+  setLead(id: string, ask: { name: unknown; provider?: AgentProvider; model?: string; effort?: AgentEffort; autonomy?: string }, by: string): string | undefined {
+    const dept = this.get(id);
+    if (!dept) return 'That department is gone';
+    const name = oneLine(String(ask.name ?? ''), MAX_NAME);
+    if (!name) return 'Give the lead a name';
+    // Replacing the identity under a live worker is refused; refreshing the saved engine is not —
+    // and it must keep the live link, or a duplicate shift could be launched under the new save.
+    if (dept.lead?.workerId && name !== dept.lead.name) return `${dept.lead.name} is on shift — send their worker home before replacing them`;
+    const next: DeptLead = { ...(dept.lead ?? { name, by, at: Date.now() }), name, by, at: Date.now() };
+    if (ask.provider !== undefined) next.provider = ask.provider;
+    if (ask.model !== undefined) next.model = ask.model;
+    if (ask.effort !== undefined) next.effort = ask.effort;
+    if (ask.autonomy !== undefined) {
+      if (!isAutonomy(ask.autonomy)) return 'Choose manual or automatic autonomy.';
+      next.autonomy = ask.autonomy;
+      next.autonomyConfirmed = true;
+    }
+    const nextDept: Department = { ...dept, lead: next };
+    return this.commit(this.departments.map((d) => (d.id === id ? nextDept : d)));
+  }
+
+  /** Permanent manager identity: stop/continue the conversation, never delete the role. */
+  clearLead(id: string): string | undefined {
+    return this.get(id)?.lead ? 'Managers are permanent. Pause the current turn in Conversation; continue there when ready.' : 'That department has no lead';
+  }
+
+  /** The team engine policy: 'policy' runs it silently, 'ask' shows the picker prefilled from it. */
+  setPolicy(id: string, ask: { provider: AgentProvider; model?: string; effort?: AgentEffort; mode: 'policy' | 'ask' }, by: string): string | undefined {
+    const dept = this.get(id);
+    if (!dept) return 'That department is gone';
+    const policy: DeptPolicy = { provider: ask.provider, mode: ask.mode, by, at: Date.now() };
+    if (ask.model !== undefined) policy.model = ask.model;
+    if (ask.effort !== undefined) policy.effort = ask.effort;
+    const next: Department = { ...dept, policy };
+    return this.commit(this.departments.map((d) => (d.id === id ? next : d)));
+  }
+
+  /**
+   * The lead's shift: the prompt its worker starts with, or why it can't start. The lead orchestrates
+   * — it never takes an implementation seat, so it doesn't count against the writer cap. A lead whose
+   * worker is live is resumed (Talk), never duplicated; a stale workerId (its worker went home) is
+   * cleared here so the identity can take a new shift.
+   */
+  composeLeadLaunch(id: string, task: string | undefined, liveAgents: () => string[]): { prompt: string; lead: DeptLead } | string {
+    if (this.loadError) return this.loadError;
+    const dept = this.get(id);
+    if (!dept) return 'That department is gone';
+    const lead = dept.lead;
+    if (!lead) return 'Name a lead first';
+    if (lead.workerId && liveAgents().includes(lead.workerId)) return `${lead.name} is already on shift — talk to them instead`;
+    if (lead.workerId) {
+      const next: Department = { ...dept, lead: { ...lead, workerId: undefined } };
+      this.commit(this.departments.map((d) => (d.id === id ? next : d)));
+      lead.workerId = undefined;
+    }
+    const brief = dept.brief[0];
+    const current = dept.assets.filter((a) => a.status === 'current' && (a.kind === 'link' || !this.referenceError(a.ref))).slice(0, 10);
+    const lines = [
+      `You are ${lead.name}, the ${dept.name} department's lead in this office.`,
+      'You orchestrate: you don’t take an implementation seat yourself. At most two implementation writers work this project at a time, and review specialists serve you.',
+      'Hire only into your department’s roles, through office-workers or by asking to have the role seated; give every hire the brief and its skill references. Delegate work through the floor queue so the project keeps one task source, and never assign the same job twice.',
+      'Watch your team and report to the person who talks to you: progress, finished results, and blockers — a worker stopped on a question says what it needs and who it is.',
+      brief ? `Department brief (rev ${brief.rev}, by ${brief.by}):\n${brief.text}` : 'The department has no brief yet — ask what "good" means before producing work.',
+      current.length ? `Current brand & asset references:\n${current.map((a) => `- ${a.label}: ${a.kind === 'file' ? `${a.ref} (in this project)` : a.ref}`).join('\n')}` : '',
+      'Takes are judged in the Review Room: stage exactly one link per take (office-workers review <url> --title …).',
+      task ? `Task: ${task}` : '',
+    ].filter(Boolean);
+    return { prompt: lines.join('\n\n'), lead };
+  }
+
+  /** The lead's shift seat: its worker joins the roster under the pseudo-role 'lead', desk joins the corner. */
+  recordLeadHire(id: string, workerId: string, deskId: string, by: string): void {
+    const dept = this.get(id);
+    if (!dept?.lead) return;
+    const next: Department = {
+      ...dept,
+      lead: { ...dept.lead, workerId },
+      roster: [...dept.roster, { workerId, role: 'lead', by, at: Date.now() }],
+      desks: dept.desks.includes(deskId) ? dept.desks : [...dept.desks, deskId],
+    };
+    this.commit(this.departments.map((d) => (d.id === id ? next : d)));
+  }
+
+  /** The lead's engine as saved, or the policy's, for prefilling the next launch. */
+  leadChoice(id: string): { provider?: AgentProvider; model?: string; effort?: AgentEffort } | undefined {
+    const lead = this.get(id)?.lead;
+    if (!lead) return undefined;
+    return { ...(lead.provider !== undefined ? { provider: lead.provider } : {}), ...(lead.model !== undefined ? { model: lead.model } : {}), ...(lead.effort !== undefined ? { effort: lead.effort } : {}) };
+  }
+
+  /** An agent-triggered delegation under an 'ask' policy waits here for a person's engine decision. */
+  addRequest(id: string, ask: { title: unknown; task: unknown; by: string }): string | undefined {
+    const dept = this.get(id);
+    if (!dept) return 'That department is gone';
+    const title = oneLine(String(ask.title ?? ''), 200);
+    const task = String(ask.task ?? '').replace(/\r\n?/g, '\n').trim().slice(0, 20_000);
+    if (!title || !task) return 'Give the delegation a title and the task';
+    const requests = dept.requests ?? [];
+    if (requests.length >= 10) return 'Too many pending requests — approve or reject some first';
+    if (requests.some((r) => r.title === title)) return 'That request is already waiting for a decision';
+    const next: Department = { ...dept, requests: [...requests, { id: randomBytes(3).toString('hex'), title, task, by: ask.by, at: Date.now() }] };
+    return this.commit(this.departments.map((d) => (d.id === id ? next : d)));
+  }
+
+  /** Takes a pending request out (an approval seats it); a string says why it can't be taken. */
+  takeRequest(id: string, request: string): DeptRequest | string {
+    const dept = this.get(id);
+    const found = dept?.requests?.find((r) => r.id === request);
+    if (!dept || !found) return 'That request is gone';
+    const next: Department = { ...dept, requests: dept.requests!.filter((r) => r.id !== request) };
+    const err = this.commit(this.departments.map((d) => (d.id === id ? next : d)));
+    return err ?? found;
+  }
+
+  /** Drops a pending request (a rejection). */
+  dropRequest(id: string, request: string): string | undefined {
+    const dept = this.get(id);
+    if (!dept?.requests?.some((r) => r.id === request)) return 'That request is gone';
+    const next: Department = { ...dept, requests: dept.requests.filter((r) => r.id !== request) };
+    return this.commit(this.departments.map((d) => (d.id === id ? next : d)));
+  }
+
+  /** The department whose live lead is this worker, when there is one (parent ownership checks). */
+  leadDeptOfWorker(workerId: string): Department | undefined {
+    return this.departments.find((d) => d.lead?.workerId === workerId);
+  }
+
+  /** Admins: who controls this manager, who may ask it read-only questions, and the billing custodian. */
+  setAccess(id: string, ask: { controllers?: unknown; audience?: unknown; custodian?: unknown }): string | undefined {
+    const dept = this.get(id);
+    if (!dept) return 'That department is gone';
+    const emails = (v: unknown): string[] | undefined => (Array.isArray(v) ? v.map((e) => String(e).trim().toLowerCase()).filter((e) => e && e.includes('@')).slice(0, 20) : undefined);
+    const controllers = emails(ask.controllers);
+    const audience = emails(ask.audience);
+    const custodian = ask.custodian === undefined || ask.custodian === '' ? undefined : String(ask.custodian).trim().toLowerCase();
+    if (ask.custodian !== undefined && custodian !== undefined && !custodian.includes('@')) return 'The custodian is an account email';
+    const next: Department = {
+      ...dept,
+      lead: dept.lead
+        ? {
+            ...dept.lead,
+            ...(controllers ? { controllers } : {}),
+            ...(audience ? { audience } : ask.audience === undefined ? {} : { audience: [] }),
+            ...(ask.custodian !== undefined ? { custodian } : {}),
+          }
+        : undefined,
+    };
+    return this.commit(this.departments.map((d) => (d.id === id ? next : d)));
+  }
+
+  /**
+   * The CEO's scoped objective for this manager; results and blockers roll up to it. The returned
+   * context block binds what the manager may hand workers: the current brief, the current brand
+   * references, and the role skills that actually exist at the harness root (available is not
+   * confirmed-read — the worker still has to read them).
+   */
+  contextNote(id: string, harnessRoot: string): { note: string; brief: number } | string {
+    const dept = this.get(id);
+    if (!dept) return 'That department is gone';
+    const brief = dept.brief[0];
+    const current = dept.assets.filter((a) => a.status === 'current' && (a.kind === 'link' || !this.referenceError(a.ref))).slice(0, 10);
+    const skills = [...new Set(dept.roles.flatMap((r) => r.skills))];
+    const available = skills.filter((s) => {
+      try {
+        return statSync(path.join(harnessRoot, s)).isFile();
+      } catch {
+        return false;
+      }
+    });
+    const missing = skills.filter((s) => !available.includes(s));
+    const lines = [
+      `Approved context for delegated work (bound by the office, brief rev ${dept.rev}):`,
+      brief ? `Brief rev ${brief.rev} (current): ${brief.text}` : 'No brief is written yet — ask what "good" means.',
+      current.length ? `Current brand & asset references (labels only): ${current.map((a) => `- ${a.label}: ${a.kind === 'file' ? a.ref : a.ref}`).join('; ')}` : '',
+      available.length ? `Skill references present at this office's harness (the worker must still read them): ${available.join(', ')}` : '',
+      missing.length ? `Intended skills NOT present here (do not claim to have read them): ${missing.join(', ')}` : '',
+    ].filter(Boolean);
+    return { note: lines.join('\n'), brief: dept.rev };
+  }
+
+  /** An orchestration-scoped objective from the CEO (or an authorized person). */
+  setObjective(id: string, text: unknown, by: string): string | undefined {
+    const dept = this.get(id);
+    if (!dept) return 'That department is gone';
+    const clean = String(text ?? '').replace(/\r\n?/g, '\n').trim().slice(0, 4000);
+    if (!clean) return 'Say what the manager is to achieve';
+    const next: Department = { ...dept, lead: dept.lead ? { ...dept.lead, objective: { text: clean, by, at: Date.now() } } : undefined };
+    return this.commit(this.departments.map((d) => (d.id === id ? next : d)));
+  }
+
+  clearObjective(id: string): string | undefined {
+    const dept = this.get(id);
+    if (!dept) return 'That department is gone';
+    if (!dept.lead?.objective) return undefined;
+    const next: Department = { ...dept, lead: { ...dept.lead, objective: undefined } };
+    return this.commit(this.departments.map((d) => (d.id === id ? next : d)));
+  }
+
+  /** After a swap lands: the lead identity and roster rows move from the old worker to the replacement. */
+  relinkWorker(fromId: string, toId: string): string | undefined {
+    let changed = false;
+    const next = this.departments.map((d) => {
+      let dept = d;
+      if (d.lead?.workerId === fromId) {
+        dept = { ...dept, lead: { ...dept.lead!, workerId: toId } };
+        changed = true;
+      }
+      if (d.roster.some((r) => r.workerId === fromId)) {
+        dept = { ...dept, roster: dept.roster.map((r) => (r.workerId === fromId ? { ...r, workerId: toId } : r)) };
+        changed = true;
+      }
+      return dept;
+    });
+    if (changed) return this.commit(next);
+  }
+
   /** The project's instruction sources, live-checked; paths and sizes only, never contents. */
   private sources(): ProjectSource[] {
     return SOURCE_CANDIDATES.map((p) => {
@@ -360,6 +589,9 @@ function isDept(v: unknown): v is Department {
     (d.briefArchived === undefined || (Number.isSafeInteger(d.briefArchived) && d.briefArchived >= 0)) &&
     Array.isArray(d.roster) && d.roster.every((r) => r && typeof r.workerId === 'string' && typeof r.role === 'string' && typeof r.by === 'string' && Number.isFinite(r.at)) &&
     Array.isArray(d.assets) && d.assets.every((a) => a && typeof a.id === 'string' && typeof a.label === 'string' && ['file', 'link'].includes(a.kind) && typeof a.ref === 'string' && ['current', 'historical'].includes(a.status) && typeof a.by === 'string' && Number.isFinite(a.at)) &&
+    (d.lead === undefined || (d.lead && typeof d.lead === 'object' && typeof d.lead.name === 'string' && (d.lead.workerId === undefined || typeof d.lead.workerId === 'string') && typeof d.lead.by === 'string' && Number.isFinite(d.lead.at) && (d.lead.objective === undefined || (typeof d.lead.objective === 'object' && typeof d.lead.objective.text === 'string' && typeof d.lead.objective.by === 'string' && Number.isFinite(d.lead.objective.at))) && (d.lead.controllers === undefined || (Array.isArray(d.lead.controllers) && d.lead.controllers.every((e) => typeof e === 'string'))) && (d.lead.audience === undefined || (Array.isArray(d.lead.audience) && d.lead.audience.every((e) => typeof e === 'string'))) && (d.lead.custodian === undefined || typeof d.lead.custodian === 'string') && (d.lead.autonomy === undefined || typeof d.lead.autonomy === 'string'))) &&
+    (d.policy === undefined || (d.policy && typeof d.policy === 'object' && typeof d.policy.provider === 'string' && ['policy', 'ask'].includes(d.policy.mode) && typeof d.policy.by === 'string' && Number.isFinite(d.policy.at))) &&
+    (d.requests === undefined || (Array.isArray(d.requests) && d.requests.every((r) => r && typeof r.id === 'string' && typeof r.title === 'string' && typeof r.task === 'string' && typeof r.by === 'string' && Number.isFinite(r.at)))) &&
     typeof d.by === 'string' &&
     typeof d.at === 'number'
   );

@@ -1,6 +1,7 @@
 import type { WorkerStatus, WorkerAction, Usage } from '../shared/protocol.js';
 
 export interface DshEvents {
+  autonomy?(mode: 'off' | 'supervised' | 'autonomous'): void;
   assistant?(text: string): void;
   /** ANSI text for the worker's terminal. */
   output(text: string): void;

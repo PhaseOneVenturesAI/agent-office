@@ -77,6 +77,8 @@ DeepSeek Harness metrics come from ACP `usage_update`: tokens in context and the
 
 Kimi metrics come from the same ACP `usage_update`: tokens in context and the window's size per worker, plus a session cost only when Kimi reports one. The daily budget and historical ledger remain Claude-only.
 
+Kimi can ask for approval for several tools at once. Office keeps those requests in arrival order and shows one card at a time. Answering a card shows the next; the worker stays *needs input* until none remain. **Esc** rejects the displayed request when it offers rejection; otherwise it cancels the turn and outstanding requests. Closing a session or ending its turn cancels unanswered requests, never approves them. This fixes new sessions after an Office update; a request already lost by an older running Office cannot be recovered by typing another approval.
+
 ## Kimi sign-in
 
 In **☰ → 🔐 Your sign-ins → Kimi**, open the verification link shown by the office and confirm the matching one-time code on Kimi's page. The link already carries `user_code`; do not navigate to the bare authorization page or look for a separate code-entry field. The office preserves the complete HTTPS URL printed by `kimi login` and waits for a matching code before showing it. If no complete link appears, cancel and restart the flow. Sign-in remains scoped to the account's own `KIMI_CODE_HOME`.
@@ -87,7 +89,15 @@ Everything the office tells a worker by itself can be rewritten in ⚙️ Settin
 
 ## The shared harness
 
-Beyond the office's own prompts, a team's standing instructions — `CLAUDE.md`, workflow and taste notes, and the `skills/` every worker should have — live in the harness root: `$AGENT_OFFICE_HARNESS`, else `~/Documents/AgentHarness`, else the office's data dir. Admins browse and edit those files from **☰ → 🧰 Harness** (every save keeps a `.bak`; writes are jailed to Markdown, text, JSON, TOML and YAML under the root, 256 KB each). **📣 Push to everyone's agents** copies them into the office's own and every account's agent homes: `CLAUDE.md` and `skills/` into each `claude` home, and the root's instruction files as one `AGENTS.md` (marked per source file, anything it replaced kept as `.bak`) plus `skills/` into each `kimi` and `codex` home — the files Kimi Code and Codex already read — so the next worker anyone hires starts on the same page, whichever CLI it runs on. Someone who'd rather run their own setup picks **🙋 Use my own harness** in ☰ → 🧰 Harness (or **Run my own instead** in 🔐 Your sign-ins); their home gets a `.no-harness` marker and pushes skip them until they switch back. In the same panel they keep their own `CLAUDE.md`, `WORKFLOW.md`, `AGENTS.md` and `skills/` in `.agent-office/homes/<account>/harness/`, start from a copy of the office's, and **📣 Apply to my agents** writes them into their own `claude`, `kimi` and `codex` homes only — Claude gets `CLAUDE.md` and `skills/`, Kimi and Codex get `AGENTS.md` (or `CLAUDE.md`) and `skills/`, each with `WORKFLOW.md` after. Nobody else can open them, and the office's push never touches them. See [Personal harness](features.md#personal-harness).
+Standing workflow defaults and relevant skills live in `$AGENT_OFFICE_HARNESS`, otherwise `~/Documents/AgentHarness` or the Office data directory. **☰ → 🧰 Harness** edits those sources with retained history and content-hash conflict checks. Saving a source does not apply it or refresh an existing agent. Shared Apply composes only `CLAUDE.md` and `WORKFLOW.md`; project taste and review history are not global defaults. Claude receives `CLAUDE.md`, Kimi and Codex receive `AGENTS.md`, and each receives the selected harness's skills.
+
+**Use my own harness** keeps separate per-account sources and excludes that account from shared pushes. Personal Apply uses `CLAUDE.md` plus `WORKFLOW.md` for Claude; Kimi/Codex use `AGENTS.md` plus `WORKFLOW.md`, falling back to `CLAUDE.md` only when no `AGENTS.md` exists. Both paths exclude legacy `review-ratchet` blocks from effective instructions, preserving original source/history; incomplete blocks stop Apply. Copying the shared harness is a starting point, not live synchronization.
+
+Apply records per-target managed output hashes and source provenance under the Office data directory's `harness-managed/`. On later Apply, removed source skills and removed instruction sources retire only unchanged files previously written by this sync. Retirement renames the old file to a unique `.harness-….bak` rather than deleting its text. Replacements also keep backups. Unrelated files, linked paths, untracked existing files and locally edited outputs are preserved and reported as conflicts. Choosing a different harness can replace unchanged managed outputs; personal source files stay intact.
+
+**Migration:** older installations have no managed manifest. Apply deliberately does not guess ownership, even when an existing file matches the source. Those collisions need explicit review: preserve the file outside the active instructions/skills path, then Apply to install a tracked copy. Do not delete provider homes or unrelated skills to migrate. A corrupt manifest or unsafe source tree stops the operation instead of treating it as an empty source. The service's `HarnessSync.preview()` returns write/retire/unchanged/conflict entries without changes; passing that preview to Apply rejects source or destination drift. This is a backend preview interface, not a new browser confirmation flow.
+
+Applied content is available on the next provider load; it does not prove that a resumed conversation has forgotten old context. Shared/personal Apply uses a preflight and per-file rechecks, not a transaction across all accounts or an operating-system file lock. A failure partway through may leave some outputs applied; repeat preview and inspect conflicts. Manifests retain hashes/provenance rather than credentials or transcript text. See [Personal harness](features.md#personal-harness).
 
 One block of the root's `CLAUDE.md` manages itself: the **review ratchet**. Every verdict from the 🎬 Review room (☰ menu) is appended there, newest first, capped at thirty — what reviewers accepted and rejected, with the reasons. It reaches every agent home on the next push, so a worker never repeats a rejected take. Write your own instructions above the block, never inside it.
 
@@ -112,3 +122,29 @@ SIGTERM keeps hosted PTY sessions running in their separate terminal host so the
 The existing worker/session metadata and worktrees are retained for restart/resume. Hosted PTY keep/detach behavior is unchanged. Sending an ACP worker home also awaits its child’s exit before workspace cleanup; its record and desk remain reserved during that wait, and a failed stop preserves both. Queue recycling waits for successful removal before seating the next worker. Worktree recovery cannot resume a replacement process before the old ACP child exits. ACP closes already in progress are included in Office shutdown.
 
 Removing a floor leaves it registered until shutdown succeeds; failed shutdown leaves its floor and worker records in place and reports the error. Clearing a meeting keeps its current ownership until all seated workers stop. A failed stop leaves the meeting, notes and shared worktree available for inspection and retry; it does not free the table for a replacement meeting. Pending stop/recovery blocks new prompts, resume and handoffs for that worker.
+
+
+## Credential ownership
+
+With accounts, new Claude, Kimi and Codex workers, queue tasks, meetings and shells receive the starting account's provider configuration and GitHub sign-in. Missing supported-provider credentials prompt for that account's sign-in. Providers without personal sign-in support (Cursor, Grok, Muse, OpenCode, DeepSeek Harness, Pi and custom commands) are denied for account-based agent hires instead of silently using the host account. Offices used only through the shared password keep their existing behavior.
+
+Account-owned task labels are derived locally from the latest meaningful prompt. Office does not send those prompts or tool snippets to a hidden host-Claude naming call. Shared-password workers keep their existing naming behavior.
+
+A worker keeps its credential owner. Its owner's account can prompt, resume, type into, attach to, rebuild or remove it; being another admin does not bypass ownership. The same rule applies to MCP/CLI worker controls, worktree mutations and queue retry/removal. A board agent already occupied by another account gives a clear denial: queue the task under your own account or use your own desk agent. It is not silently reassigned or restarted. Review verdicts can still be recorded by teammates, but only the worker's owner can trigger its follow-up turn. Meetings keep their starting account and cannot be stopped by another account. Public task/status and account display names stay visible; private terminal snapshots, live screen data, search results and conversation replies are restricted.
+
+### Explicit office credential grants
+
+Office credentials are disabled for accounts by default, including newly promoted admins. On the host, the credential owner can create `<office-data-dir>/office-credential-grants.json` (normally `.agent-office/office-credential-grants.json`) with the exact account IDs from **Accounts** or `accounts.json` and the specific providers allowed:
+
+```json
+{
+  "OWNER_ACCOUNT_ID": ["claude", "kimi", "codex", "github"],
+  "APPROVED_ADMIN_ACCOUNT_ID": ["kimi"]
+}
+```
+
+This is host configuration, not a browser-admin self-service grant. Keep it readable only by the service/host owner (`chmod 600`). An account must also retain its admin role. Grant only the provider whose credential owner approved sharing. The recipient then deliberately chooses **Use the office's** in **Your sign-ins**; a grant alone does not change personal defaults. Existing `use: office` choices require the new explicit grant too: before upgrading, the host owner should list their own approved account if they intend to retain that choice. No account is inferred to own credentials merely because it is first or an admin.
+
+Remove an account/provider entry to revoke the grant. Missing or malformed files deny office use. New starts and subsequent controls/transcript access check the current grant. A running process already has credentials in its environment: revocation does not erase those or interrupt an active turn. The host owner must stop affected work and restart its session with personal credentials if immediate process-level revocation is required. Saved conversations and worktrees are not deleted.
+
+These are application routing and access controls, not OS tenant isolation. Agents and shells still execute as the Office service user and may access that user's filesystem. Do not treat this as a sandbox for hostile coworkers or untrusted shell code; use separate OS users/containers or hosts when that isolation is needed. Public project task descriptions, branches, reviews and code remain collaboration surfaces.

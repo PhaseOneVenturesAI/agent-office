@@ -36,6 +36,9 @@ export interface WorkerInfo {
   model?: string;
   /** Reasoning effort requested for this worker, when one was chosen. */
   effort?: AgentEffort;
+  /** Explicit launch policy; separate from a role’s saved preference. */
+  autonomyRequested?: 'off' | 'supervised' | 'autonomous';
+  autonomyApplied?: { mode: 'off' | 'supervised' | 'autonomous'; provider: string; detail: string; acknowledged: boolean };
   deskId: string;
   name: string;
   color: string;
@@ -47,10 +50,14 @@ export interface WorkerInfo {
   createdBy: string;
   /** Who hired it, as an account id, when an account did: what alertsForMe matches against (client/notify.ts). Missing for workers from before accounts, or hired on the shared password. */
   owner?: string;
+  /** Public account display name; no credential details. */
+  ownerName?: string;
   createdAt: number;
   prompt?: string;
   /** Latest explicit task handoff; independent of the credential account. */
   handoff?: WorkerHandoff;
+  /** An engine swap staged for this worker: set before the replacement spawns, cleared on resolution. */
+  swap?: { engine: string; by: string; at: number; replacementId?: string };
   /**
    * Set when the worker runs in its own git worktree (path relative to the office dir). `from` is
    * the branch the office was on when the worktree was cut, which its pull request targets.

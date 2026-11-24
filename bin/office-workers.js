@@ -34,6 +34,14 @@ const USAGE = `Usage:
   office-workers review <url> --title "…"  stage your one deliverable link in the Review Room for
                         [--note "…"] [--gate passed|failed]
                                                 a person's verdict; it comes back to your terminal
+  office-workers delegate --dept <preset> --title "…"   delegate a job for your department to the
+                          <<'EOF' …the task… EOF         floor queue (you must be the department's
+                                                lead). The team policy picks the engine; when it
+                                                asks each time, a person decides before it queues
+  office-workers assign --dept <preset> [--execute]      (you are this floor's CEO) give that
+                          <<'EOF' …the objective… EOF    manager a scoped objective; --execute
+                                                starts an off-shift manager, only when the
+                                                person asked you to
   office-workers mcp                            serve these as MCP tools on stdio`;
 
 /** A mistake in how the command was called: the usage is shown with it. */
@@ -45,9 +53,9 @@ export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 /** How long the office may take to come back when it's restarting (a dev reload, an upgrade). */
 const RETRY_MS = 6000;
 /** Sending several workers home waits on git for each; hiring may fetch from GitHub first. */
-const TIMEOUT_MS = { list: 15_000, tell: 15_000, pr: 45_000, hire: 90_000, home: 300_000, review: 15_000 };
+const TIMEOUT_MS = { list: 15_000, tell: 15_000, pr: 45_000, hire: 90_000, home: 300_000, review: 15_000, delegate: 15_000, assign: 15_000 };
 /** Where each call goes, under /office/workers. */
-const PATHS = { list: '', hire: '', home: '/home', tell: '/tell', pr: '/pr', review: '/review' };
+const PATHS = { list: '', hire: '', home: '/home', tell: '/tell', pr: '/pr', review: '/review', delegate: '/delegate', assign: '/assign' };
 
 /**
  * Reads `--flag value` and `--flag=value` options, and the words that aren't options.
@@ -134,6 +142,24 @@ export function parseArgs(argv) {
       json: opts['--json'] === true,
     };
   }
+  // The department-scoped delegation path: only a department's live lead can call it, and the team
+  // policy picks the engine (an 'ask' policy holds it for a person's decision).
+  if (cmd === 'delegate') {
+    const { opts, words } = options(rest, ['--dept', '--title', '--prompt'], ['--json']);
+    if (words.length) throw new UsageError(`delegate takes no positional arguments (got ${words.join(' ')}) — the task goes on stdin or --prompt`);
+    if (opts['--dept'] === undefined || !String(opts['--dept']).trim()) throw new UsageError('delegate needs --dept <preset>: the department you lead');
+    if (opts['--title'] === undefined || !String(opts['--title']).trim()) throw new UsageError('delegate needs --title "…": the job, one line');
+    return { cmd: 'delegate', dept: String(opts['--dept']).trim(), title: String(opts['--title']).trim(), ...(opts['--prompt'] !== undefined ? { prompt: String(opts['--prompt']) } : {}), json: opts['--json'] === true };
+  }
+  // The CEO's assignment path: only this floor's live CEO can call it.
+  if (cmd === 'assign') {
+    const { opts, words } = options(rest, ['--dept', '--objective', '--prompt'], ['--execute', '--json']);
+    if (words.length) throw new UsageError(`assign takes no positional arguments (got ${words.join(' ')}) — the objective goes on stdin or --prompt/--objective`);
+    if (opts['--dept'] === undefined || !String(opts['--dept']).trim()) throw new UsageError('assign needs --dept <preset>: which manager you are directing');
+    const objective = opts['--objective'] ?? opts['--prompt'];
+    if (objective === undefined || !String(objective).trim()) throw new UsageError('assign needs the objective: --objective "…" or on stdin');
+    return { cmd: 'assign', dept: String(opts['--dept']).trim(), objective: String(objective), execute: opts['--execute'] === true, json: opts['--json'] === true };
+  }
   if (cmd === 'hire') {
     const { opts, words } = options(rest, ['--prompt', '--provider', '--model', '--effort', '--desk', '--issue'], ['--no-worktree', '--json']);
     if (words.length) throw new UsageError(`Unexpected argument: ${words[0]} (give the task on stdin or with --prompt)`);
@@ -175,7 +201,7 @@ export function officeEnv(env) {
 
 /**
  * The HTTP request for one of the office's worker calls.
- * @param {'list' | 'hire' | 'home' | 'tell' | 'pr' | 'review'} what
+ * @param {'list' | 'hire' | 'home' | 'tell' | 'pr' | 'review' | 'delegate' | 'assign'} what
  * @param {{ url: string, worker: string, token: string }} office
  * @param {Record<string, unknown>} [body]
  * @returns {{ method: string, url: string, headers: Record<string, string>, body?: string, timeout: number }}
@@ -224,7 +250,7 @@ async function send(req, fetchImpl) {
 
 /**
  * Makes one call to the office; resolves to what it answered, or throws with why it said no.
- * @param {'list' | 'hire' | 'home' | 'tell' | 'pr' | 'review'} what
+ * @param {'list' | 'hire' | 'home' | 'tell' | 'pr' | 'review' | 'delegate' | 'assign'} what
  * @param {Record<string, unknown> | undefined} body
  * @param {{ env: Record<string, string | undefined>, fetch: typeof fetch }} io
  */
@@ -377,6 +403,45 @@ export const TOOLS = [
     annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
+    name: 'delegate_task',
+    title: 'Delegate a job for your department',
+    description:
+      "Delegates a job for the department you lead to the office's task queue, where it waits for a free desk and a worker of its own. " +
+      'Only the live lead of a department can delegate for it; the team engine policy picks the engine, so never pass a provider — ' +
+      "when the policy asks each time, a person picks the engine and approves before anything queues. The job refuses to queue while any live task holds the same title, so one job has one owner. " +
+      'You hear how it went: the worker seated for it reports back to you when its turn ends, stops, or needs a person.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        dept: { type: 'string', description: 'The department you lead: marketing, product or review (as set up on this floor).' },
+        title: { type: 'string', description: 'The job, one line: "Homepage hero rewrite".' },
+        task: { type: 'string', description: 'What the worker must do, what "done" means, and the evidence to bring back.' },
+      },
+      required: ['title', 'task'],
+      additionalProperties: false,
+    },
+    annotations: { destructiveHint: false, openWorldHint: false },
+  },
+  {
+    name: 'assign_objective',
+    title: 'Assign a manager an objective',
+    description:
+      "Assigns a scoped objective to one of your floor's department managers, as this floor's CEO. The manager delegates the actual workers through the floor queue; " +
+      'you never hire workers yourself. If the manager is off shift the objective waits unless the person has explicitly asked you to start them — then pass execute: true, ' +
+      "which starts their shift on your sign-ins (unless their team policy asks each time: then a person picks the engine from the panel). Results and blockers roll up to you.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        dept: { type: 'string', description: 'The manager’s department: marketing, product or review.' },
+        objective: { type: 'string', description: 'What they are to achieve, scoped and checkable.' },
+        execute: { type: 'boolean', description: 'Start an off-shift manager (only when the person explicitly asked).' },
+      },
+      required: ['dept', 'objective'],
+      additionalProperties: false,
+    },
+    annotations: { destructiveHint: false, openWorldHint: false },
+  },
+  {
     name: 'stage_review',
     title: 'Stage a deliverable for review',
     description:
@@ -404,7 +469,7 @@ const INSTRUCTIONS =
   'the other agents: whenever you are asked about the agents or workers (who is working on what, whose pull request merged, hiring one, sending them home), use them, ' +
   "rather than looking for the agents with git, ps or HTTP calls. list_workers says where each one's pull request stands (merged: true means it merged), hire_worker " +
   'puts a new agent to work, send_home sends agents home and deletes their worktrees and branches, tell_worker gives one a prompt, and link_pr says which pull request is a ' +
-  "worker's when list_workers does not show it, and stage_review puts your one deliverable link in the Review Room for a person's verdict. " +
+  "worker's when list_workers does not show it, delegate_task hands a job from you (a department's lead) to the office queue on the team's engine policy, assign_objective directs one of your managers (you are this floor's CEO), and stage_review puts your one deliverable link in the Review Room for a person's verdict. " +
   'Everyone in the office sees who did what. ' +
   'The office-workers command on your PATH does the same from a shell.';
 
@@ -427,6 +492,16 @@ async function runTool(name, args, io) {
     return { text: `Told ${answer.worker?.name ?? a.worker}.` };
   }
   if (name === 'link_pr') return { text: formatLinked(await call('pr', a, io)) };
+  if (name === 'delegate_task') {
+    const answer = await call('delegate', { title: a.title, task: a.task, ...(a.dept ? { dept: a.dept } : {}) }, io);
+    if (answer.pending) return { text: answer.message };
+    const t = answer.task ?? {};
+    return { text: `Delegated “${t.title}” to the floor queue (${t.id}); it seats a worker when one's free.` };
+  }
+  if (name === 'assign_objective') {
+    const answer = await call('assign', { dept: a.dept, objective: a.objective, ...(a.execute === true ? { execute: true } : {}) }, io);
+    return { text: answer.started ? `Gave ${answer.manager} the objective and started their shift.` : `Gave ${answer.manager} the objective.` };
+  }
   if (name === 'stage_review') {
     const answer = await call('review', a, io);
     const r = answer.review ?? {};
@@ -568,6 +643,18 @@ export async function main(argv, io = {}) {
       const answer = await call('review', ask, ctx);
       const r = answer.review ?? {};
       out(asJson ? JSON.stringify(r, null, 2) : `Staged “${r.title}” for review (${r.id}). The verdict comes back here when someone accepts or rejects it.`);
+      return 0;
+    }
+    if (cmd.cmd === 'delegate') {
+      const text = (await prompt()).trim();
+      if (!text) throw new UsageError('The task is empty');
+      const answer = await call('delegate', { dept: cmd.dept, title: cmd.title, task: text }, ctx);
+      out(cmd.json ? JSON.stringify(answer, null, 2) : answer.pending ? answer.message : `Delegated “${answer.task?.title}” to the floor queue.`);
+      return 0;
+    }
+    if (cmd.cmd === 'assign') {
+      const answer = await call('assign', { dept: cmd.dept, objective: cmd.objective, ...(cmd.execute ? { execute: true } : {}) }, ctx);
+      out(cmd.json ? JSON.stringify(answer, null, 2) : answer.started ? `Gave ${answer.manager} the objective and started their shift.` : `Gave ${answer.manager} the objective.`);
       return 0;
     }
     const { cmd: _, json, ...body } = cmd;

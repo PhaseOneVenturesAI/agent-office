@@ -64,6 +64,7 @@ export async function startServer(cfg: Config, opts: StartOptions = {}) {
     tailnet.stop();
     ctx.webhook.stop();
     ctx.machine.stop();
+    ctx.linear.close();
     ctx.sky.stop();
     ctx.themes.stop();
     const pending = [...ctx.floors.values()].map((f) => f.shutdown(keep));

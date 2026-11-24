@@ -4,11 +4,14 @@ import type { Net } from '../net';
 import { store } from '../state';
 import { h, openModal, timeAgo, toast } from './dom';
 import { markdown } from './markdown';
-import { providerPicker } from './provider';
+import { agentFields, officeChoice } from './provider';
 import { openReviews } from './reviews';
 import { openDeploys } from './deploys';
 import { openProjectContext } from './project-context';
 import { acknowledgeBriefDraft, type BriefDraft } from './department-draft';
+import { delegateBlock, leadBlock, leadForm, leadStatusText, policyBlock } from './dept-lead';
+import { ceoBlock } from './ceo';
+import { openEngineSwap } from './engine-swap';
 
 const PRESET_META: Record<DeptPreset, { icon: string; label: string; blurb: string }> = {
   marketing: { icon: '📣', label: 'Marketing', blurb: 'Story, Art & frontend, Film and Review — brief, brand library and staged takes.' },
@@ -44,9 +47,11 @@ function viewer(title: string, content: HTMLElement, doing: string) {
 }
 
 /**
- * 🏬 Departments: the floor's corners of work. A department is paperwork and furniture — a brief
- * with revision history, roles with skill references, a brand/asset library and a roster — and
- * hiring into a role composes the worker's prompt from all of it. Creating one launches nothing.
+ * 🏬 Departments: the floor's corners of work. The window shows one approachable card per
+ * department and only the selected department's panel — brief, lead, roles, work — with the
+ * advanced configuration (history, brand library, context, results) behind Details. A department
+ * is still paperwork and furniture: nothing here ever launches an agent by itself
+ * (see docs/department-leads.md).
  */
 export function openDepartments(net: Net) {
   if (!store.floor) return;
@@ -55,18 +60,21 @@ export function openDepartments(net: Net) {
   const drafts = new Map<string, BriefDraft>();
   /** Archived brief revisions that arrived, by department. */
   const archives = new Map<string, { revs: DeptBriefRev[]; archived: number; next?: number }>();
+  /** The selected department's id: the panel shows this one only. */
+  let selectedId: string | null = null;
 
   const openHistories = new Set<string>();
   const close = h('button.btn.close', { 'aria-label': 'Close' }, '✕');
-  const picker = providerPicker(store.project, 'dept-provider', 'Workers run on');
-  const list = h('div.dept-list');
+  const cards = h('div.dept-cards');
+  const panel = h('div.dept-panel');
+  const ceoWrap = h('div');
   const el = h(
     'div.modal.departments',
     { role: 'dialog', 'aria-label': 'Departments' },
     h('header', {}, h('h2', {}, '🏬 Departments'), close),
-    h('p.dept-intro', {}, 'A department is a brief, roles and a brand library — never an auto-running team. Hiring into a role seats a worker with the brief and its skills in the prompt. At most two writers per project; everything else reviews.'),
-    picker.element,
-    list,
+    h('p.dept-intro', {}, 'Talk to your CEO or a manager, see what the team is making, and help when they need you.'),
+    ceoWrap,
+    h('div.dept-layout', {}, cards, panel),
   );
 
   const assetUrl = (ref: string) => `/api/docs/asset?floor=${encodeURIComponent(floor)}&path=${encodeURIComponent(ref)}`;
@@ -158,16 +166,22 @@ export function openDepartments(net: Net) {
     return block;
   };
 
+  /** Direct hires present the provider/model picker, prefilled from the saved policy (else the office default). */
+  const hireFields = (d: Department) =>
+    agentFields(store.project, `dept-hire-${d.id}`, d.policy ? { provider: d.policy.provider, ...(d.policy.model ? { model: d.policy.model } : {}), ...(d.policy.effort ? { effort: d.policy.effort } : {}) } : officeChoice(store.project));
+
   const rolesBlock = (d: Department, writers: number) => {
     const block = h('div.dept-block', {}, h('h4', {}, `🎭 Roles · writers ${writers}/2`));
+    const fields = hireFields(d);
+    block.append(h('p.dept-hint', {}, 'Direct hires run on:'), fields.element);
     for (const role of d.roles) {
       const task = h('input.dept-task', { type: 'text', placeholder: 'The task, one line (optional)', maxlength: '200' }) as HTMLInputElement;
       const capped = role.kind === 'implementation' && writers >= 2;
       const hire = h('button.btn.small.primary', { type: 'button', title: capped ? 'Two writers are already at work on this project — review or ship what’s in flight first' : `Seat a ${role.name} in the corner, brief and skills in its prompt` }, 'Hire') as HTMLButtonElement;
       hire.disabled = capped;
       const go = () => {
-        if (!picker.valid()) return;
-        net.send({ t: 'departments.launch', id: d.id, role: role.id, prompt: task.value.trim() || undefined, provider: picker.value(), model: picker.model(), effort: picker.effort() });
+        if (!fields.valid()) return;
+        net.send({ t: 'departments.launch', id: d.id, role: role.id, prompt: task.value.trim() || undefined, provider: fields.value(), model: fields.model(), effort: fields.effort() });
         task.value = '';
       };
       hire.addEventListener('click', go);
@@ -192,13 +206,14 @@ export function openDepartments(net: Net) {
     if (!d.roster.length && !d.desks.length) return block.append(h('p.empty', {}, 'No one hired into this department yet.')), block;
     for (const r of d.roster) {
       const w = store.workers.get(r.workerId);
-      const role = d.roles.find((x) => x.id === r.role);
+      const role = r.role === 'lead' ? '🎖️ Lead' : (d.roles.find((x) => x.id === r.role)?.name ?? '?');
       block.append(
         h(
           'div.dept-row',
           {},
-          h('span', {}, w ? `${w.name} — ${w.status.replace('_', ' ')}` : `a worker (gone)`),
-          h('span.dept-meta', {}, `${role?.name ?? '?'} · hired by ${r.by} · ${timeAgo(r.at)}`),
+          h('span', {}, w ? `${w.name} — ${w.status.replace('_', ' ')}` : 'a worker (gone)'),
+          h('span.dept-meta', {}, `${role} · hired by ${r.by} · ${timeAgo(r.at)}`),
+          w && w.kind === 'agent' ? h('button.btn.small', { type: 'button', title: 'Hand this worker’s task to a replacement engine', onclick: () => openEngineSwap(net, w.id) }, '🔁') : null,
           h('button.btn.small', { type: 'button', title: 'Off the roster; the worker itself stays', onclick: () => net.send({ t: 'departments.release', id: d.id, workerId: r.workerId }) }, 'Release'),
         ),
       );
@@ -287,7 +302,57 @@ export function openDepartments(net: Net) {
     );
   };
 
-  const repaint = () => {
+  /** Only the selected department's panel: the lead hero up front, configuration under Manage. */
+  const paintPanel = (d: Department, writers: number) => {
+    panel.replaceChildren();
+    const meta = PRESET_META[d.preset];
+    const repaint = () => paint();
+    let replacing = false;
+    const manage = h(
+      'details.dept-advanced',
+      {},
+      h('summary', {}, 'Manage — lead, engine, brand & results'),
+      h(
+        'div.dept-block',
+        {},
+        h('h4', {}, '🎛️ This department'),
+        h('p.dept-meta', {}, `Opened by ${d.by} · ${timeAgo(d.at)}${d.lead ? ` · manager named by ${d.lead.by}` : ''}`),
+        ...(d.lead
+          ? [
+              replacing
+                ? leadForm(net, d, d.lead, () => { replacing = false; paintPanel(d, liveWriters(store.departments.departments)); })
+                : h('div.dept-row', {}, h('button.btn.small', { type: 'button', onclick: () => { replacing = true; paintPanel(d, liveWriters(store.departments.departments)); } }, 'Replace the manager…')),
+            ]
+          : []),
+        h('div.dept-row', {}, h('button.btn.small', { type: 'button', title: 'Take the department off this floor (refused while its workers are at desks)', onclick: () => net.send({ t: 'departments.remove', id: d.id }) }, 'Remove the department')),
+      ),
+      policyBlock(net, d, repaint),
+      brandBlock(d),
+      resultsBlock(),
+      contextBlock(),
+    );
+    panel.append(
+      h(
+        'section.dept',
+        {},
+        h(
+          'header.dept-head',
+          {},
+          h('h3', {}, `${meta.icon} ${d.name}`),
+
+        ),
+        leadBlock(net, d, repaint),
+        briefBlock(d, repaint),
+        h('details.dept-block', {}, h('summary', {}, 'Add a teammate yourself'), rolesBlock(d, writers)),
+        workBlock(d),
+        delegateBlock(net, d),
+        manage,
+      ),
+    );
+  };
+
+  const paint = () => {
+    ceoWrap.replaceChildren(ceoBlock(net, () => paint()));
     const state = store.departments;
     // A landed revision that echoes a saving draft retires it; everything else stays a draft.
     for (const [id, draft] of drafts) {
@@ -298,8 +363,12 @@ export function openDepartments(net: Net) {
       if (next) drafts.set(id, next); else drafts.delete(id);
     }
     const writers = liveWriters(state.departments);
-    list.replaceChildren();
-    if (state.error) { list.append(h('p.dept-conflict', { role: 'alert' }, state.error)); return; }
+    cards.replaceChildren();
+    panel.replaceChildren();
+    if (state.error) {
+      cards.append(h('p.dept-conflict', { role: 'alert' }, state.error));
+      return;
+    }
     const taken = new Set(state.departments.map((d) => d.preset));
     const addRow = h(
       'div.dept-add',
@@ -308,30 +377,23 @@ export function openDepartments(net: Net) {
         .filter((p) => !taken.has(p))
         .map((p) => h('button.btn.small', { type: 'button', title: PRESET_META[p].blurb, onclick: () => net.send({ t: 'departments.add', preset: p }) }, `＋ ${PRESET_META[p].icon} ${PRESET_META[p].label}`)),
     );
-    if (!state.departments.length) list.append(h('p.empty', {}, 'No departments on this floor yet. Open one:'));
-    if (addRow.children.length) list.append(addRow);
+    if (!state.departments.length) cards.append(h('p.empty', {}, 'No departments on this floor yet. Open one:'));
+    if (addRow.children.length) cards.append(addRow);
+    if (selectedId && !state.departments.some((d) => d.id === selectedId)) selectedId = null;
     for (const d of state.departments) {
       const meta = PRESET_META[d.preset];
-      list.append(
+      const selected = (selectedId ?? state.departments[0]?.id) === d.id;
+      cards.append(
         h(
-          'section.dept',
-          {},
-          h(
-            'header.dept-head',
-            {},
-            h('h3', {}, `${meta.icon} ${d.name}`),
-            h('span.dept-meta', {}, `opened by ${d.by} · ${timeAgo(d.at)}`),
-            h('button.btn.small', { type: 'button', title: 'Take the department off this floor (refused while its workers are at desks)', onclick: () => net.send({ t: 'departments.remove', id: d.id }) }, 'Remove'),
-          ),
-          briefBlock(d, repaint),
-          rolesBlock(d, writers),
-          workBlock(d),
-          brandBlock(d),
-          resultsBlock(),
-          contextBlock(),
+          'button.dept-card',
+          { type: 'button', class: selected ? 'selected' : '', title: meta.blurb, onclick: () => { selectedId = d.id; paint(); } },
+          h('span.dept-card-icon', {}, meta.icon),
+          h('span.dept-card-main', {}, h('strong', {}, d.name), h('small', {}, leadStatusText(d))),
         ),
       );
     }
+    const shown = state.departments.find((d) => d.id === (selectedId ?? state.departments[0]?.id));
+    if (shown) paintPanel(shown, writers);
   };
 
   const onMessage = (msg: ServerMsg) => {
@@ -340,10 +402,10 @@ export function openDepartments(net: Net) {
       const prior = archives.get(msg.id);
       const revs = [...new Map([...(prior?.revs ?? []), ...msg.revs].map((rev) => [rev.rev, rev])).values()].sort((a, b) => b.rev - a.rev);
       archives.set(msg.id, { revs, archived: msg.archived, next: msg.next });
-      repaint();
+      paint();
     }
   };
-  const offs = [net.onMessage(onMessage), store.on('departments', repaint), store.on('workers', repaint), store.on('reviews', repaint), store.on('deploys', repaint)];
+  const offs = [net.onMessage(onMessage), store.on('departments', paint), store.on('ceo', paint), store.on('workers', paint), store.on('reviews', paint), store.on('deploys', paint)];
   const modal = openModal(el, {
     doing: '🏬 organizing departments',
     onClose: () => offs.forEach((off) => off()),
@@ -351,5 +413,5 @@ export function openDepartments(net: Net) {
   close.addEventListener('click', () => modal.close());
   // Traveling closes the panel: its state and its asset links are this floor's, never the next's.
   offs.push(store.on('floor', () => modal.close()));
-  repaint();
+  paint();
 }

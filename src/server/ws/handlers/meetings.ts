@@ -1,3 +1,4 @@
+import { canUseWorker, OWN_WORKER } from '../../worker-ownership.js';
 // The meeting room: calling a meeting, stopping it, and clearing the table.
 import { isAgentEffort, isAgentProvider, type MeetingClientMsg, type MeetingRequest } from '../../../shared/protocol.js';
 import { OPEN_CODE_MODEL_MAX } from '../../../shared/providers.js';
@@ -36,11 +37,15 @@ export const meetingHandlers = {
   'meeting.stop'(ctx, c) {
     const who = c.peer.name;
     const floor = here(ctx, c);
+    const meeting = floor?.meetings.state().current;
+    if (meeting && !canUseWorker(ctx, c.accountId, meeting.owner, meeting.provider)) return ctx.warn(c, OWN_WORKER);
     if (floor) ctx.warn(c, floor.meetings.stop(who));
   },
   'meeting.clear'(ctx, c) {
     const who = c.peer.name;
     const floor = here(ctx, c);
+    const meeting = floor?.meetings.state().current;
+    if (meeting && !canUseWorker(ctx, c.accountId, meeting.owner, meeting.provider)) return ctx.warn(c, OWN_WORKER);
     if (floor) ctx.warn(c, floor.meetings.clear(who));
   },
 } satisfies HandlerMap<MeetingClientMsg>;

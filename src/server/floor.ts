@@ -1,9 +1,12 @@
+import { startManager, assignObjective } from './role-subscriptions/runtime.js';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { ChangesState, FloorInfo, PeerInfo, ProjectInfo, ServerMsg, WorkerInfo } from '../shared/protocol.js';
 import { isBusy } from '../shared/status.js';
-import { DESK_BY_ID } from '../shared/layout.js';
+import { DESK_BY_ID, nextFreeSeat } from '../shared/layout.js';
+import type { AgentEffort, AgentProvider } from '../shared/providers.js';
+import type { QueueTask } from '../shared/protocol.js';
 import type { FloorDef } from './building.js';
 import { excludeFromGit } from './config.js';
 import { agentProviders, configuredProvider } from './agents.js';
@@ -11,10 +14,17 @@ import { WorkerManager, workedMs, type HookEnv, type RunAs } from './workers.js'
 import { GitHub, MergeWatch } from './github.js';
 import type { GhAs } from './signins.js';
 import { TaskQueue } from './queue.js';
+import { harnessRoot } from './harness.js';
 import { Changes } from './changes.js';
 import { Decor } from './decor.js';
 import { FloorPlanStore } from './floorplan.js';
-import { Departments } from './departments.js';
+import { Departments, MAX_WRITERS } from './departments.js';
+import { FloorCeo } from './ceo.js';
+import { LeadDispatch } from './dept-dispatch.js';
+import { RoleChat } from './role-chat.js';
+import { floorStaffQA } from './dept-staff-qa.js';
+import { isRoleWorkerOn, relinkRoleSeat } from './role-seats.js';
+import type { QaOutcome } from './staff-qa.js';
 import { Docs } from './docs.js';
 import { Dog } from './dog.js';
 import { Court } from './court.js';
@@ -46,6 +56,10 @@ export interface FloorContext {
   prompts: PromptSource;
   /** Workers hired by an account run on its own sign-ins (see signins.ts). */
   runAs?: RunAs;
+  accountsEnabled?: () => boolean;
+  managerExecution?(floor: Floor, department: string, actor: string | undefined, provider?: AgentProvider): { owner?: string; error?: string };
+  queuedDepartmentError?(floor: Floor, task: QueueTask): string | undefined;
+  roleDispatchError?(floor: Floor, workerId: string): string | undefined;
   /** How to run gh as an account: its own sign-in, the office's (undefined), or why it can't. */
   ghAs(owner: string | undefined): GhAs | undefined | string;
   /** To everyone on this floor. */
@@ -105,6 +119,8 @@ export function projectInfo(dir: string, name: string, agentCmd: string, agentAr
   };
 }
 
+const WRITING = new Set(['starting', 'idle', 'working', 'needs_input']);
+
 /**
  * One floor of the building: a project's checkout with its own desks and workers, issues and PR
  * boards, task queue, pictures and jukebox, all kept in that checkout's .agent-office folder.
@@ -112,6 +128,7 @@ export function projectInfo(dir: string, name: string, agentCmd: string, agentAr
 export class Floor {
   readonly id: string;
   readonly dir: string;
+  readonly dataDir: string;
   readonly project: ProjectInfo;
   readonly workers: WorkerManager;
   readonly github: GitHub;
@@ -121,6 +138,12 @@ export class Floor {
   /** The signs over its desks, and how far its back office is built out. */
   readonly plan: FloorPlanStore;
   readonly departments: Departments;
+  /** The floor's CEO: one persistent identity per project, directing the managers (see ceo.ts). */
+  readonly ceo: FloorCeo;
+  /** The durable conversation record for role characters (see role-chat.ts). */
+  readonly roleChat: RoleChat;
+  /** The lead dispatch: child transitions become messages in the lead's own session. */
+  readonly dispatch: LeadDispatch;
   readonly jukebox: Jukebox;
   /** The whiteboard everyone on the floor draws on together. */
   readonly whiteboard: Whiteboard;
@@ -152,6 +175,7 @@ export class Floor {
     this.id = def.id;
     this.dir = def.dir;
     const dataDir = path.join(def.dir, '.agent-office');
+    this.dataDir = dataDir;
     mkdirSync(dataDir, { recursive: true, mode: 0o700 });
     excludeFromGit(def.dir);
     this.project = projectInfo(def.dir, def.name, ctx.agentCmd, ctx.agentArgs);
@@ -161,6 +185,7 @@ export class Floor {
     this.departments = new Departments(dataDir, def.dir, () =>
       ctx.emit(this, { t: 'departments', state: this.departments.state() }),
     );
+    this.ceo = new FloorCeo(dataDir, () => ctx.emit(this, { t: 'ceo', state: this.ceo.state() }));
     this.jail = new Jail(dataDir);
 
     // Before the workers, so it hears about the ones who wake up needing input.
@@ -182,6 +207,8 @@ export class Floor {
           ctx.emit(this, { t: 'worker.update', worker });
           // Still being built: the first updates come from waking the workers already at their desks.
           this.queue?.onWorker(worker);
+          // After the queue reconciled the task, so a child's notice sees the final outcome.
+          this.dispatch?.onWorker(worker);
           this.meetings?.onWorker(worker);
           this.dog.onWorker(worker);
           ctx.workerChanged(this, worker);
@@ -197,6 +224,11 @@ export class Floor {
           ctx.emit(this, { t: 'worker.remove', workerId, ...(jail ? { jail } : {}) });
           this.queue?.onWorkerGone(workerId);
           this.meetings?.onWorkerGone(workerId);
+          this.dispatch?.onWorkerGone(workerId);
+          // A swap's unfinished business goes with it: a reserved source takes its idle replacement
+          // home; a replacement that died frees the source to try again.
+          if (info?.swap?.replacementId) void this.sendHome(info.swap.replacementId);
+          else this.workers.handoffs.freeReplacement(workerId);
           this.dog.onWorkerGone(workerId);
           ctx.workerChanged(this, workerId);
         },
@@ -244,12 +276,30 @@ export class Floor {
       refreshGitHub: () => void this.github.refresh(),
       hiringPaused: () => ctx.ledger.hiringPaused,
       room: () => ctx.capacity.room(),
+      writersFull: () => this.writerCap(),
+      beforeStart: (task) => ctx.queuedDepartmentError?.(this, task),
+      finished: (task) => this.dispatch?.onTaskFinished(task),
       emptied: () => {
         ctx.toast(this, '📋 The queue is empty: every task is done 🎉');
         ctx.emit(this, { t: 'gong', why: 'queue' });
       },
       worktreeNote: () => officePrompt(ctx.prompts, 'queue.worktree'),
     });
+
+    // The lead dispatch: children of a department (delegated tasks' workers) report transitions to
+    // the lead's own session. Reads the queue's reconciled state, so it is wired after the queue.
+    this.dispatch = new LeadDispatch({
+      get: (id) => this.workers.get(id),
+      prompt: (id, text) => ctx.roleDispatchError?.(this, id) ?? this.workers.prompt(id, text, 'office'),
+      tasks: () => this.queue.state().tasks,
+      departments: () => this.departments.state().departments,
+      ceo: () => this.ceo.get(),
+      lastReply: (id) => this.workers.conversations.lastReply(id),
+    });
+    this.dispatch.attachPersist(path.join(dataDir, 'dispatch-held.json'));
+    // Role characters keep a durable, paged conversation record (see role-chat.ts).
+    this.roleChat = new RoleChat(dataDir);
+    this.workers.conversations.attachHistory(this.roleChat, (id) => !!this.isRoleWorker(id));
 
     // Meetings seat their own workers round the meeting room's table and run them round by round.
     const workers = this.workers;
@@ -366,17 +416,61 @@ export class Floor {
   }
 
   /**
+   * A delegation into the one task source, with the approved context bound server-side: the queued
+   * worker starts from the current brief, the current brand references, and the role skills that
+   * actually exist here — and the task records the brief revision it started from.
+   */
+  delegate(deptId: string, title: string, task: string, by: string, owner: string | undefined, parentId: string | undefined, engine?: { provider?: AgentProvider; model?: string; effort?: AgentEffort }): string | undefined {
+    const dept = this.departments.get(deptId);
+    if (!dept) return 'That department is gone';
+    const bound = this.departments.contextNote(deptId, harnessRoot(this.dataDir));
+    const prompt = typeof bound === 'string' ? task : `${bound.note}\n\nThe delegated job:\n${task}`;
+    return this.queue.add(prompt, by, title, undefined, engine?.provider, engine?.model, engine?.effort, owner, deptId, parentId, typeof bound === 'string' ? undefined : { brief: bound.brief, at: Date.now() });
+  }
+
+  /** Re-binds a retried delegation to the current approved context; the caller flags drift. */
+  rebindContext(task: QueueTask): { prompt: string; contextRev: { brief: number; at: number } } | undefined {
+    if (!task.dept) return undefined;
+    const bound = this.departments.contextNote(task.dept, harnessRoot(this.dataDir));
+    if (typeof bound === 'string') return undefined;
+    const stale = task.contextRev && task.contextRev.brief !== bound.brief;
+    return {
+      prompt: `${bound.note}\n\n${stale ? `⚠️ The brief moved from rev ${task.contextRev!.brief} to rev ${bound.brief} after this job was first attempted — read the current brief before continuing.\n\n` : ''}The delegated job:\n${task.prompt}`,
+      contextRev: { brief: bound.brief, at: Date.now() },
+    };
+  }
+
+  /** A staff read-only question about a department (see dept-staff-qa.ts): a separate, tool-free
+   * session on the department's engine under the authorized custodian's sign-in. */
+  staffQA(deptId: string, question: string, by: string, custodianId?: string): Promise<QaOutcome> {
+    return floorStaffQA({ dir: this.dir, dataDir: this.dataDir, departments: this.departments, roleChat: this.roleChat, runAs: this.ctx.runAs, accountsEnabled: this.ctx.accountsEnabled }, deptId, question, by, custodianId);
+  }
+
+  /** After a landed swap: the durable record moves first, transactionally, then the identities. */
+  relinkEverywhere(fromId: string, toId: string): string | undefined {
+    return relinkRoleSeat(this.ctx, this, fromId, toId);
+  }
+
+  /** A worker speaking for a role (the CEO or a department manager): protected from send-home. */
+  isRoleWorker(workerId: string): { role: string; name: string } | undefined {
+    return isRoleWorkerOn(this, workerId);
+  }
+
+  /**
    * Sends a worker home as someone asked (not by itself, see sendLandedHome): with no `cleanup`, its
    * worktree and branch go unless they hold work, where what its merged pull requests delivered
    * doesn't count. Resolves with the line about its worktree.
    */
   sendHome(workerId: string, cleanup?: WorktreeCleanup): Promise<{ note?: string; error?: string }> {
     const info = this.workers.get(workerId);
+    const role = this.isRoleWorker(workerId);
+    if (role) return Promise.resolve({ error: `${role.name} is the ${role.role} — a permanent project character. Retire the role in the Roles view instead; stopping their process is not deleting them.` });
     const landed = info && this.landed(info);
     return this.workers.kill(workerId, cleanup, landed?.head, landed?.heads);
   }
 
   private goHome(worker: WorkerInfo, why: string, head?: string, heads?: Record<string, string | undefined>) {
+    if (this.isRoleWorker(worker.id)) return; // A landed pull request never sends a role character home.
     const done = this.workers.kill(worker.id, undefined, head, heads);
     this.ctx.toast(this, `🏠 ${worker.name} went home: ${why}`);
     void done.then(({ note, error }) => {
@@ -388,6 +482,43 @@ export class Floor {
   /** Someone just walked in: boards that haven't been looked at in a while get fetched again. */
   arrived() {
     if (Date.now() - Math.max(this.github.issues.fetchedAt, this.github.pulls.fetchedAt) > REFRESH_MS) void this.github.refresh();
+  }
+
+  /**
+   * Seats (or resumes) a department's manager through the same spawn as every hire, on the team
+   * policy engine unless a person picked one explicitly. Managers orchestrate: they never count
+   * against the writer cap. Used by the manager panel and by the CEO's explicit execute.
+   */
+  startManager(deptId: string, by: string, owner: string | undefined, explicit?: { provider?: AgentProvider; model?: string; effort?: AgentEffort }, task?: string): WorkerInfo | string {
+    return startManager(this, this.ctx.managerExecution, deptId, by, owner, explicit, task);
+  }
+  assignObjective(deptId: string, objective: string, by: string, opts?: { execute?: boolean; owner?: string }): string | { manager: string; started: boolean } {
+    return assignObjective(this, this.ctx.managerExecution, deptId, objective, by, opts);
+  }
+
+  /**
+   * Why no implementation writer may start right now: the project's two-writer cap, counting every
+   * live agent that isn't rostered as review/support/lead. Manual hires, queue seating and hook
+   * hires all ask here; department role launches keep their role-aware check in composeLaunch.
+   */
+  /** Agents that would write right now: active agents, minus the CEO (they direct, they never write). */
+  writerIds(): string[] {
+    const ceoId = this.ceo.get()?.workerId;
+    return this.workers
+      .list()
+      .filter((w) => w.kind === 'agent' && WRITING.has(w.status) && w.id !== ceoId)
+      .map((w) => w.id);
+  }
+
+  /**
+   * Why no implementation writer may start right now: the project's two-writer cap, counting the
+   * agents that would actually write. Manual hires, queue seating and hook hires all ask here;
+   * department role launches pass the same ids to their role-aware check in composeLaunch.
+   */
+  writerCap(): string | undefined {
+    return this.departments.writers(() => this.writerIds()) >= MAX_WRITERS
+      ? `This project already has ${MAX_WRITERS} implementation writers — review or ship what's in flight first`
+      : undefined;
   }
 
   private active(): boolean {
