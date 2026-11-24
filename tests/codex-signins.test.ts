@@ -116,7 +116,7 @@ test('codex device sign-in surfaces the code and page, and cancel stops it', asy
   signins.cancel('acct01', 'codex');
 });
 
-test('without the codex binary the kind reports why, and admins may use the office’s own', async () => {
+test('without the codex binary the kind reports why, and admins still need their own sign-in', async () => {
   const dataDir = tmp();
   const signins = makeSignIns(dataDir, null);
   assert.equal(signins.start('acct01', 'codex'), "Codex isn't installed where the office can run it — paste an OpenAI API key instead");
@@ -125,7 +125,7 @@ test('without the codex binary the kind reports why, and admins may use the offi
   assert.equal(signins.state('acct01').codex.error, "Codex isn't installed on the office's machine");
   assert.equal(signins.ready('acct01', 'codex'), false);
   const adminSignIns = makeSignIns(dataDir, null, true);
-  assert.equal(adminSignIns.useOffice('admin1', 'codex'), undefined);
-  assert.equal(adminSignIns.ready('admin1', 'codex'), true);
-  assert.equal(adminSignIns.apply('admin1', { OPENAI_API_KEY: 'sk-machine' }).OPENAI_API_KEY, 'sk-machine');
+  assert.match(adminSignIns.useOffice('admin1', 'codex'), /Sign in to Codex first/);
+  assert.equal(adminSignIns.ready('admin1', 'codex'), false);
+  assert.equal(adminSignIns.apply('admin1', { OPENAI_API_KEY: 'sk-machine' }).OPENAI_API_KEY, undefined);
 });

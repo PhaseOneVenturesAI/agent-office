@@ -1,3 +1,4 @@
+import { canUseWorker } from '../../worker-ownership.js';
 import type { ConversationClientMsg } from '../../../shared/protocol.js';
 import type { Client } from '../../office/client.js';
 import { conversationSupported } from '../../workers/conversations.js';
@@ -14,7 +15,7 @@ export const conversationHandlers = {
     const service = w.floor.workers.conversations;
     ctx.sendTo(c, { t: 'conversation.state', workerId: w.wid, supported: conversationSupported(w.info.provider), messages: service.snapshot(w.wid) });
     listening.set(c, service.subscribe(w.wid, (message) => {
-      if (c.out || !ctx.stillIn(c) || ctx.floorOf(c) !== w.floor || (w.floor.workers.ownerOf(w.wid) ? w.floor.workers.ownerOf(w.wid) !== c.accountId : !ctx.meOf(c.accountId).admin)) return close(c);
+      if (c.out || !ctx.stillIn(c) || ctx.floorOf(c) !== w.floor || !canUseWorker(ctx, c.accountId, w.floor.workers.ownerOf(w.wid), w.info.provider)) return close(c);
       ctx.sendTo(c, { t: 'conversation.message', workerId: w.wid, message });
     }));
   },

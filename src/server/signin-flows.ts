@@ -158,13 +158,11 @@ export function trust(configDir: string, dirs: string[], base: Record<string, st
 }
 
 /**
- * An account's git config: the office's own (included), with gh as the credentials for GitHub, so
+ * An account's git config: its own gh credentials for GitHub, without including host credentials, so
  * pushes go out as them, and their GitHub name and private email on commits once it's known.
  */
-export function writeGitConfig(home: string, base: Record<string, string>, gh: string | null, user?: { name: string; email: string }) {
-  const xdg = base.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
-  const includes = base.GIT_CONFIG_GLOBAL ? [base.GIT_CONFIG_GLOBAL] : [path.join(xdg, 'git', 'config'), path.join(os.homedir(), '.gitconfig')];
-  const lines = ['# Written by Agent Office: git for this account, on top of the office machine’s own settings.', '[include]', ...includes.map((p) => `\tpath = ${quote(p)}`)];
+export function writeGitConfig(home: string, _base: Record<string, string>, gh: string | null, user?: { name: string; email: string }) {
+  const lines = ['# Written by Agent Office: git for this account, using only its own credentials.'];
   if (gh) {
     for (const host of ['https://github.com', 'https://gist.github.com']) {
       lines.push(`[credential ${quote(host)}]`, '\thelper =', `\thelper = ${quote(`!'${gh.replace(/'/g, `'\\''`)}' auth git-credential`)}`);

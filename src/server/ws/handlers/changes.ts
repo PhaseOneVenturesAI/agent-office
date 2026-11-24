@@ -1,3 +1,4 @@
+import { ownedWorker } from './worker-access.js';
 // The Changes window at a desk: what a worker changed, and committing, discarding or opening a pull
 // request for it.
 import { childEnv } from '../../workers.js';
@@ -32,19 +33,19 @@ export const changesHandlers = {
   },
   'changes.commit'(ctx, c, msg) {
     const who = c.peer.name;
-    const w = workerOf(ctx, msg.workerId);
+    const w = ownedWorker(ctx, c, msg.workerId, true);
     // Committed as whoever pressed it: their GitHub name and email, once they've signed in to it.
     const env = c.accountId ? ctx.signins.apply(c.accountId, childEnv(), [], 'github') : undefined;
     if (w) void w.floor.changes.commit(w.wid, str(msg.message, 5000), who, env, repoOf(msg.repo)).then((err) => ctx.warn(c, err));
   },
   'changes.discard'(ctx, c, msg) {
     const who = c.peer.name;
-    const w = workerOf(ctx, msg.workerId);
+    const w = ownedWorker(ctx, c, msg.workerId, true);
     if (w) void w.floor.changes.discard(w.wid, typeof msg.path === 'string' ? str(msg.path, 4096) : undefined, who, repoOf(msg.repo)).then((err) => ctx.warn(c, err));
   },
   'changes.pr'(ctx, c, msg) {
     const who = c.peer.name;
-    const w = workerOf(ctx, msg.workerId);
+    const w = ownedWorker(ctx, c, msg.workerId, true);
     if (w) ctx.withGitHub(c, (as) => void w.floor.changes.pullRequest(w.wid, str(msg.title, 300), str(msg.body, 20000), who, as?.env, repoOf(msg.repo)).then((err) => ctx.warn(c, err)));
   },
 } satisfies HandlerMap<ChangesClientMsg>;
