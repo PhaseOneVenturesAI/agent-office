@@ -157,8 +157,8 @@ export function parseArgs(argv) {
     if (words.length) throw new UsageError(`assign takes no positional arguments (got ${words.join(' ')}) — the objective goes on stdin or --prompt/--objective`);
     if (opts['--dept'] === undefined || !String(opts['--dept']).trim()) throw new UsageError('assign needs --dept <preset>: which manager you are directing');
     const objective = opts['--objective'] ?? opts['--prompt'];
-    if (objective === undefined || !String(objective).trim()) throw new UsageError('assign needs the objective: --objective "…" or on stdin');
-    return { cmd: 'assign', dept: String(opts['--dept']).trim(), objective: String(objective), execute: opts['--execute'] === true, json: opts['--json'] === true };
+    if (objective !== undefined && !String(objective).trim()) throw new UsageError('assign needs a non-empty objective');
+    return { cmd: 'assign', dept: String(opts['--dept']).trim(), ...(objective !== undefined ? { objective: String(objective) } : {}), execute: opts['--execute'] === true, json: opts['--json'] === true };
   }
   if (cmd === 'hire') {
     const { opts, words } = options(rest, ['--prompt', '--provider', '--model', '--effort', '--desk', '--issue'], ['--no-worktree', '--json']);
@@ -653,7 +653,9 @@ export async function main(argv, io = {}) {
       return 0;
     }
     if (cmd.cmd === 'assign') {
-      const answer = await call('assign', { dept: cmd.dept, objective: cmd.objective, ...(cmd.execute ? { execute: true } : {}) }, ctx);
+      const objective = (cmd.objective ?? await prompt()).trim();
+      if (!objective) throw new UsageError('The objective is empty');
+      const answer = await call('assign', { dept: cmd.dept, objective, ...(cmd.execute ? { execute: true } : {}) }, ctx);
       out(cmd.json ? JSON.stringify(answer, null, 2) : answer.started ? `Gave ${answer.manager} the objective and started their shift.` : `Gave ${answer.manager} the objective.`);
       return 0;
     }

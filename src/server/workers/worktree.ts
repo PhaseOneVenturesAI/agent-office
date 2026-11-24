@@ -11,6 +11,13 @@ import { WORKSPACE_FILES, WORKTREES_DIR, Worktrees, describeWork, workspaceOf, t
 import { midTurn } from './lifecycle.js';
 import type { RepoSource, Worker, WorkerContext, Worktree } from './types.js';
 
+/** Display names may contain spaces, punctuation or emoji; git refs and paths may not. */
+export function workerSlug(name: string, id: string): string {
+  const stem = name.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'worker';
+  return `${stem}-${id.slice(0, 4)}`;
+}
+
 /**
  * The folder each checkout gets in a workspace: its folder's name, made safe, with -2, -3… when two
  * checkouts share one (owner-a/api and owner-b/api).

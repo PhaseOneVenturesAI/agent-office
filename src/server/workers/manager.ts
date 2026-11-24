@@ -36,7 +36,7 @@ import { flushScreens, fullScreens, newTerm, offlineBanner, screenText, type Hea
 import type { HookEnv, OpenedPr, RepoSource, RunAs, Worker, WorkerContext, WorkerEvents, WorkerHandle } from './types.js';
 import { clamp, safeEq, truncate } from './util.js';
 import { COLORS, NAMES, newWorker } from './worker.js';
-import { WorkerTrees, lostMessage } from './worktree.js';
+import { WorkerTrees, lostMessage, workerSlug } from './worktree.js';
 
 const SCREEN_INTERVAL_MS = 250;
 /** How often a steady typist's "last typed" time is refreshed for everyone. */
@@ -289,7 +289,7 @@ export class WorkerManager {
     let wt: WorkerInfo['worktree'] = meeting?.worktree;
     let others: WorkerRepo[] | undefined;
     if (worktree) {
-      const slug = `${picked.toLowerCase()}-${id.slice(0, 4)}`;
+      const slug = workerSlug(picked, id);
       const made = repos.length ? this.makeWorkspace(slug, repos) : this.trees.create(slug);
       if (typeof made === 'string') return made;
       if ('repos' in made) {

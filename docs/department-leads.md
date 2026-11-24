@@ -207,3 +207,5 @@ Roles settings are saved explicitly and confirmed by a correlated server respons
 Requested autonomy and current-session launch settings are displayed separately. Saving a preference does not claim to change an existing process. Legacy unconfirmed labels are identified as such and need an explicit save. Runtime launch details come from the provider adapter; missing details remain “not reported,” not an inferred effective permission mode.
 
 The 23 November 2026 deployment check inspected Claude 2.1.331 and Codex 0.171.0 help on the actual VPS. Both retain the launch modes above. These exact versions are accepted alongside the earlier inspected versions; unknown versions and conflicting permission flags still fail closed. This verifies the requested launch configuration, not runtime permission acknowledgment or isolated staff Q&A support.
+
+CEO assignment commands accept an objective on stdin or with `--objective`; `--execute` explicitly starts the manager. The generated CEO instructions use those supported arguments. Role display names, including spaces and emoji, stay intact while worktree and branch names use a safe slug.
