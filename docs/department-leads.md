@@ -59,23 +59,23 @@ authentication change was performed. Capability references: [Claude CLI](https:/
 
 ## Talking to the characters
 
-The CEO and managers are permanent characters: send-home is refused server-side (browser, hook, and
-landed-merge paths), the desk hint shows them protected, and retiring the role (Roles view) is what
-frees the seat — pausing a process is not deleting the role. Walk up and **T** talks to them; **E**
-stays the terminal. Talk opens the conversation window: durable, paged history (the provider session
-stays the bounded execution context; the record is a per-worker append-only file), clickable
-artifact links, a real pending-decision card that routes to the terminal (approvals are never
-guessed), and honest status labels (turn ended ≠ reviewed; stopped ≠ completed). Dictation and
-read-aloud reuse the existing browser speech and say so.
+The CEO and managers are permanent characters: send-home and role deletion are refused server-side
+(browser, hook, and landed-merge paths), and the desk hint shows them protected. Pause and continue
+preserve their identities and history. Walk up and press **T** or **E** to open Conversation;
+**Terminal** is an explicit fallback. Conversation includes durable, paged history (the provider
+session stays the bounded execution context), clickable artifact links, supported native approval
+choices, and honest status labels (turn ended ≠ reviewed; stopped ≠ completed). Unsupported questions
+open in Terminal. Dictation and read-aloud reuse the existing browser speech and say so.
 
 ## Roles view (☰ → 🛡️ Roles)
 
 Lists the CEO and each manager with owner, controllers, Q&A audience, billing custodian, engine, and
 an effective-autonomy label. Quick edits are re-authorized server-side on every change; delegation
-of control passes only through the current owner/controllers (admins bootstrap an undesignated
-role). The autonomy label is applied only where the provider supports it — the office never
-approves terminal text blindly, and unsupported providers show the label as information only with
-quota unknown.
+of control passes only through the current owner/controllers. A project owner can create its first
+manager; office admins may bootstrap only an unowned project. Saved autonomy applies at the next
+verified provider launch, separately from the current session's reported settings. Unsupported
+versions fail clearly; the office never approves terminal text blindly. Subscription quota stays
+unknown unless the provider reports it.
 
 ## Task ownership and history
 
@@ -99,12 +99,12 @@ are the front door.
   session is what preserves controller history. Kimi's tool-free home is verified against its
   documented config and the office's permission denials; a paid one-shot behavioral re-verification
   on the installed CLI is still owed (tracked, not claimed).
-- In-conversation approval answering (the prototype's queued request cards) is not implemented;
-  approvals are answered in the terminal, where the actual request lives.
-- Effective autonomy is honored only where the provider exposes a real mode; everywhere else it is
-  a visible label, and tool approvals always need a person.
-- The Linear sync backend is owned by another worker; this branch deliberately carries no queue
-  assignee/external-id fields.
+- Conversation supports native approval cards for Claude, Codex and Kimi; unsupported questions
+  and setup screens still require Terminal. See [provider capabilities](conversation-approvals.md).
+- Autonomy uses verified provider launch modes, with saved and current-session policy shown
+  separately. It never grants role authority or access to another person's subscription.
+- Linear task sync is integrated but requires native OAuth setup and explicit floor/person
+  mappings before use. A connected chat plugin does not configure Office. See [setup](linear.md).
 - Durable history pages the record; it never replays old turns into the provider's context window.
 
 ### Recovery and account boundaries
