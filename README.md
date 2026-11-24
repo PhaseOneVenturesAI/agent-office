@@ -36,7 +36,7 @@ curl -fsSL https://raw.githubusercontent.com/AgentSystemLabs/agent-office/main/i
 - **Workers at desks.** Walk up to an empty desk, press **E**, and pick Claude Code, Kimi, Codex, OpenCode, Grok, Muse, DeepSeek Harness, Pi or Cursor, each with its model and reasoning effort. The agent's live terminal shows on its laptop, and anyone can open it and type.
 - **Talk instead of typing.** Hold **Ctrl+Space** (or the **🎤**) in a worker's terminal or a prompt box and say what you want: it's typed in for you to send. Your browser does the listening, so there's nothing to install.
 - **You can't miss who needs you.** A worker that stops to ask you something lights a red beacon over its desk, puts a banner on your screen saying who and what for, and sounds an alarm. One that has finished jumps up and down and dings. Press **N** to go straight to whoever is waiting.
-- **Everything that needs you, one click from the thing itself.** The 📥 Needs me inbox (☰ menu) gathers the workers stopped on a question, the finished takes, the floors where someone's waiting — and every card takes you straight there: the desk with the terminal open at the question, or the ride over.
+- **Everything that needs you, one click from the thing itself.** The 📥 Needs me inbox (☰ menu) gathers the workers stopped on a question, the finished takes, and the floors where someone's waiting — and every card takes you straight there: the desk with the terminal open at the question, or the ride over.
 - **Your deployments on the wall.** The 🚀 Deploy board (☰ menu) lists the office's Cloudflare Pages and Workers projects — what changed when, a link to look at. Read-only; the API token never leaves the server.
 - **The mess can't quietly regrow.** The 🧹 Hygiene report (☰ menu) scans every floor every six hours: branches holding commits no remote has, worktrees no worker sits in anymore, and workers whose pull requests merged but who never went home. Admins prune the stale worktrees and send the landed workers home in one click each — nothing with uncommitted or unpushed work is ever touched.
 - **Who's spending what, on the wall.** The 💸 Cost wall (☰ menu) adds every agent's session usage up per person and per provider — tokens, and dollars where the provider can price them — next to the office ledger's tracked spend for today and all time. It follows the numbers as they move.
@@ -50,7 +50,6 @@ curl -fsSL https://raw.githubusercontent.com/AgentSystemLabs/agent-office/main/i
 - **Other maps.** Turn the whole building into a castle: sit on a throne of iron blades while your workers line up before you when they're done, send new ones off through the Hand of the King, and watch their beards grow long and grey as they toil. Send one home and the Kingsguard runs up from the dungeon, marches it down the stairs and throws it in a cell, where it starves, dies and rots down to a skeleton. Or into a space station in orbit, the Earth turning outside its windows: you run it from the captain's chair on the bridge, and a worker sent home is marched to the airlock and blown out into space, to drift off past the observation windows with everyone who went before it. Or make a map of your own, with its own way of seeing workers off in JSON ([docs/maps.md](docs/maps.md)).
 
 There's a lot more (a rooftop bar, an office dog, an arcade, supercars in the garage to drive round a scenic loop past a farm, pines, mountains and a beach): see [docs/features.md](docs/features.md).
-
 
 ## Requirements
 
@@ -366,9 +365,6 @@ deploy/coolify.sh ssh 'node /opt/agent-office/bin/agent-office.js accounts invit
 **Your agents stay yours.** An account can prompt, resume, attach to or control only its own workers, including board agents and queued tasks; an admin role does not grant someone else's subscription. The small owner tag under an agent's name shows its verified account display name: **Office** for an ownerless worker, **Former account** after account removal, or **Unknown** if an older server supplies no owner label.
 
 **Kimi sign-in links include the code.** In **Your sign-ins**, open the full Kimi link and confirm the displayed code on its page; there is no separate code-entry step. If a complete link has not appeared, cancel and restart the sign-in instead of opening a bare authorization URL. See [Kimi sign-in](docs/agents.md#kimi-sign-in).
-
-
-
 
 **Or sign everyone in with Cloudflare Access.** When the office sits behind a Cloudflare Tunnel with Access in front, Cloudflare's own login (email OTP, your SSO) can be the only sign-in: start the office with `--cf-access <team> --cf-access-aud <aud>` (and `--cf-access-admins` for who is admin), and the login page trades the edge's verified JWT for an account of the person's own — by email, passwordless, provisioned on first visit. The shared office password can then go off and Cloudflare is the single front door. Details in [docs/configuration.md](docs/configuration.md).
 

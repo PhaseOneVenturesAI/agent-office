@@ -46,11 +46,6 @@ export class Deploys {
     };
   }
 
-  /** One item, for the handler that stages it. */
-  get(id: string): DeployItem | undefined {
-    return this.items.find((i) => i.id === id);
-  }
-
   /** Refetch when the cache is old (or always, when forced). Safe to call concurrently. */
   refresh(force = false): Promise<void> {
     if (!this.cfg) return Promise.resolve();

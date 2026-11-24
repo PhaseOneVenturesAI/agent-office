@@ -76,3 +76,10 @@ agent-office tunnel [office@address | url] [--port <n>] [--office-port <n>] [--n
   the worker stops it. Given an SSH address it opens the tunnel to the office too.
   See docs/tunnel.md.
 ```
+
+
+### Retired Office customization features
+
+Shared and personal harness editors, harness history/restore, the Review Room, local-session observations, and Departments/brand library are no longer exposed by Office. Their old WebSocket messages, worker review command/MCP tool, and brand-asset endpoint are removed. Basic satellite presence, Project Context, the Deploy board, personal sign-ins and credential ownership remain.
+
+Upgrades do not delete existing user data or provider files. Back up retired harness/history, review and department records privately before archiving them; keep referenced project assets. Instructions and skills previously copied into provider homes can still affect future sessions. Retire those separately only after matching their provenance and checking a restorable backup; preserve personal edits, native histories and credentials. Never remove an account home or sign it out to clean up a retired feature. Existing provider conversations retain their context.

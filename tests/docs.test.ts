@@ -107,3 +107,12 @@ test('document reads retain credential-path protection after brand library remov
   }
   assert.ok('text' in await docs.read('README.md'));
 });
+
+
+test('the bookshelf never reads titles from tracked private aliases', async (t) => {
+  const { dir, docs } = fixture(t, true);
+  writeFileSync(path.join(dir, '.env'), '# Private fixture title');
+  symlinkSync('.env', path.join(dir, 'private-alias.md'));
+  execFileSync('git', ['add', 'private-alias.md'], { cwd: dir });
+  assert.equal((await docs.list()).files.some((file) => file.path === 'private-alias.md'), false);
+});

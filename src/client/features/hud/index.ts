@@ -98,7 +98,7 @@ export function installHud(ctx: Ctx, core: CoreState, parts: HudParts) {
       { id: 'accounts', icon: '🔑', label: 'Accounts', section: 'Together', shown: () => store.me.admin, title: () => 'Invite people, see who has an account, revoke them', run: () => openAccounts(net) },
       { id: 'signins', icon: '🔐', label: 'Your sign-ins', section: 'Together', shown: () => !!store.me.account, tone: () => (needsSigningIn() ? 'danger' : undefined), status: needsSigningIn, chip: () => 'Sign in to Claude', title: () => 'The Claude plan and GitHub account your workers run on: your own', run: () => openSignIns(net) },
       { id: 'project-context', icon: '📖', label: 'Project context', section: 'Open', shown: () => !!store.floor, title: () => 'Inspect project instruction, brand and memory files with revision history', run: () => openProjectContext(net) },
-      { id: 'deploys', icon: '🚀', label: 'Deploy board', section: 'Office', title: () => 'The Cloudflare Pages and Workers projects, each one click from staging it for review', run: () => openDeploys(net) },
+      { id: 'deploys', icon: '🚀', label: 'Deploy board', section: 'Office', title: () => 'View your Cloudflare Pages and Workers projects and their deployments', run: () => openDeploys(net) },
       { id: 'costwall', icon: '💸', label: 'Cost wall', section: 'Office', title: () => 'Who is spending what, per person and per provider, next to the office ledger', run: () => openCostwall(net) },
       {
         id: 'nodes',
