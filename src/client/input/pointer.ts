@@ -14,7 +14,6 @@ import { EYE_HEIGHT } from '../player';
 import { store } from '../state';
 import { modalOpen, toast } from '../ui/dom';
 import type { Interactable } from '../world/types';
-import { visibleIntersections } from './picking';
 
 export type PointerParts = Pick<Parts, 'worlds' | 'rooftop' | 'place' | 'you' | 'boards' | 'cards' | 'seating' | 'hoops' | 'emotes' | 'hanging' | 'telescope' | 'hintbar'>;
 
@@ -88,17 +87,9 @@ export function installPointer(ctx: Ctx, core: CoreState, parts: PointerParts) {
   function aimedAt(ndc: THREE.Vector2, slack = 0): { it: Interactable; near: boolean; hit: THREE.Intersection } | null {
     raycaster.setFromCamera(ndc, camera);
     eye.set(player.pos.x, player.pos.y + EYE_HEIGHT, player.pos.z);
-    // First-person hints only need reachable things. Third-person clicks still discover distant
-    // targets ("Walk closer"), and keep the camera's different position out of the reach decision.
-    let far = Infinity;
-    if (player.view === 'first') {
-      far = 0;
-      for (const kind of ctx.interactions.kinds()) far = Math.max(far, ctx.interactions.reach(kind) + slack);
-      far += camera.position.distanceTo(eye);
-    }
     // (Workers standing in line in the castle carry their spot's interactable: see Court.)
     const roof = parts.rooftop.roof();
-    for (const hit of visibleIntersections(raycaster, core.upTop && roof ? roof.pickables : inOffice() ? [office.group, ...ctx.usables.pickables()] : ctx.world().pickables, far)) {
+    for (const hit of raycaster.intersectObjects(core.upTop && roof ? roof.pickables : inOffice() ? [office.group, ...ctx.usables.pickables()] : ctx.world().pickables, true)) {
       let it: Interactable | undefined;
       let shown = true;
       for (let o: THREE.Object3D | null = hit.object; o; o = o.parent) {

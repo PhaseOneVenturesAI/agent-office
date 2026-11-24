@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { BEANBAGS, DESKS, DESK_SIZE, FLOOR, KIOSK, SEATING_BY_ID, STATIONS, STATION_AGENT, deskSeat, type DeskDef, type StationKind } from '../../../shared/layout';
 import { deskPoint } from '../../../shared/nav';
-import { mergeByMaterial, mesh, roundedBox, textPlane, toon } from '../toon';
+import { mesh, roundedBox, textPlane, toon } from '../toon';
 import type { Collider, DeskView, Interactable } from '../types';
 import type { Fixture } from './fixture';
 import { PALETTE, box } from './materials';
@@ -32,8 +32,7 @@ export function chair(color: string): THREE.Group {
     leg.rotation.y = a;
     g.add(leg);
   }
-  // The whole chair can still move or hide; its upholstery and metal each draw once.
-  return mergeByMaterial(g);
+  return g;
 }
 
 /**
@@ -44,18 +43,16 @@ export function buildDesk(def: DeskDef, index: number, trimMat: THREE.Material):
   const group = new THREE.Group();
   group.position.set(def.x, 0, def.z);
   group.rotation.y = def.rotY;
-  const frame = new THREE.Group();
   const { width, depth, height } = DESK_SIZE;
-  frame.add(mesh(roundedBox(width - 0.06, 0.08, depth - 0.04, 0.08), toon(PALETTE.desk), 0, height - 0.04, 0));
+  group.add(mesh(roundedBox(width - 0.06, 0.08, depth - 0.04, 0.08), toon(PALETTE.desk), 0, height - 0.04, 0));
   const legMat = toon('#8d99ae');
   for (const sx of [-1, 1]) {
     for (const sz of [-1, 1]) {
-      frame.add(mesh(new THREE.CylinderGeometry(0.035, 0.035, height - 0.08, 8), legMat, sx * (width / 2 - 0.14), (height - 0.08) / 2, sz * (depth / 2 - 0.12)));
+      group.add(mesh(new THREE.CylinderGeometry(0.035, 0.035, height - 0.08, 8), legMat, sx * (width / 2 - 0.14), (height - 0.08) / 2, sz * (depth / 2 - 0.12)));
     }
   }
   // Modesty panel facing away from the worker
-  frame.add(mesh(box(width - 0.3, 0.32, 0.03), trimMat, 0, height - 0.26, -depth / 2 + 0.06));
-  group.add(mergeByMaterial(frame));
+  group.add(mesh(box(width - 0.3, 0.32, 0.03), trimMat, 0, height - 0.26, -depth / 2 + 0.06));
   // Little desk decorations. Which desk gets which stays as it is: the holiday present goes in whichever
   // back corner it leaves free (DESK_SPOTS in holiday.ts).
   const deco = index % 3;

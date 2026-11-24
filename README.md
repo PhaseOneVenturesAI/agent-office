@@ -418,7 +418,7 @@ Server edits restart the server, not the workers. After changing `ptyhost.ts`, b
 
 [docs/code-layout.md](docs/code-layout.md) says where the code lives, and where a new feature's pieces go.
 
-For local walking/rendering changes, `node tests/walking-performance-ui.mjs` exercises the actual office with synthetic workers, records frame timings and captures desktop/390px screenshots. See [the performance fixture](docs/code-layout.md#walking-and-picking-checks) for baseline comparison and limits.
+Mouse-look, walking, scene picking and desk/chair construction follow the original upstream implementation. The experimental picking/rendering optimization was rolled back following a mouse-look skipping report. For local walking/rendering checks, `OFFICE_PERF_BASELINE=1 node tests/walking-performance-ui.mjs` exercises the actual office with synthetic workers, records frame timings and captures desktop/390px screenshots. See [the performance fixture](docs/code-layout.md#walking-and-picking-checks) for baseline comparison and limits.
 
 The rules for coding agents working on this repository are in [`AGENTS.md`](AGENTS.md), which Codex, OpenCode and most other agent CLIs read. `CLAUDE.md` only imports it for Claude Code, so new rules go in `AGENTS.md`.
 
