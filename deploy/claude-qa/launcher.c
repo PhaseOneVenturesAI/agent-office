@@ -2,6 +2,7 @@
 #define _GNU_SOURCE
 #include <arpa/inet.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdio.h>
@@ -18,6 +19,14 @@ static void stop(int n) { (void)n; stopped = 1; }
 static int write_all(int fd, const char *data, size_t size) {
   while (size) { ssize_t n = write(fd, data, size); if (n <= 0) return -1; data += n; size -= (size_t)n; }
   return 0;
+}
+static int seed(const char *source, const char *target) {
+  int in = open(source, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+  int out = open(target, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+  if (in < 0 || out < 0) return -1;
+  char buffer[16384]; ssize_t n = read(in, buffer, sizeof(buffer));
+  if (n <= 0 || n == (ssize_t)sizeof(buffer) || write_all(out, buffer, (size_t)n)) return -1;
+  close(in); close(out); return 0;
 }
 static void bridge(int client) {
   int upstream = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
@@ -40,18 +49,20 @@ static void bridge(int client) {
 int main(int argc, char **argv) {
   (void)argv;
   if (argc != 1 || geteuid() == 0) return 64;
-  if (access("/etc/claude-code/managed-settings.json", R_OK)) return 78;
+  if (access("/etc/claude-code/managed-settings.json", R_OK) || access("/qa-ca.pem", R_OK)) return 78;
   const char *cap = getenv("QA_CAPABILITY");
   if (!cap || strlen(cap) != 64 || strspn(cap, "0123456789abcdef") != 64) return 64;
-  char saved_cap[65]; memcpy(saved_cap, cap, 65);
   if (clearenv()) return 70;
   umask(077);
   if (mkdir("/work/home", 0700) && errno != EEXIST) return 70;
+  if (seed("/qa-auth.json", "/work/home/.credentials.json") || seed("/qa-account.json", "/work/home/.claude.json")) return 78;
   setenv("HOME", "/work/home", 1); setenv("CLAUDE_CONFIG_DIR", "/work/home", 1);
   setenv("USER", "qa", 1); setenv("LOGNAME", "qa", 1); setenv("LANG", "C.UTF-8", 1);
   setenv("PATH", "/nonexistent", 1); setenv("TERM", "dumb", 1); setenv("CI", "1", 1);
-  setenv("CLAUDE_CODE_OAUTH_TOKEN", saved_cap, 1);
-  setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:18765", 1);
+  /* Auth discovery uses only the generated access-only surrogate and selected team metadata.
+     An environment token alone can make the native policy loader ineligible. */
+  setenv("HTTPS_PROXY", "http://127.0.0.1:18765", 1);
+  setenv("NODE_EXTRA_CA_CERTS", "/qa-ca.pem", 1);
   setenv("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1", 1);
   setenv("CLAUDE_CODE_MAX_OUTPUT_TOKENS", "4096", 1);
   int listener = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
@@ -62,7 +73,7 @@ int main(int argc, char **argv) {
   if (cli < 0) return 71;
   if (!cli) {
     close(listener);
-    char *args[] = {"/opt/claude/claude", "--safe-mode", "--setting-sources", "", "--strict-mcp-config", "--mcp-config", "{\"mcpServers\":{}}", "--disallowedTools", "*", "--no-session-persistence", "--output-format", "json", "--model", "claude-sonnet-4-6", "-p", NULL};
+    char *args[] = {"/opt/claude/claude", "--safe-mode", "--setting-sources", "", "--strict-mcp-config", "--mcp-config", "{\"mcpServers\":{}}", "--disallowedTools", "*", "--no-session-persistence", "--debug-file", "/work/home/native-policy.log", "--output-format", "json", "--model", "claude-sonnet-4-6", "-p", NULL};
     execv(args[0], args); _exit(127);
   }
   pid_t children[8] = {0}; int status = 0, finished = 0;

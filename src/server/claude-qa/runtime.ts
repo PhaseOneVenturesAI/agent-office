@@ -1,12 +1,18 @@
 import { spawn, execFileSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { lstatSync, readFileSync, realpathSync, writeFileSync, chmodSync, mkdirSync, rmSync, readdirSync } from 'node:fs';
+import { lstatSync, readFileSync, realpathSync, writeFileSync, chmodSync, mkdirSync, rmSync, readdirSync, openSync, readSync, closeSync, constants } from 'node:fs';
 import path from 'node:path';
 import { CLAUDE_QA_SHA256, qualifyJob, type ApprovedQaJob } from './policy.js';
 import { createClaudeQaBroker, type Transport } from './broker.js';
+import { nativeUnitPolicyReady } from './native-policy-ready.js';
 
-const imageFiles = new Set(['broker.sock', 'etc/passwd', 'etc/group', 'etc/hosts', 'etc/nsswitch.conf', 'etc/claude-code/managed-settings.json', 'opt/qa/launcher', 'opt/claude/claude', 'lib64/ld-linux-x86-64.so.2', ...['ld-linux-x86-64.so.2', 'libc.so.6', 'librt.so.1', 'libpthread.so.0', 'libdl.so.2', 'libm.so.6'].map(name => `lib/x86_64-linux-gnu/${name}`)]);
+const imageFiles = new Set(['broker.sock', 'qa-ca.pem', 'qa-auth.json', 'qa-account.json', 'etc/passwd', 'etc/group', 'etc/hosts', 'etc/nsswitch.conf', 'etc/claude-code/managed-settings.json', 'opt/qa/launcher', 'opt/claude/claude', 'lib64/ld-linux-x86-64.so.2', ...['ld-linux-x86-64.so.2', 'libc.so.6', 'librt.so.1', 'libpthread.so.0', 'libdl.so.2', 'libm.so.6'].map(name => `lib/x86_64-linux-gnu/${name}`)]);
 const imageDirs = new Set(['opt', 'opt/qa', 'opt/claude', 'lib', 'lib/x86_64-linux-gnu', 'lib64', 'etc', 'etc/claude-code', 'work', 'tmp', 'proc', 'dev', 'sys', 'var', 'var/tmp', 'root', 'usr', 'run']);
+function fileHash(file: string): string {
+  const fd = openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW), hash = createHash('sha256'), bytes = Buffer.alloc(64 * 1024);
+  try { let n; while ((n = readSync(fd, bytes, 0, bytes.length, null)) > 0) hash.update(bytes.subarray(0, n)); return hash.digest('hex'); }
+  finally { closeSync(fd); }
+}
 /** A privileged prototype entry point, NOT registered with Office or granted through sudo/polkit. */
 export function verifyImage(root: string): void {
   if (realpathSync(root) !== root) throw new Error('Image must have a canonical path.');
@@ -29,7 +35,7 @@ export function verifyImage(root: string): void {
       else if (!s.isFile()) throw new Error('Unexpected image node.');
       else if (rel !== 'manifest.json') {
         found.add(rel);
-        if (createHash('sha256').update(readFileSync(p)).digest('hex') !== manifest.files[rel]) throw new Error('Image checksum mismatch.');
+        if (fileHash(p) !== manifest.files[rel]) throw new Error('Image checksum mismatch.');
       }
     }
   }
@@ -47,22 +53,27 @@ export function unitProperties(root: string, jobDir: string, id: string, runtime
     'RestrictSUIDSGID=yes', 'ProtectKernelTunables=yes', 'ProtectKernelModules=yes', 'ProtectControlGroups=yes',
     'PrivateIPC=yes', 'UMask=0077', 'NoExecPaths=/', 'ExecPaths=/opt/qa /opt/claude /lib /lib64',
     'TemporaryFileSystem=/work:rw,nosuid,nodev,noexec,mode=1777,size=32M /tmp:rw,nosuid,nodev,noexec,mode=1777,size=16M',
-    `BindReadOnlyPaths=${jobDir}/broker.sock:/broker.sock ${jobDir}/policy.json:/etc/claude-code/managed-settings.json`,
+    `BindReadOnlyPaths=${jobDir}/broker.sock:/broker.sock ${jobDir}/policy.json:/etc/claude-code/managed-settings.json ${jobDir}/ca.pem:/qa-ca.pem ${jobDir}/auth.json:/qa-auth.json ${jobDir}/account.json:/qa-account.json`,
     'KillMode=control-group', 'TimeoutStopSec=3s', `RuntimeMaxSec=${runtimeSeconds}s`, 'TasksMax=32', 'MemoryMax=1G', 'CPUQuota=100%',
   ];
 }
 
-export async function runClaudeQaIsolated(opts: { image: string; job: ApprovedQaJob; accessToken: string; transport?: Transport; runtimeSeconds?: number }): Promise<{ ok: boolean; answer?: string; why?: string; metrics: { forwarded: boolean; accepted: number; denied: number }; policyDigest: string }> {
+export async function runClaudeQaIsolated(opts: { image: string; job: ApprovedQaJob; accessToken: string; transport?: Transport; runtimeSeconds?: number; runtimeId?: string }): Promise<{ ok: boolean; answer?: string; why?: string; metrics: { forwarded: boolean; accepted: number; denied: number }; policyDigest: string }> {
+  if (opts.runtimeId !== undefined && !/^[a-f0-9]{12}$/.test(opts.runtimeId)) throw new Error('Invalid controller runtime identity.');
   if (process.getuid?.() !== 0 || process.platform !== 'linux') throw new Error('The isolated Claude runtime requires the reviewed root-owned Linux controller.');
-  const policy = qualifyJob(opts.job); verifyImage(opts.image);
-  const id = randomBytes(6).toString('hex'), unit = `office-claude-qa-${id}`;
+  const job = structuredClone(opts.job), policy = qualifyJob(job); verifyImage(opts.image);
+  const id = opts.runtimeId ?? randomBytes(6).toString('hex'), unit = `office-claude-qa-${id}`;
   const parent = path.dirname(opts.image), jobDir = path.join(parent, `job-${id}`);
   mkdirSync(jobDir, { mode: 0o700 });
-  writeFileSync(path.join(jobDir, 'policy.json'), JSON.stringify(policy.settings), { mode: 0o400 });
-  chmodSync(path.join(jobDir, 'policy.json'), 0o444); // Readable after bind mount; host directory stays root-only.
   let broker: Awaited<ReturnType<typeof createClaudeQaBroker>> | undefined;
   try {
-    broker = await createClaudeQaBroker({ socket: path.join(jobDir, 'broker.sock'), job: opts.job, accessToken: opts.accessToken, transport: opts.transport, timeoutMs: (opts.runtimeSeconds ?? 120) * 1000 });
+    broker = await createClaudeQaBroker({ socket: path.join(jobDir, 'broker.sock'), job, accessToken: opts.accessToken, transport: opts.transport, timeoutMs: (opts.runtimeSeconds ?? 120) * 1000, nativePolicyReady: () => nativeUnitPolicyReady(id, job.policy) });
+    const n = job.policy.nativeIdentity;
+    const account = { accountUuid: n.accountUuid, organizationUuid: n.organizationUuid, ...(n.workspaceUuid ? { workspaceUuid: n.workspaceUuid } : {}) };
+    const files = { 'policy.json': JSON.stringify(policy.settings), 'ca.pem': broker.certificate,
+      'auth.json': JSON.stringify({ claudeAiOauth: { ...account, subscriptionType: n.subscriptionType, scopes: n.scopes, expiresAt: n.expiresAt, accessToken: broker.capability, refreshToken: '' } }),
+      'account.json': JSON.stringify({ oauthAccount: account, hasCompletedOnboarding: true }) };
+    for (const [name, body] of Object.entries(files)) { const p = path.join(jobDir, name); writeFileSync(p, body, { mode: 0o400 }); chmodSync(p, 0o444); }
     const args = ['--quiet', '--wait', '--pipe', '--collect', '--service-type=exec', `--unit=${unit}`, ...unitProperties(opts.image, jobDir, id, opts.runtimeSeconds).flatMap(p => ['--property', p]), '--setenv', `QA_CAPABILITY=${broker.capability}`, '/opt/qa/launcher'];
     const outcome = await new Promise<{ ok: boolean; answer?: string; why?: string }>(resolve => {
       const child = spawn('/usr/bin/systemd-run', args, { env: { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8' }, stdio: ['pipe','pipe','pipe'] });
@@ -85,7 +96,7 @@ export async function runClaudeQaIsolated(opts: { image: string; job: ApprovedQa
           finish({ ok: true, answer: result.result });
         } catch { finish({ ok: false, why: 'Isolated Claude returned an unsupported result.' }); }
       });
-      child.stdin.on('error', () => {}); child.stdin.end(opts.job.prompt);
+      child.stdin.on('error', () => {}); child.stdin.end(job.prompt);
     });
     return { ...outcome, metrics: broker.metrics(), policyDigest: policy.digest };
   } finally {

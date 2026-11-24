@@ -25,6 +25,7 @@ shutil.copyfile('/lib64/ld-linux-x86-64.so.2',root/'lib/x86_64-linux-gnu/ld-linu
 (root/'etc/hosts').write_text('127.0.0.1 localhost\n')
 (root/'etc/claude-code/managed-settings.json').write_text('{}\n')
 (root/'broker.sock').touch()
+for name in ['qa-ca.pem','qa-auth.json','qa-account.json']:(root/name).touch()
 files={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file()}
 (root/'manifest.json').write_text(json.dumps({'claudeVersion':'2.1.331','files':files},indent=2)+'\n')
 for p in root.rglob('*'):

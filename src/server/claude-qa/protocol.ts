@@ -2,23 +2,24 @@ import { CLAUDE_QA_MODEL, type ApprovedQaJob } from './policy.js';
 
 export const REQUEST_LIMIT = 256_000;
 export const RESPONSE_LIMIT = 1_000_000;
-const keys = ['model', 'messages', 'system', 'tools', 'metadata', 'max_tokens', 'thinking', 'context_management', 'output_config', 'stream'];
+const keys = ['model', 'messages', 'system', 'tools', 'metadata', 'max_tokens', 'thinking', 'context_management', 'output_config', 'diagnostics', 'stream'];
 const record = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v);
 const exactKeys = (v: Record<string, any>, allowed: string[]) => Object.keys(v).every(k => allowed.includes(k));
-function blocks(v: unknown): v is { type: 'text'; text: string }[] {
-  return Array.isArray(v) && v.length <= 64 && v.every(b => record(b) && exactKeys(b, ['type', 'text', 'cache_control']) && b.type === 'text' && typeof b.text === 'string' && (!b.cache_control || (record(b.cache_control) && exactKeys(b.cache_control, ['type', 'ttl']) && b.cache_control.type === 'ephemeral' && (!b.cache_control.ttl || ['5m', '1h'].includes(b.cache_control.ttl)))));
+function blocks(v: unknown, system = false): v is { type: 'text'; text: string }[] {
+  return Array.isArray(v) && v.length <= 64 && v.every(b => record(b) && exactKeys(b, ['type', 'text', 'cache_control']) && b.type === 'text' && typeof b.text === 'string' && (!b.cache_control || (record(b.cache_control) && exactKeys(b.cache_control, ['type', 'ttl', 'scope']) && (b.cache_control.scope === undefined || (system && b.cache_control.scope === 'global')) && b.cache_control.type === 'ephemeral' && (!b.cache_control.ttl || ['5m', '1h'].includes(b.cache_control.ttl)))));
 }
 /** Reject unsupported capabilities; preserve validated values in canonical JSON. */
 export function validateRequest(raw: Buffer, job: ApprovedQaJob): Buffer {
   if (raw.length > REQUEST_LIMIT) throw new Error('Request too large.');
   const b: unknown = JSON.parse(raw.toString('utf8'));
   if (!record(b) || !exactKeys(b, keys) || b.model !== job.model || b.stream !== true || !Array.isArray(b.tools) || b.tools.length || !Number.isInteger(b.max_tokens) || b.max_tokens < 1 || b.max_tokens > 4096) throw new Error('Unsupported inference request.');
-  if (!blocks(b.system) || !Array.isArray(b.messages) || b.messages.length !== 1) throw new Error('Unsupported context.');
+  if (!blocks(b.system, true) || !Array.isArray(b.messages) || b.messages.length !== 1) throw new Error('Unsupported context.');
   const m = b.messages[0];
   if (!record(m) || !exactKeys(m, ['role', 'content']) || m.role !== 'user' || !blocks(m.content) || m.content.at(-1)?.text !== job.prompt) throw new Error('Question is not the approved job.');
   // Earlier blocks are the pinned CLI's environment reminders, not a second conversation.
   if (m.content.slice(0, -1).some((x: any) => !x.text.startsWith('<system-reminder>') || !x.text.trimEnd().endsWith('</system-reminder>'))) throw new Error('Unqualified native reminder.');
   if (b.metadata && (!record(b.metadata) || !exactKeys(b.metadata, ['user_id']) || typeof b.metadata.user_id !== 'string' || b.metadata.user_id.length > 1024)) throw new Error('Unsupported metadata.');
+  if (b.diagnostics !== undefined && (!record(b.diagnostics) || !exactKeys(b.diagnostics, ['previous_message_id']) || b.diagnostics.previous_message_id !== null)) throw new Error('A previous native conversation is not permitted.');
   if (b.thinking && JSON.stringify(b.thinking) !== JSON.stringify({ type: 'adaptive', display: 'omitted' })) throw new Error('Unsupported thinking configuration.');
   if (b.context_management && JSON.stringify(b.context_management) !== JSON.stringify({ edits: [{ type: 'clear_thinking_20251015', keep: 'all' }] })) throw new Error('Unsupported context configuration.');
   if (b.output_config && (!record(b.output_config) || !exactKeys(b.output_config, ['effort']) || !['low', 'medium', 'high'].includes(b.output_config.effort))) throw new Error('Unsupported output configuration.');
