@@ -1,8 +1,9 @@
 import { JUKEBOX } from '../../../shared/layout';
-import { STREAM } from '../../../shared/jukebox';
+import { STREAM, youtubeId } from '../../../shared/jukebox';
 import type { AudioCore } from '../../sound/core';
 import { biquad, rms } from '../../sound/dsp';
 import { TunePlayer } from '../../sound/music';
+import { YouTubeStream } from './youtube';
 
 // ---- The jukebox ------------------------------------------------------------------------------
 
@@ -32,7 +33,8 @@ export class Jukebox {
   private musicMuted = false;
   private jukebox: JukeboxPlay | null = null;
   private tune: TunePlayer | null = null;
-  private stream: HTMLAudioElement | null = null;
+  /** A pasted link: an audio file or radio, or a YouTube video through YouTube's own player. */
+  private stream: HTMLAudioElement | YouTubeStream | null = null;
   private musicTimer = 0;
 
   /** `onError` hears about a stream that won't play here. */
@@ -113,12 +115,13 @@ export class Jukebox {
     if (!ctx || (!changed && (this.tune || this.stream))) return;
     this.tune?.stop();
     this.tune = null;
-    if (this.stream) {
+    if (this.stream instanceof YouTubeStream) this.stream.destroy();
+    else if (this.stream) {
       this.stream.pause();
       this.stream.removeAttribute('src');
       this.stream.load();
-      this.stream = null;
     }
+    this.stream = null;
     clearInterval(this.musicTimer);
     const j = this.jukebox;
     if (!j) return;
@@ -132,6 +135,21 @@ export class Jukebox {
   }
 
   private startStream(url: string) {
+    const id = youtubeId(url);
+    if (id) {
+      const yt = new YouTubeStream(
+        id,
+        (s) => this.seekStream(s),
+        (text) => {
+          if (this.stream === yt) this.onError(text);
+        },
+      );
+      this.stream = yt;
+      this.hearStream();
+      void yt.play();
+      this.a.count('stream');
+      return;
+    }
     const a = new Audio();
     a.preload = 'auto';
     a.loop = true;
@@ -147,7 +165,7 @@ export class Jukebox {
   }
 
   /** An audio file (not live radio) picks up where everyone else is. */
-  private seekStream(a: HTMLAudioElement) {
+  private seekStream(a: { duration: number; currentTime: number }) {
     if (Number.isFinite(a.duration) && a.duration > 0) a.currentTime = this.musicAt() % a.duration;
   }
 
