@@ -27,6 +27,7 @@ import { renderLimits } from '../../ui/limits';
 import { modelBadge, providerLabel } from '../../ui/provider';
 import { renderUsage } from '../../ui/usage';
 import { Worker } from '../../world/character';
+import { nameplateRoleForWorker } from '../../world/character/worker-nameplate';
 import { Drifters } from './adrift';
 import { Jail } from './jail';
 import { Laptop } from './laptop';
@@ -44,6 +45,7 @@ export interface WorkerView {
   model: Worker;
   laptop: Laptop;
   deskId: string;
+  name: string;
   status: string;
   acked: boolean;
 }
@@ -139,9 +141,11 @@ export function installWorkerViews(ctx: Ctx, core: CoreState, parts: WorkerViews
         desk.laptopAnchor.add(laptop.root);
         noOutline(desk.group);
         desk.chair.rotation.y = 0;
-        v = { model, laptop, deskId: w.deskId, status: '', acked: true };
+        v = { model, laptop, deskId: w.deskId, name: w.name, status: '', acked: true };
         workerViews.set(w.id, v);
       }
+      if (v.name !== w.name) { v.name = w.name; v.model.setName(w.name); }
+      v.model.setRole(nameplateRoleForWorker(w.id, store.ceo.ceo, store.departments.departments));
       if (v.status !== w.status || v.acked !== w.acked) {
         // It just finished or started waiting on you (not already so when this page first saw it): ding (one that needs you has an alarm of its own, see features/needsyou), and notify if you're away. Only the hirer gets either (see alertsForMe).
         if (waitingOnSomeone(w) && v.status !== '' && w.status !== v.status) {
@@ -287,6 +291,11 @@ export function installWorkerViews(ctx: Ctx, core: CoreState, parts: WorkerViews
     for (const c of appeared) if (p.y > -0.1 && p.y < c.top && p.x > c.minX - 0.3 && p.x < c.maxX + 0.3 && p.z > c.minZ - 0.3 && p.z < c.maxZ + 0.3) p.y = c.top;
   }
   store.on('workers', syncWorkers);
+  const syncRoleNameplates = () => {
+    for (const [id, view] of workerViews) view.model.setRole(nameplateRoleForWorker(id, store.ceo.ceo, store.departments.departments));
+  };
+  store.on('ceo', syncRoleNameplates);
+  store.on('departments', syncRoleNameplates);
   const workerPos = new THREE.Vector3();
   /** When (performance.now()) the workers' looks were last brought up to how long they've worked. */
   let agedAt = 0;
