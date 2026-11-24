@@ -7,6 +7,10 @@ under **Agent work queue**.
 - **Do myself** marks an assigned task in progress without starting a provider.
 - **Start my agent** lets the assignee choose provider/model and uses their own sign-in.
   The human stays assigned. An agent turn ending is a review cue, not completion.
+- **Agent conversation** opens the existing worker's Conversation directly in both
+  desktop and lite. **Terminal** remains an explicit fallback; opening Conversation
+  does not start or resume an agent. Completed or canceled tasks keep the ended-turn
+  status without the reminder to complete the task.
 - **Edit task** updates title, description and mapped status. Assigned staff can edit
   their own tasks; only the owner or an explicitly authorized department controller
   can assign project work or change its employee assignment.
