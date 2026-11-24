@@ -8,9 +8,13 @@ export function autonomyChoice(explicit: AutonomyMode | undefined, kind: string,
 }
 export function refreshPersonalAutonomy(info: WorkerInfo, owner: string | undefined, runAs?: RunAs): void {
   if (info.autonomySource === 'explicit' || (info.autonomySource !== 'account' && info.autonomyRequested !== undefined)) return;
-  if (!info.provider) return;
   const choice = autonomyChoice(undefined, info.kind, owner, info.provider, runAs);
   if (choice.autonomyRequested !== undefined) Object.assign(info, choice);
+  else if (info.autonomySource === 'account') {
+    delete info.autonomyRequested; delete info.autonomySource; delete info.autonomyError;
+    // This runs before a new process starts; its previous launch is no longer runtime evidence.
+    delete info.autonomyApplied;
+  }
 }
 export function queueWorkerAutonomy(w: Worker | undefined, persist: () => boolean, emit: (w: Worker) => void, mode: AutonomyMode, source: 'account' | 'explicit' = 'explicit'): string | undefined {
   if (!w) return 'The preference was saved; its worker is no longer seated.';

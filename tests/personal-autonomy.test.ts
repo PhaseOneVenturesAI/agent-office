@@ -36,6 +36,27 @@ test('future workers use their own account default; explicit role choices, shell
   worker.autonomySource = 'explicit'; worker.autonomyRequested = 'supervised'; refreshPersonalAutonomy(worker, ALICE, runAs); assert.equal(worker.autonomyRequested, 'supervised');
 });
 
+test('next launch drops withdrawn account defaults and stale evidence, preserving explicit and legacy choices', () => {
+  let signIn: 'personal' | 'office' = 'personal';
+  let preference: 'autonomous' | undefined = 'autonomous';
+  const runAs = { autonomy: () => signIn === 'office' ? undefined : preference } as any;
+  const fresh = () => ({ kind: 'agent', provider: 'kimi', autonomyRequested: 'autonomous', autonomySource: 'account', autonomyError: 'Previous ACK failed', autonomyApplied: { mode: 'autonomous', provider: 'kimi', acknowledged: true, detail: 'Previous process' } }) as WorkerInfo;
+  for (const transition of ['office', 'missing preference', 'missing owner', 'missing provider'] as const) {
+    const worker = fresh(); signIn = 'personal'; preference = 'autonomous';
+    refreshPersonalAutonomy(worker, ALICE, runAs); assert.equal(worker.autonomyRequested, 'autonomous');
+    if (transition === 'office') signIn = 'office';
+    if (transition === 'missing preference') preference = undefined;
+    if (transition === 'missing provider') worker.provider = undefined;
+    refreshPersonalAutonomy(worker, transition === 'missing owner' ? undefined : ALICE, runAs);
+    for (const field of ['autonomyRequested', 'autonomySource', 'autonomyError', 'autonomyApplied'] as const) assert.equal(worker[field], undefined, `${transition}: ${field}`);
+  }
+  signIn = 'office'; preference = undefined;
+  for (const source of ['explicit', undefined] as const) {
+    const worker = { ...fresh(), autonomySource: source }; const before = structuredClone(worker);
+    refreshPersonalAutonomy(worker, ALICE, runAs); assert.deepEqual(worker, before);
+  }
+});
+
 function fixture(dir: string) {
   const accounts = [{ id: ALICE, email: 'alice@example.test' }, { id: BOB, email: 'bob@example.test' }];
   const items = new Map<string, any>(); const grants = new Map<string, any>(); const changed: { id: string; mode: string; source: string }[] = []; const sent: any[] = [];
