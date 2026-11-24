@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "officeDataDir": "/home/agentoffice/.agent-office",
+  "officeUid": 1000,
+  "officeGid": 1000
+}

@@ -482,7 +482,7 @@ Retired role workers retain their private-role access rules after an engine swap
 Engine swaps wait for server confirmation; an interrupted role update can be retried with **Finish role swap** without repeating its handoff.
 
 Staff Q&A currently supports verified Kimi2.7.2 only. Claude and Codex report why isolated Q&A is unavailable and direct staff to a manager controller; providers never switch automatically. See [Q&A capabilities](docs/department-leads.md#staff-qa--isolated-from-the-manager).
-An unregistered [Claude isolation prototype](docs/claude-qa.md) provides a fixed native runner, token broker and dummy Linux qualification harness for administrator review. It does not enable Claude Q&A or install anything in the running office.
+An unregistered [Claude isolation prototype](docs/claude-qa.md) provides a fixed native runner, token broker, exact-process root-controller seam and dummy Linux qualification harness for administrator review. Its policy adapter stays unavailable; it does not enable Claude Q&A or install anything in the running office.
 Shared department managers use explicit subscription consent in **Roles**: the named custodian approves the exact project, department, provider and controllers, including same-provider department workers. Staff Q&A is a separate optional consent. Personal workers and private CEOs retain their ownership rules.
 
 Project CEOs and department managers are permanent: pause/continue in Conversation preserves the identity and history. Explicit autonomy settings now select verified provider modes at the next process start; the Roles view distinguishes saved policy from the current launch. See [role autonomy](docs/department-leads.md#runtime-autonomy).
