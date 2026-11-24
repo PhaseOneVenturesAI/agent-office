@@ -1,12 +1,6 @@
 // The Deploy board: the office's Cloudflare Pages and Workers projects, listed from the
 // Cloudflare API with credentials that stay on the server (--cf-account-id / --cf-api-token,
-// or their AGENT_OFFICE_CF_* envs). Any deployment with a URL can be staged in the Review Room
-// in one click (the handler's part, see ws/handlers/deploys.ts) — the connective tissue between
-// "the agents make things" and "a person approves things".
-//
-// The list is cached and refetched at most every five minutes unless someone asks again; a fetch
-// that fails leaves the last good list up, with the error beside it.
-
+// or their AGENT_OFFICE_CF_* envs). This board is read-only.
 import type { DeployItem, DeploysState } from '../shared/protocol.js';
 
 /** How long a fetch is trusted before the next ask refetches. */

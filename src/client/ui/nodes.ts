@@ -1,5 +1,4 @@
 import './nodes.css';
-import { localSessions } from './local-sessions';
 import type { NodeInfo } from '../../shared/protocol';
 import type { Net } from '../net';
 import { store } from '../state';
@@ -34,8 +33,6 @@ function card(net: Net, n: NodeInfo, admin: boolean) {
   } else if (n.host) {
     el.append(h('p.nd-spec', {}, 'no agent CLIs on its PATH'));
   }
-  const observations = localSessions(n, store.floor);
-  if (observations) el.append(observations);
   if (admin) {
     const revoke = h('button.btn.small', { type: 'button', title: 'Take this machine off the office — its join token stops working' }, 'Remove');
     revoke.addEventListener('click', () => {
@@ -77,8 +74,7 @@ export function openNodes(net: Net) {
     'div.modal.nodes',
     { role: 'dialog', 'aria-label': 'Satellites' },
     h('header', {}, h('h2', {}, '🛰️ Satellites'), close),
-    h('span.nd-status', {}, 'Joined computers and read-only local session observations for this floor. Installed CLIs do not establish account readiness.'),
-    h('p.nd-spec', {}, 'Map a local workspace explicitly with --paradev-map workspace-id=', h('code', {}, store.floor ?? 'floor-id')),
+    h('span.nd-status', {}, 'Joined computers and their installed agent CLIs. Installed CLIs do not establish account readiness.'),
     inviteSlot,
     list,
   );

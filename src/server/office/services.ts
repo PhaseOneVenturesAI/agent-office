@@ -2,9 +2,6 @@ import path from 'node:path';
 import os from 'node:os';
 import { childEnv, resolveCommand } from '../workers.js';
 import { SignIns } from '../signins.js';
-import { Harness, harnessRoot } from '../harness.js';
-import { PersonalHarness } from '../personal-harness.js';
-import { Reviews } from '../reviews.js';
 import { Deploys } from '../deploys.js';
 import { Hygiene } from '../hygiene.js';
 import { Costwall } from '../costwall.js';
@@ -75,27 +72,8 @@ export function createServices(ctx: Ctx): BuildingServices {
   // Accounts revoked from the terminal while the office was closed leave their sign-ins behind.
   if (!accounts.unreadableFile) signins.prune(new Set(accounts.state(new Set()).accounts.map((a) => a.id)));
 
-  // The instructions and skills every worker runs with (☰ → 🧰 Harness): one folder on this
-  // machine, edited from the office and pushed into every account's agent home — CLAUDE.md and
-  // skills/ for Claude, AGENTS.md and skills/ for Kimi and Codex.
-  const harness = new Harness(cfg.dataDir, harnessRoot(cfg.dataDir), () => {
-    const env = childEnv();
-    const home = os.homedir();
-    return {
-      claude: env.CLAUDE_CONFIG_DIR ?? path.join(home, '.claude'),
-      kimi: env.KIMI_CODE_HOME ?? path.join(home, '.kimi-code'),
-      codex: env.CODEX_HOME ?? path.join(home, '.codex'),
-    };
-  }, () => ctx.broadcast({ t: 'harness', state: harness.state() }));
-  // Each account's own harness, for someone who runs theirs instead of the office's.
-  const personalHarness = new PersonalHarness(cfg.dataDir, harness);
-
-  // The Review Room: staged deliverables wait here for a person's verdict (☰ → 🎬 Review room),
-  // retained as evidence about the staged deliverable, without changing the shared harness.
-  const reviews = new Reviews(cfg.dataDir, () => ctx.broadcast({ t: 'reviews', state: reviews.state() }));
-
   // The Deploy board: the office's Cloudflare Pages and Workers projects (☰ → 🚀 Deploy board),
-  // any of which can be staged in the Review Room in one click. Without credentials the board
+  // Without credentials the board
   // explains how to connect them; the token never leaves the server (see deploys.ts).
   const deploys = new Deploys(cfg.cfDeploys, () => ctx.broadcast({ t: 'deploys', state: deploys.state() }));
 
@@ -114,7 +92,7 @@ export function createServices(ctx: Ctx): BuildingServices {
   // and heartbeats.
   const deliveries = new Deliveries();
   const nodes = new Nodes(cfg.dataDir, () => {
-    for (const c of clients.values()) ctx.sendTo(c, { t: 'nodes', state: nodes.state(ctx.floorOf(c)?.id) });
+    for (const c of clients.values()) ctx.sendTo(c, { t: 'nodes', state: nodes.state() });
   });
 
   // Behind Cloudflare Access, its edge login is the front door (see cloudflare.ts): no office
@@ -183,7 +161,7 @@ export function createServices(ctx: Ctx): BuildingServices {
     });
   };
 
-  return { sky, themes, maps, prompts, leaveOnMerge, ledger, signins, harness, personalHarness, reviews, deploys, hygiene, costwall, nodes, deliveries, cloudflare, limits, accountLimits, webhook, machine, limitsOf, pumpQueues };
+  return { sky, themes, maps, prompts, leaveOnMerge, ledger, signins, deploys, hygiene, costwall, nodes, deliveries, cloudflare, limits, accountLimits, webhook, machine, limitsOf, pumpQueues };
 }
 
 /** What's made once the floors are open: the SSH team, the tailnet, workers' web servers, pictures and upgrades. */

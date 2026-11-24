@@ -1,5 +1,4 @@
-// The Deploy board (see server/deploys.ts): the office's Cloudflare Pages and Workers projects,
-// and the bridge to the Review Room — any deployment can be staged for a verdict in one click.
+// Read-only Cloudflare Pages and Workers project metadata.
 
 export interface DeployItem {
   id: string;
@@ -27,8 +26,6 @@ export type DeploysClientMsg =
   /** The board, whenever it changes and when asked. */
   | { t: 'deploys.get' }
   /** Fetch the projects from Cloudflare again. */
-  | { t: 'deploys.refresh' }
-  /** Stage one deployment in the Review Room. */
-  | { t: 'deploys.stage'; id: string };
+  | { t: 'deploys.refresh' };
 
 export type DeploysServerMsg = { t: 'deploys'; state: DeploysState };

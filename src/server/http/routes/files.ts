@@ -138,21 +138,6 @@ export const fileRoutes = {
         res.end(r.body);
         return;
       }
-      if (p === '/api/docs/asset') {
-        // A brand-library file (see Docs.asset): pictures, video and PDFs, revalidated at read time.
-        const r = await floor.docs.asset(file);
-        if ('error' in r) return send(res, r.status, { error: r.error });
-        res.writeHead(200, {
-          'content-type': r.type,
-          'content-length': String(r.body.length),
-          'cache-control': 'no-store',
-          'x-content-type-options': 'nosniff',
-          'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
-          'cross-origin-resource-policy': 'same-origin',
-        });
-        res.end(r.body);
-        return;
-      }
       return send(res, 404, { error: 'Not found' });
     },
   },

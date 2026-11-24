@@ -4,7 +4,6 @@
 // iteration.
 
 import type { AgentProvider } from '../providers.js';
-import type { LocalSnapshot } from './local-sessions.js';
 
 /** One joined computer, as its last hello described it. */
 export interface NodeInfo {
@@ -26,8 +25,6 @@ export interface NodeInfo {
   lastSeen: number;
   /** When it first joined, ms since epoch. */
   joinedAt: number;
-  /** Only observations explicitly mapped to the viewer's current project floor. */
-  localSessions?: LocalSnapshot;
 }
 
 export interface NodesState {

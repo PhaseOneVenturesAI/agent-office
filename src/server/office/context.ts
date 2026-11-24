@@ -6,9 +6,6 @@ import type { Config } from '../config.js';
 import type { Auth } from '../auth.js';
 import type { Accounts } from '../accounts.js';
 import type { SignIns, GhAs } from '../signins.js';
-import type { Harness } from '../harness.js';
-import type { PersonalHarness } from '../personal-harness.js';
-import type { Reviews } from '../reviews.js';
 import type { Deploys } from '../deploys.js';
 import type { Costwall } from '../costwall.js';
 import type { Hygiene } from '../hygiene.js';
@@ -72,12 +69,6 @@ export interface BuildingServices {
   leaveOnMerge: LeaveOnMerge;
   ledger: Ledger;
   signins: SignIns;
-  /** The instruction and skill files every worker runs with (☰ → 🧰 Harness). */
-  harness: Harness;
-  /** Each account's own instructions and skills, when they run their own (☰ → 🧰 Harness). */
-  personalHarness: PersonalHarness;
-  /** Staged deliverables waiting for a human verdict (☰ → 🎬 Review room). */
-  reviews: Reviews;
   /** The office's Cloudflare deployments (☰ → 🚀 Deploy board). */
   deploys: Deploys;
   /** The watchdog for unpushed work, stale worktrees and idle workers (☰ → 🧹 Hygiene). */

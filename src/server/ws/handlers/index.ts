@@ -11,22 +11,18 @@ import { carHandlers, carHooks, carsView } from './car.js';
 import { changesHandlers, changesHooks } from './changes.js';
 import { costwallHandlers } from './costwall.js';
 import { decorHandlers, decorView } from './decor.js';
-import { departmentsHandlers, departmentsView } from './departments.js';
 import { deploysHandlers } from './deploys.js';
 import { dogHandlers, dogView } from './dog.js';
 import { floorHandlers, projectView } from './floors.js';
 import { githubHandlers, issuesView, pullsView } from './github.js';
-import { harnessHandlers } from './harness.js';
 import { hygieneHandlers } from './hygiene.js';
 import { jukeboxHandlers, jukeboxView } from './jukebox.js';
 import { meetingHandlers, meetingView } from './meetings.js';
 import { deliveryHandlers, deliveryHooks } from './delivery.js';
 import { nodesHandlers } from './nodes.js';
-import { personalHarnessHandlers } from './personal-harness.js';
 import { planHandlers, planView } from './plan.js';
 import { presenceHandlers } from './presence.js';
 import { queueHandlers, queueView } from './queue.js';
-import { reviewsHandlers } from './reviews.js';
 import { rooftopHandlers } from './rooftop.js';
 import { servicesView, settingsHandlers } from './settings.js';
 import { signinsHandlers } from './signins.js';
@@ -48,22 +44,18 @@ export const handlers: HandlerMap<ClientMsg> = {
   ...changesHandlers,
   ...costwallHandlers,
   ...decorHandlers,
-  ...departmentsHandlers,
   ...deploysHandlers,
   ...dogHandlers,
   ...floorHandlers,
   ...githubHandlers,
-  ...harnessHandlers,
   ...hygieneHandlers,
   ...jukeboxHandlers,
   ...meetingHandlers,
   ...nodesHandlers,
-  ...personalHarnessHandlers,
   ...deliveryHandlers,
   ...planHandlers,
   ...presenceHandlers,
   ...queueHandlers,
-  ...reviewsHandlers,
   ...rooftopHandlers,
   ...settingsHandlers,
   ...signinsHandlers,
@@ -97,5 +89,4 @@ export const views: ViewPieces = {
   whiteboard: whiteboardView,
   meeting: meetingView,
   cabinet: cabinetView,
-  departments: departmentsView,
 };
