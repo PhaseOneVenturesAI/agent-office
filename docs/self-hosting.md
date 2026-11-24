@@ -100,7 +100,9 @@ If you don't have a domain, `--self-signed` serves HTTPS directly. Browsers will
 
 ### Voice across strict NATs
 
-Peers try direct connections using STUN. A TURN relay provides a fallback across restrictive NATs; it does not fix microphone permission, muted devices or blocked audio playback. A failed call displays a toast.
+Peers try direct connections using STUN. A TURN relay provides a fallback across restrictive NATs; it does not fix microphone permission, muted devices or blocked audio playback. A failed connection displays one compact notice with **Copy details**, rather than assuming a missing TURN server. Leave voice and join again; if it still fails, have everyone in that call reload the office.
+
+**Copy details** copies a local snapshot of the latest failed connection. It distinguishes relay configuration from an observed local relay candidate and a selected relay path, and includes issuer request/expiry status, connection states, candidate types, bounded numeric candidate-error codes and selected transport when available. A relay candidate proves allocation was observed, not that audio reached the other person. Missing stats are marked unavailable or timed out; a missing selected pair is not a diagnosis. The version, when present, is the existing server-reported welcome version, not a verified browser-bundle hash. Details exclude credentials, names/peer IDs, SDP, addresses, server URLs and raw errors. Nothing is persisted or sent automatically; share the copied text explicitly with the office owner. If clipboard access fails, a selectable local dialog provides the same safe text.
 
 Existing `--turn turn:user:pass@turn.example.com:3478` and `AGENT_OFFICE_TURN` (space-separated URLs) remain supported. These static credentials are distributed to signed-in browsers, so prefer expiring credentials for a shared office:
 
