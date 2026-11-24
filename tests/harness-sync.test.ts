@@ -119,15 +119,21 @@ test('manifest corruption and unsafe source trees fail before retiring anything'
   assert.equal(readFileSync(path.join(homes.claude, 'skills/ship/SKILL.md'), 'utf8'), 'keep');
 });
 
-test('source script permissions survive initial install and local modes survive updates', (t) => {
+test('source script permissions and local modes survive a restrictive umask', (t) => {
   const { root, homes, harness, put } = setup(t);
   put('skills/ship/run.sh', '#!/bin/sh\necho one');
   const file = path.join(root, 'skills/ship/run.sh');
   // A skill may legitimately ship executable supporting scripts.
-  chmodSync(file, 0o755); harness.apply('Owner');
-  const target = path.join(homes.claude, 'skills/ship/run.sh');
-  assert.equal(statSync(target).mode & 0o777, 0o755);
-  chmodSync(target, 0o700); put('skills/ship/run.sh', '#!/bin/sh\necho two');
-  harness.apply('Owner');
-  assert.equal(statSync(target).mode & 0o777, 0o700);
+  chmodSync(file, 0o755);
+  const originalUmask = process.umask(0o077);
+  try {
+    harness.apply('Owner');
+    for (const home of Object.values(homes)) assert.equal(statSync(path.join(home, 'skills/ship/run.sh')).mode & 0o777, 0o755);
+    const target = path.join(homes.claude, 'skills/ship/run.sh');
+    for (const localMode of [0o700, 0o750]) {
+      chmodSync(target, localMode); put('skills/ship/run.sh', `#!/bin/sh\necho ${localMode}`);
+      harness.apply('Owner');
+      assert.equal(statSync(target).mode & 0o777, localMode);
+    }
+  } finally { process.umask(originalUmask); }
 });

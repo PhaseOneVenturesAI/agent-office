@@ -453,7 +453,7 @@ Open an agent from its desk, worker list or waiting notification to enter **Conv
 
 On a service restart, hosted PTY workers continue in their terminal host. Kimi and DeepSeek ACP children stop with Office: shutdown now waits for their actual exit before the parent exits. A child gets a graceful close request, then scoped termination/escalation if needed; a cleanup failure exits nonzero so a release cannot mistake it for success. Floor removal, worker removal, meeting cleanup, and recovery also wait for child stop; occupied seats and ownership records stay reserved if it fails. See [ACP shutdown](docs/agents.md#acp-shutdown-and-restarts).
 
-Harness Apply now retires removed instructions/skills only when Office previously managed the unchanged destination, with retained backups. Existing untracked files and local edits are preserved as conflicts; older installations need explicit review before adopting their copies. Shared and personal harnesses both exclude retired global review blocks. See [managed harness updates](docs/agents.md#the-shared-harness).
+Harness Apply now retires removed instructions/skills only when Office previously managed the unchanged destination, with retained backups. Existing untracked files and local edits are preserved as conflicts; older installations need explicit review before adopting their copies. Skill-file permissions survive initial installation, and updates preserve local permissions even under a restrictive service file mask. Shared and personal harnesses both exclude retired global review blocks. See [managed harness updates](docs/agents.md#the-shared-harness).
 
 ### Inspect project instructions and memory
 
