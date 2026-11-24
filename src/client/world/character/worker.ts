@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { WorkerNameplate } from './worker-nameplate';
 import type { Theme, WorkerAction, WorkerStatus, WorkerTask } from '../../../shared/protocol';
 import { isAsleep, type WorkerPr } from '../../../shared/status';
 import { beard, grime, peasantGarb, type Beard, type PeasantGarb } from '../costumes';
@@ -33,7 +34,7 @@ export class Worker {
   private pr: WorkerPr | undefined;
   /** Its worktree was deleted outside the office (WorkerInfo.lost): its bubble says so until it's fixed. */
   private lost = false;
-  private nameTag: THREE.Sprite | null = null;
+  private nameTag = new WorkerNameplate();
   private eyes: THREE.Mesh[] = [];
   private blinkAt = Math.random() * 4;
   status: WorkerStatus = 'starting';
@@ -240,14 +241,13 @@ export class Worker {
 
   setName(name: string) {
     this.label = name;
-    if (this.nameTag) {
-      this.root.remove(this.nameTag);
-      disposeSprite(this.nameTag);
-    }
-    this.nameTag = textSprite(name, { bg: '#2b2d42', color: '#fffaf3', size: 36, border: '#fffaf3' });
+    this.nameTag.setName(name);
     this.nameTag.position.y = 1.55;
-    this.root.add(this.nameTag);
+    if (!this.nameTag.parent) this.root.add(this.nameTag);
   }
+
+  /** Verified account display name supplied by the server, never the hiring label. */
+  setOwner(name?: string) { this.nameTag.setOwner(name); }
 
   setStatus(status: WorkerStatus, bounce: boolean) {
     this.status = status;
@@ -589,7 +589,7 @@ export class Worker {
 
   dispose() {
     if (this.bubble) disposeSprite(this.bubble);
-    if (this.nameTag) disposeSprite(this.nameTag);
+    this.nameTag.dispose();
     undress(this.crosses);
     if (this.skeleton) undress([this.skeleton]);
     undress(this.outfit);

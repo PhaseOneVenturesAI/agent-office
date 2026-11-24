@@ -160,6 +160,7 @@ export function installWorkerViews(ctx: Ctx, core: CoreState, parts: WorkerViews
         v.model.setStatus(w.status, waitingOnSomeone(w));
         noOutline(v.model.root);
       }
+      v.model.setOwner(w.ownerName);
       v.model.setAction(w.action);
       v.model.setPr(workerPr(w, store.pulls.items, store.queue.tasks));
       v.model.setLost(!!w.lost);
