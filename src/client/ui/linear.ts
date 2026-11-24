@@ -5,6 +5,7 @@ import type { Net } from '../net';
 import { store } from '../state';
 import { h, timeAgo } from './dom';
 import { providerPicker } from './provider';
+import { openWorkerConversation } from './worker-conversation';
 const labels: Record<WorkStatus, string> = { backlog: 'Backlog', todo: 'To do', inProgress: 'In progress', inReview: 'In review', completed: 'Completed', canceled: 'Canceled' };
 export function linearPanel(net: Net, terminal: (id: string) => void) {
   const floor = store.floor!, root = h('section.linear-board', { 'aria-label': 'Employee tasks' });
@@ -82,16 +83,17 @@ export function linearPanel(net: Net, terminal: (id: string) => void) {
   function row(task: QueueTask) {
     const link = task.linear!, mine = !!store.me.account && link.accountId === store.me.account.id, canEdit = !!state?.taskPermissions[task.id]?.edit;
     const busy = task.status === 'running' || task.status === 'queued';
+    const ended = ['completed', 'canceled'].includes(link.workStatus) ? 'Turn ended' : 'Turn ended — review the work before completing this task';
     const actions = h('div.linear-toolbar');
     if (link.url.startsWith('https://linear.app/')) actions.append(h('a.btn', { href: link.url, target: '_blank', rel: 'noopener' }, 'Open Linear ↗'));
     if (canEdit && !link.archived) actions.append(button('Edit task', () => edit(task)));
     if (mine && !busy && !link.archived && !['completed','canceled'].includes(link.workStatus)) actions.append(button('Do myself', () => void action({ action: 'manual', taskId: task.id }), !!link.conflict), button('Start my agent', () => start(task), !!link.conflict));
-    if (task.workerId && task.owner === store.me.account?.id) actions.append(button('Agent conversation', () => terminal(task.workerId!)));
+    if (task.workerId && task.owner === store.me.account?.id) actions.append(button('Agent conversation', () => openWorkerConversation(net, task.workerId!, () => terminal(task.workerId!))));
     if (link.conflict && canEdit) actions.append(button('Use Linear version', () => void action({ action: 'edit', taskId: task.id, revision: task.linear?.updatedAt, resolution: 'remote' })), button('Keep Office edits', () => void action({ action: 'edit', taskId: task.id, revision: task.linear?.updatedAt, resolution: 'local' })));
     return h('article.linear-card', {}, h('div.linear-meta', {}, `${link.identifier} · ${link.archived ? 'Archived / moved' : link.stateName}${link.pending ? ' · Sync pending' : ''}`), h('h3', {}, task.title),
       h('p', {}, `👤 ${link.assigneeName ?? 'Unassigned'}${link.assigneeId && !link.accountId ? ' · Office account not mapped' : ''}`),
       task.manual ? h('p.note', {}, '✋ Working manually') : null,
-      busy || task.workerId ? h('p.note', {}, `🤖 ${task.workerName ?? 'Your agent'} · ${task.status === 'done' ? 'Turn ended — review the work before completing this task' : task.status}${task.owner && task.owner !== link.accountId ? ' · Previous assignee’s run; ownership has not changed' : ''}`) : null,
+      busy || task.workerId ? h('p.note', {}, `🤖 ${task.workerName ?? 'Your agent'} · ${task.status === 'done' ? ended : task.status}${task.owner && task.owner !== link.accountId ? ' · Previous assignee’s run; ownership has not changed' : ''}`) : null,
       link.conflict ? h('p.linear-error', { role: 'alert' }, link.conflict) : null, actions);
   }
   function render() {
