@@ -470,6 +470,7 @@ identity checks and rollout requirements.
 The 📋 task board can link a floor to a Linear team/project. Employees can do assigned
 work manually or explicitly start their own connected agent. Importing an issue never
 starts an agent, and an agent ending its turn does not complete the business task.
+Task edits recheck permissions after synchronization and enter the outbound queue only after a successful save. Failed saves leave the previous pending work intact.
 The native server integration needs its own private OAuth app; a chat plugin connection
 is separate. See [Linear setup and task permissions](docs/linear.md).
 
