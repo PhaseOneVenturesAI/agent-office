@@ -45,6 +45,8 @@ export interface WorkerInfo {
   /** When it last went to done or needs_input (ms), so N goes to whoever has waited longest first. */
   waitingSince?: number;
   createdBy: string;
+  /** Verified credential owner's display name, or Office / Former account; never a token or email. */
+  ownerName?: string;
   createdAt: number;
   prompt?: string;
   /** Latest explicit task handoff; independent of the credential account. */
