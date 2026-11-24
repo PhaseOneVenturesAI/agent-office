@@ -1,0 +1,12 @@
+.role-character-body {
+  padding: 4px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.role-character-body p { margin: 0; }
+.role-character-body > button { align-self: flex-start; }
+.role-character-body .dept-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.role-character-body .dept-task { min-width: 0; flex: 1 1 180px; }
+.role-character-body .dept-qa-answer:empty { display: none; }

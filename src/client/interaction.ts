@@ -17,6 +17,7 @@ export interface InteractionState {
 /** Whether a desk key has an action at the interaction currently in reach. */
 export function interactionAvailable(it: Interactable | null, key: DeskKey, state: InteractionState): boolean {
   if (!it) return false;
+  if (it.kind === 'role') return key === 'E' || key === 'T';
 
   // A carried issue can be handed to any desk, queued, returned/swapped, or taken into a meeting.
   if (key === 'E' && state.carrying && (it.kind === 'desk' || it.kind === 'queue' || it.kind === 'issues' || it.kind === 'meeting')) {

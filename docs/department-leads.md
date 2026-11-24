@@ -61,11 +61,23 @@ authentication change was performed. Capability references: [Claude CLI](https:/
 
 The CEO and managers are permanent characters: send-home and role deletion are refused server-side
 (browser, hook, and landed-merge paths), and the desk hint shows them protected. Pause and continue
-preserve their identities and history. Walk up and press **T** or **E** to open Conversation;
-**Terminal** is an explicit fallback. Conversation includes durable, paged history (the provider
+preserve their identities and history. Click a character, or walk up and press **T** or **E**. Owners
+and controllers with current subscription access open Conversation; **Terminal** is an explicit
+fallback. An off-shift role offers an explicit **Start shift** on its saved engine (the existing
+ask-each-time policy still shows its picker). Staff in a manager's Q&A audience open the same
+isolated Ask used in Roles, including its separate custodian consent. Looking at or approaching a
+character never starts a provider, shares credentials, or grants consent. Conversation includes durable, paged history (the provider
 session stays the bounded execution context), clickable artifact links, supported native approval
 choices, and honest status labels (turn ended ≠ reviewed; stopped ≠ completed). Unsupported questions
 open in Terminal. Dictation and read-aloud reuse the existing browser speech and say so.
+
+Off-shift characters use the existing worker appearance and desks on the original map. Each role's
+display home is retained in `.agent-office/role-homes.json`: first from its retained worker's seat,
+otherwise from an existing built department/office desk. It is a display reference, not a runtime
+worker or reserved seat. If the desk is occupied, the character stands beside it; shared home
+references use distinct nearby spots. A real role worker replaces the off-shift figure. Floor and
+map changes remove the old figure and hit target. An unreadable home file is preserved and reported,
+rather than overwritten or presented as a successful home assignment.
 
 ## Roles view (☰ → 🛡️ Roles)
 
@@ -94,7 +106,8 @@ are the front door.
 
 ## Limits (honest)
 
-- Off-shift characters are card + desk presence, not a standing 3D character.
+- Display homes reserve no worker capacity and never expand the map. Only a launched role has a
+  provider runtime; the off-shift character itself does not consume a session.
 - Staff Q&A draws on the approved snapshot, not the manager's full history; the manager's own
   session is what preserves controller history. Kimi's tool-free home is verified against its
   documented config and the office's permission denials; a paid one-shot behavioral re-verification
