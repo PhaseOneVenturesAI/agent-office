@@ -174,6 +174,7 @@ function workerCard(w: WorkerInfo): HTMLElement {
         'span.lite-info',
         {},
         h('span.lite-name', {}, w.name),
+        h('span.lite-sub.lite-owner', {}, `Owner: ${w.ownerName?.trim() || 'Unknown'}`),
         task ? h('span.lite-task', {}, task) : null,
         now ? h('span.lite-now', {}, now) : null,
         h('span.lite-sub', {}, sub.join(' · ')),
