@@ -245,7 +245,7 @@ test('the read-only Q&A session auto-rejects every tool request and still answer
 
 test('staff Q&A fails closed for unsupported providers and builds a tool-free Kimi home', () => {
   // The manager's engine decides; there is no fallback to whatever is on PATH.
-  assert.match(qaLaunch('codex') as string, /no verified global zero-tools/);
+  assert.match(qaLaunch('codex') as string, /qualified only.*gpt-6.2-sol/);
   assert.match(qaLaunch(undefined) as string, /no verified tool-free adapter/);
   assert.match(qaLaunch('kimi') as unknown as string === 'string' ? '' : '', /^$/, 'kimi launches or reports its own absence honestly');
   // The dedicated home carries the custodian credentials, a tool-free config, and the framing.
@@ -299,7 +299,7 @@ test('floor staff Q&A uses the authorized custodian env, never the host credenti
   // Without a custodian in an office with accounts it would fail closed; the fixture has none, so
   // the office path also refuses to run on host credentials when the engine is unsupported.
   const off = await floorStaffQA({ ...floor, departments: { get: () => ({ ...floor.departments.get('dept-1'), lead: { name: 'Maya', provider: 'codex', by: 'Kim', at: 0 } }) } } as never, 'dept-1', 'Q', 'Pat', 'acct-ivan');
-  assert.match(off.why!, /no verified global zero-tools/);
+  assert.match(off.why!, /qualified only.*gpt-6.2-sol/);
 });
 
 test('accounts-mode ask refuses a missing or unknown custodian — no host fallback', () => {
