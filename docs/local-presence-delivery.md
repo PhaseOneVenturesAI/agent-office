@@ -1,49 +1,8 @@
-# Local presence and CI evidence
+# Satellites and CI evidence
 
-## A read-only Paradev satellite
+## Satellite presence
 
-An existing satellite can optionally report observations from explicitly mapped local Paradev workspaces. It cannot start agents, send prompts, read terminal content, forward services or operate the Office queue. Office workers and these external sessions remain separate.
-
-1. An admin invites the computer in **Satellites**. Keep the existing node credential in `AGENT_OFFICE_NODE_TOKEN` rather than a command-line argument.
-2. Find the workspace ID using `paradev workspaces list --local --json`. Open the intended Office floor and **Satellites** to find that floor's mapping ID.
-3. Run the foreground command, adding one mapping per workspace:
-
-```sh
-agent-office join https://office.example \
-  --paradev-map workspace-id=floor-id
-```
-
-The default CLI is `~/.paradev/bin/paradev`; `--paradev-bin /absolute/path/to/paradev` selects another installed binary. No workspaces are sampled unless mapped. The collector uses only:
-
-```text
-workspaces list --local --json
-terminals list --local --workspace ID --json
-agents explain --local --workspace ID --terminal ID --json
-```
-
-Each bounded sample reconstructs this allowlist, rather than forwarding CLI JSON:
-
-```json
-{
-  "observedAt": 1795413600000,
-  "collection": "ok",
-  "sessions": [{
-    "floorId": "floor-id",
-    "workspaceId": "workspace-id",
-    "terminalId": "terminal-id",
-    "provider": "claude",
-    "state": "starting",
-    "lastEventAt": 1795381200000,
-    "exited": false
-  }]
-}
-```
-
-IDs, provider/state enums, timestamps and exit observations are the only session fields sent. Native states are `starting`, `working`, `blocked`, `idle` and `exited`; unsupported values become `unknown`. A fresh `blocked` observation remains visible as blocked. Either an `exited` state or a terminal exit has an **unknown outcome**, including when stale. Titles, prompts, transcripts, explanations, command lines, paths and credentials are omitted. Ownership is **unknown**. A partial or unavailable collection is visible; an absent row does not establish completion. There are at most 20 mappings and 100 rows, and sampling is sequential with a bounded time budget. A completed sample schedules the next after 30 seconds.
-
-Node authentication must precede a hello and snapshot. The server rejects future/out-of-order or malformed snapshots and isolates replaced/revoked connections. Observations are held in memory, filtered to the viewer's current floor and lost on Office restart. Machine presence remains building-wide. Removing the satellite revokes its credential and removes its observations.
-
-A machine's heartbeat is not agent activity. A sample older than 90 seconds, an event older than five minutes, an absent event timestamp, or an offline node makes the row **stale**. A nine-hour-old `Attached`/`starting` observation is not shown as active. Even a recent event does not prove account readiness, ownership, successful work or release. Terminal exit has an unknown outcome.
+`agent-office join <office-url>` reports a registered machine’s connectivity and installed agent CLIs. It does not inspect local workspaces, sessions or transcripts, or dispatch local agents. Installed CLIs do not prove sign-in or subscription readiness.
 
 ### Existing Cloudflare Access login
 
@@ -51,8 +10,7 @@ For an office behind Cloudflare Access, first authenticate through the existing 
 
 ```sh
 cloudflared access login --quiet https://office.example
-agent-office join https://office.example --cloudflare-access \
-  --paradev-map workspace-id=floor-id
+agent-office join https://office.example --cloudflare-access
 ```
 
 The foreground client reads the application-specific cache through `cloudflared access token --app`, captures the result in memory, and sends it as `CF-Access-Token` with the node credential in the Authorization header. It does not log either credential, follow WebSocket redirects, invoke login itself or silently rotate credentials. The existing node invite is still required; Access authentication does not create an Office browser session or execution capability. The Access token's expiry ends the connection visibly; repeat the normal login and restart join. No public bypass, service credential or policy change is introduced.
@@ -71,4 +29,4 @@ Concurrent readers of the same repository and exact source SHA reuse one request
 
 Only watched runs keep the shared one-minute poller active. Evidence and leases are in-memory metadata attached to existing PRs, not a new task backlog, and reset on server restart. GitHub read errors retain earlier evidence with a visible error and original read time. The server's existing `gh` account needs Actions read access. No logs or artifact bodies are fetched.
 
-There are no dispatch, retry, cancellation, merge or deploy controls here. The controls coordinate readers inside this Office process; they cannot prevent independent agents or other Office instances from launching CI. The existing Deploy board's **Stage** still submits a URL to the Review Room, not a deployment. Project pre-merge and exact-commit release gates still apply.
+There are no dispatch, retry, cancellation, merge or deploy controls here. The controls coordinate readers inside this Office process; they cannot prevent independent agents or other Office instances from launching CI. Project pre-merge and exact-commit release gates still apply.

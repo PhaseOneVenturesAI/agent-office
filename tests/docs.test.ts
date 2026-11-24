@@ -96,3 +96,23 @@ test('links in a doc resolve to paths in the project, and nowhere else', () => {
   assert.ok(isDocPath('a/b.MD') && isDocPath('x.markdown'));
   assert.ok(!isDocPath('a.mdx') && !isDocPath('../a.md') && !isDocPath('a/./b.md') && !isDocPath('md'));
 });
+
+test('document reads retain credential-path protection after brand library removal', async (t) => {
+  const { dir, docs } = fixture(t, false);
+  writeFileSync(path.join(dir, 'credentials.md'), 'private fixture');
+  symlinkSync('credentials.md', path.join(dir, 'friendly.md'));
+  for (const file of ['credentials.md', 'friendly.md']) {
+    const result = await docs.read(file);
+    assert.ok('error' in result && result.status === 404, file);
+  }
+  assert.ok('text' in await docs.read('README.md'));
+});
+
+
+test('the bookshelf never reads titles from tracked private aliases', async (t) => {
+  const { dir, docs } = fixture(t, true);
+  writeFileSync(path.join(dir, '.env'), '# Private fixture title');
+  symlinkSync('.env', path.join(dir, 'private-alias.md'));
+  execFileSync('git', ['add', 'private-alias.md'], { cwd: dir });
+  assert.equal((await docs.list()).files.some((file) => file.path === 'private-alias.md'), false);
+});

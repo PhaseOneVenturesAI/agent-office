@@ -15,7 +15,6 @@ import { cabinet } from './cabinet';
 import { costwall } from './costwall';
 import { cars } from './cars';
 import { decor } from './decor';
-import { departments } from './departments';
 import { deploys } from './deploys';
 import { dog } from './dog';
 import { floorPlan } from './floor-plan';
@@ -29,7 +28,6 @@ import { meeting } from './meeting';
 import { nodes } from './nodes';
 import { notify } from './notify';
 import { prompts } from './prompts';
-import { reviews } from './reviews';
 import { services } from './services';
 import { signins } from './signins';
 import { sky } from './sky';
@@ -67,10 +65,8 @@ export const SLICES: readonly Slice[] = [
   team,
   accounts,
   signins,
-  reviews,
   deploys,
   hygiene,
   costwall,
   nodes,
-  departments,
 ];

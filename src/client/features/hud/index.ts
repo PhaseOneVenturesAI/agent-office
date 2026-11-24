@@ -14,7 +14,6 @@ import { openAccounts } from '../../ui/accounts';
 import { openBoard } from '../../ui/boards';
 import { openCharacter } from '../../ui/character';
 import { openCostwall } from '../../ui/costwall';
-import { openDepartments } from '../../ui/departments';
 import { openDeploys } from '../../ui/deploys';
 import { $ } from '../../ui/dom';
 import { toggleFloorMenu } from '../../ui/floormenu';
@@ -23,12 +22,10 @@ import { mountHud } from '../../ui/menu';
 import { openServices } from '../../ui/services';
 import { openSettings, type SettingsPane } from '../../ui/settings';
 import { needsSigningIn, openSignIns } from '../../ui/signins';
-import { openHarness } from '../../ui/harness';
 import { openProjectContext } from '../../ui/project-context';
 import { openHygiene } from '../../ui/hygiene';
 import { openInbox } from '../../ui/inbox';
 import { openNodes } from '../../ui/nodes';
-import { openReviews } from '../../ui/reviews';
 import { openTeam } from '../../ui/team';
 import { openUpgrade } from '../../ui/upgrade';
 import { openWhiteboard } from '../whiteboard/ui';
@@ -100,19 +97,8 @@ export function installHud(ctx: Ctx, core: CoreState, parts: HudParts) {
       { id: 'team', icon: '👥', label: 'Invite teammates', section: 'Together', shown: () => store.invites, run: () => openTeam(net) },
       { id: 'accounts', icon: '🔑', label: 'Accounts', section: 'Together', shown: () => store.me.admin, title: () => 'Invite people, see who has an account, revoke them', run: () => openAccounts(net) },
       { id: 'signins', icon: '🔐', label: 'Your sign-ins', section: 'Together', shown: () => !!store.me.account, tone: () => (needsSigningIn() ? 'danger' : undefined), status: needsSigningIn, chip: () => 'Sign in to Claude', title: () => 'The Claude plan and GitHub account your workers run on: your own', run: () => openSignIns(net) },
-      { id: 'harness', icon: '🧰', label: 'Harness', section: 'Office', shown: () => store.me.admin || !!store.me.account, title: () => (store.me.admin ? 'The instructions and skills every worker runs with: view, edit and push them, or keep your own' : 'The office’s instructions and skills, or your own: choose, edit and apply them to your agents'), run: () => openHarness(net) },
       { id: 'project-context', icon: '📖', label: 'Project context', section: 'Open', shown: () => !!store.floor, title: () => 'Inspect project instruction, brand and memory files with revision history', run: () => openProjectContext(net) },
-      {
-        id: 'departments',
-        icon: '🏬',
-        label: 'Departments',
-        section: 'Office',
-        shown: () => !!store.floor,
-        count: () => store.departments.departments.length,
-        title: () => 'The floor’s corners of work: briefs, roles, brand assets — hiring into a role seats a worker with all of it in the prompt',
-        run: () => openDepartments(net),
-      },
-      { id: 'deploys', icon: '🚀', label: 'Deploy board', section: 'Office', title: () => 'The Cloudflare Pages and Workers projects, each one click from staging it for review', run: () => openDeploys(net) },
+      { id: 'deploys', icon: '🚀', label: 'Deploy board', section: 'Office', title: () => 'View your Cloudflare Pages and Workers projects and their deployments', run: () => openDeploys(net) },
       { id: 'costwall', icon: '💸', label: 'Cost wall', section: 'Office', title: () => 'Who is spending what, per person and per provider, next to the office ledger', run: () => openCostwall(net) },
       {
         id: 'nodes',
@@ -138,25 +124,14 @@ export function installHud(ctx: Ctx, core: CoreState, parts: HudParts) {
         icon: '📥',
         label: 'Needs me',
         section: 'Open',
-        count: () => waitingNow().filter((w) => w.status === 'needs_input').length + store.reviews.pending,
-        tone: () => (waitingNow().some((w) => w.status === 'needs_input') || store.reviews.pending > 0 ? 'danger' : undefined),
-        title: () => 'Everything waiting on you, each card one click from the thing itself: workers with a question, finished takes, staged reviews',
+        count: () => waitingNow().filter((w) => w.status === 'needs_input').length,
+        tone: () => (waitingNow().some((w) => w.status === 'needs_input') ? 'danger' : undefined),
+        title: () => 'Everything waiting on you, each card one click from the thing itself: workers with a question, finished takes',
         run: () =>
           openInbox({
             answerWorker: waiting.answerWorker,
             ride: (f) => travel.ride(f),
-            openReviews: () => openReviews(net),
           }),
-      },
-      {
-        id: 'reviews',
-        icon: '🎬',
-        label: 'Review room',
-        section: 'Open',
-        count: () => store.reviews.pending,
-        tone: () => (store.reviews.pending > 0 ? 'primary' : undefined),
-        title: () => 'Staged deliverables waiting for your verdict: accept or reject with a reason — the verdict stays with this take, scoped to this project',
-        run: () => openReviews(net),
       },
       { id: 'settings', icon: '⚙️', label: 'Settings', section: 'Office', run: showSettings },
       { id: 'help', icon: '❓', label: 'Controls', section: 'Office', key: 'H', run: openHelp },

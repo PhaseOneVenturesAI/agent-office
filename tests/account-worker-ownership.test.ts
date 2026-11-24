@@ -5,7 +5,6 @@ import http from 'node:http';
 import { Readable } from 'node:stream';
 import { workerHandlers, workersView } from '../src/server/ws/handlers/workers.js';
 import { queueHandlers } from '../src/server/ws/handlers/queue.js';
-import { reviewsHandlers } from '../src/server/ws/handlers/reviews.js';
 import { meetingHandlers } from '../src/server/ws/handlers/meetings.js';
 import { officeWorkers } from '../src/server/hooks/office-workers.js';
 import { canUseWorker, personalProviderError, publicWorker } from '../src/server/worker-ownership.js';
@@ -41,7 +40,6 @@ function fixture(actor: string | undefined = 'bob', owner: string | undefined = 
     accounts:{get:(id:string)=>({name:id==='alice'?'Alice':'Bob'})},
     warn: (_c:unknown, error:unknown) => {if(error) warnings.push(String(error));},
     sendTo:()=>calls.push('send'),toastAll() {},toastFloor() {},
-    reviews:{resolve:()=>({item:{workerId:'worker',title:'Review',status:'rejected'},prompt:'Fix it'})},
     floors:new Map([['floor',floor]]),
   } as unknown as Ctx;
   const client = {id:'browser',accountId:actor,peer:{name:'Bob',floor:'floor'},attached:new Set(['worker']),typingAt:new Map(),ws:{readyState:1,bufferedAmount:0,send:()=>calls.push('ws.send')}} as unknown as Client;
@@ -79,13 +77,6 @@ for (const action of ['retry','remove','move'] as const) test(`queue.${action} c
   f.client.accountId = 'alice';
   (queueHandlers[msg.t] as Function)(f.ctx,f.client,msg);
   assert.deepEqual(f.calls,[action]);
-});
-
-test('a review remains recorded but cannot prompt another account’s agent', () => {
-  const f = fixture(); reviewsHandlers['reviews.resolve'](f.ctx,f.client,{t:'reviews.resolve',id:'review',ok:false,reason:'fix'});
-  assert.deepEqual(f.calls,[]); assert.match(f.warnings[0],/Review saved/);
-  f.client.accountId='alice'; reviewsHandlers['reviews.resolve'](f.ctx,f.client,{t:'reviews.resolve',id:'review',ok:false,reason:'fix'});
-  assert.deepEqual(f.calls,['prompt']);
 });
 
 test('meeting controls cannot stop another account’s agents', () => {

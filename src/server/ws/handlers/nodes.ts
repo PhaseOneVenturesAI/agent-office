@@ -13,7 +13,7 @@ const admin = (ctx: Ctx, c: Client): boolean => {
 
 export const nodesHandlers = {
   'nodes.get'(ctx, c) {
-    ctx.sendTo(c, { t: 'nodes', state: ctx.nodes.state(ctx.floorOf(c)?.id) });
+    ctx.sendTo(c, { t: 'nodes', state: ctx.nodes.state() });
   },
   'nodes.invite'(ctx, c, msg) {
     if (!admin(ctx, c)) return;

@@ -61,5 +61,4 @@ multi-file database transaction or filesystem tamper-proof audit. Hash checks co
 Office edits and detect external changes observed before replacement; independent tools
 do not participate in an OS-level compare-and-swap lock.
 
-**Shared Harness** opens the existing separate server-default editor. Project edits
-never push shared defaults, refresh existing workers or synchronize local computers.
+Project edits never refresh existing workers or synchronize local computers.

@@ -3,13 +3,12 @@ import type { ContextAction, ContextFile, ContextHistory, ContextIndex, ContextM
 import type { Net } from '../net';
 import { store } from '../state';
 import { h, openModal, type Modal } from './dom';
-import { openHarness } from './harness';
 
 const drafts = new Map<string, { text: string; base: string }>();
 let current: Modal | undefined;
 
 /** Actual project Markdown and its local history; not a view into a provider's private context. */
-export function openProjectContext(net: Net) {
+export function openProjectContext(_net: Net) {
   if (!store.floor) return;
   current?.close();
   const floor = store.floor;
@@ -22,12 +21,11 @@ export function openProjectContext(net: Net) {
   const scope = h('p.context-meta');
   const message = h('p.context-message', { role: 'status' });
   const editor = h('section.context-editor');
-  const shared = h('button.btn.small', { type: 'button', onclick: () => { modal.close(); openHarness(net); } }, 'Shared Harness ↗');
   const el = h('div.modal.project-context', { role: 'dialog', 'aria-label': 'Project context' },
     h('header', {}, h('h2', {}, '📖 Project context'), close),
     h('div.context-scope', {}, scope,
       h('p', {}, 'Project files available to agents. Loaded context: unknown.'),
-      h('details', {}, h('summary', {}, 'What these changes affect'), h('p', {}, 'Edits change actual Markdown in this floor’s checkout. Existing worker worktrees and provider contexts may differ. Changes do not sync or prompt agents. Shared Harness is a separate scope for server defaults.')), shared),
+      h('details', {}, h('summary', {}, 'What these changes affect'), h('p', {}, 'Edits change actual Markdown in this floor’s checkout. Existing worker worktrees and provider contexts may differ. Changes do not sync or prompt agents.'))),
     message, h('div.context-layout', {}, h('aside', {}, search, sources), editor));
   const key = () => `${floor}\0${file?.path}`;
   const api = async <T,>(query: Record<string, string> = {}, mutation?: ContextMutation): Promise<T> => {
@@ -125,10 +123,9 @@ export function openProjectContext(net: Net) {
   const offFloor = store.on('floor', () => { if (store.floor !== floor) modal.close(); });
   const modal = openModal(el, { doing: '📖 inspecting project context', onClose: () => { alive = false; ++serial; offFloor(); if (current === modal) current = undefined; } });
   current = modal; close.onclick = () => modal.close(); search.oninput = paintSources;
-  shared.hidden = !store.me.admin;
   void api<ContextIndex>().then((result) => {
     if (!alive) return;
-    index = result; shared.hidden = !result.canEdit;
+    index = result;
     scope.textContent = `${result.scope.project} · ${result.scope.host} · ${result.scope.source}`;
     paintSources(); paint();
   }).catch((error) => { if (alive) say((error as Error).message, true); });

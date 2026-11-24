@@ -13,7 +13,6 @@ import WebSocket from 'ws';
 import { AGENT_PROVIDERS, type AgentProvider } from '../shared/providers.js';
 import type { NodeFrame } from './nodes.js';
 import { accessHeaders, ACCESS_HELP, officeOrigin, nodeSocket, handshakeFailure } from './join-access.js';
-import { addMapping, collectParadev } from './local-sessions/paradev.js';
 
 const HELP = `agent-office join — make this computer a satellite of an office
 
@@ -29,8 +28,6 @@ Options:
   --token <t>     The join token (env AGENT_OFFICE_NODE_TOKEN)
   --name <name>   What to call this machine (default: its hostname)
   --cloudflare-access  Use an existing cloudflared user application-token cache
-  --paradev-map <workspace-id=floor-id>  Opt in one local workspace (repeatable)
-  --paradev-bin <path>  Paradev CLI (default ~/.paradev/bin/paradev)
   -h, --help      Show this help
 `;
 
@@ -103,8 +100,6 @@ export async function joinCommand(argv: string[]): Promise<number> {
   let url = '';
   let name: string | undefined;
   let cloudflareAccess = false;
-  let paradevBin = path.join(os.homedir(), '.paradev/bin/paradev');
-  const mappings = new Map<string, string>();
   let token = process.env.AGENT_OFFICE_NODE_TOKEN ?? '';
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -120,8 +115,6 @@ export async function joinCommand(argv: string[]): Promise<number> {
       } else if (a === '--token') token = value();
       else if (a === '--name') name = value();
       else if (a === '--cloudflare-access') cloudflareAccess = true;
-      else if (a === '--paradev-map') addMapping(mappings, value());
-      else if (a === '--paradev-bin') paradevBin = value();
       else if (a.startsWith('-')) throw new Error(`unknown option ${a}`);
       else if (url) throw new Error(`one office at a time: ${url} or ${a}?`);
       else url = a;
@@ -186,20 +179,12 @@ export async function joinCommand(argv: string[]): Promise<number> {
     return new Promise((resolve) => {
       const socket = nodeSocket(wsUrl, tok, access?.headers);
       let heartbeat: NodeJS.Timeout | undefined;
-      let sampleTimer: NodeJS.Timeout | undefined;
       let expiry: NodeJS.Timeout | undefined;
       let ended = false;
-      const sample = async () => {
-        const snapshot = await collectParadev(paradevBin, mappings);
-        if (ended || socket.readyState !== WebSocket.OPEN) return;
-        socket.send(JSON.stringify({ t: 'local.snapshot', snapshot } satisfies NodeFrame));
-        sampleTimer = setTimeout(() => void sample(), 30_000);
-      };
       const finish = (code: number | undefined, message?: string) => {
         if (ended) return;
         ended = true;
         if (heartbeat) clearInterval(heartbeat);
-        if (sampleTimer) clearTimeout(sampleTimer);
         if (expiry) clearTimeout(expiry);
         if (quit === leave) quit = undefined;
         if (message) out(message);
@@ -215,7 +200,6 @@ export async function joinCommand(argv: string[]): Promise<number> {
         socket.send(JSON.stringify(hello(nodeName)));
         out('✓ joined — this machine is on the office wall (☰ → 🛰️ Satellites). Leave this running; Ctrl-C leaves.');
         heartbeat = setInterval(() => socket.send(JSON.stringify({ t: 'ping' } satisfies NodeFrame)), HELLO_MS);
-        if (mappings.size) void sample();
         if (access) expiry = setTimeout(() => finish(1, ACCESS_HELP), Math.min(2 ** 31 - 1, Math.max(1, access.expiresAt - Date.now() - 1000)));
       });
       socket.on('close', (code) => {

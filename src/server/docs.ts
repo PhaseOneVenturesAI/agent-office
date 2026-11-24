@@ -2,10 +2,12 @@ import { execFile } from 'node:child_process';
 import { open, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { insideCheckout } from './changes.js';
-import { SECRET } from './departments.js';
 import type { ImageResult } from './decor.js';
 import { changedImageType } from '../shared/protocol.js';
 import { isDocPath, type DocFile, type DocList, type DocText } from '../shared/docs.js';
+
+// Preserve credential-path protection for ordinary project documents.
+const SECRET = /(^|\/)(\.env(\.|$)|\.git(\/|$)|\.ssh(\/|$)|id_rsa|id_ed25519|credentials|\.npmrc$|\.netrc$)|\.(pem|key|p12|pfx)$/i;
 
 // The bookshelf: every Markdown file in a floor's project, to read in the office (features/bookshelf/ui.ts).
 // Git says which files are the project's (tracked, or new and not ignored), so node_modules, build
@@ -16,22 +18,6 @@ const MAX_DOCS = 5000;
 const MAX_DOC_BYTES = 2 * 1024 * 1024;
 /** Pictures a doc shows, served from the project. */
 const MAX_PICTURE_BYTES = 10 * 1024 * 1024;
-/** A brand-library asset (a logo, a take's video, a PDF) served from the project. */
-const MAX_ASSET_BYTES = 64 * 1024 * 1024;
-/** What a brand asset may be: pictures, video and PDFs. Markdown goes through read(). */
-const ASSET_TYPES: Record<string, string> = {
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
-  '.avif': 'image/avif',
-  '.svg': 'image/svg+xml',
-  '.mp4': 'video/mp4',
-  '.webm': 'video/webm',
-  '.mov': 'video/quicktime',
-  '.pdf': 'application/pdf',
-};
 /** How much of each file is read for its title. */
 const HEAD_BYTES = 4096;
 /** A listing this fresh is handed out again rather than asking git. */
@@ -223,25 +209,4 @@ export class Docs {
     }
   }
 
-  /**
-   * A brand-library asset (see ASSET_TYPES), from the project. The checks run at read time, every
-   * time: the resolved path stays in the checkout, and what it resolves to is never a secret —
-   * a symlink named brand.md that points at .env serves nothing.
-   */
-  async asset(file: string): Promise<ImageResult> {
-    const type = ASSET_TYPES[path.extname(file).toLowerCase()];
-    if (!type) return { status: 415, error: 'Only pictures, video and PDFs open here' };
-    if (SECRET.test(file)) return { status: 404, error: 'That file is not in the project' };
-    const abs = await this.safeFile(file, (name) => ASSET_TYPES[path.extname(name).toLowerCase()] === type);
-    if (!abs) return { status: 404, error: 'That file is not in the project' };
-    try {
-      const s = await stat(abs);
-      if (!s.isFile()) return { status: 404, error: 'That is not a file' };
-      if (s.size > MAX_ASSET_BYTES) return { status: 413, error: `That file is over ${MAX_ASSET_BYTES / 1024 / 1024} MB` };
-      return { type, body: await readFile(abs) };
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { status: 404, error: 'That file is gone' };
-      return { status: 500, error: (err as Error).message };
-    }
-  }
 }

@@ -10,8 +10,6 @@ export interface InboxDeps {
   answerWorker(id: string): void;
   /** Ride to another floor. */
   ride(floorId: string): void;
-  /** Open the Review Room. */
-  openReviews(): void;
 }
 
 const what = (w: WorkerInfo) => w.task?.name ?? w.prompt?.split('\n')[0] ?? '';
@@ -39,7 +37,7 @@ function workerCard(w: WorkerInfo, act: string, run: () => void) {
 /**
  * 📥 Needs me: the attention inbox. Everything waiting on you in one list, and every card takes
  * you straight to the thing: a worker that needs an answer (desk, terminal open at the question),
- * a finished one (its terminal), a staged deliverable (the Review room), or a floor where
+ * a finished one (its terminal), or a floor where
  * someone's waiting (the ride there). Nothing here is a dead notification.
  */
 export function openInbox(deps: InboxDeps) {
@@ -60,11 +58,10 @@ export function openInbox(deps: InboxDeps) {
     const waiting = waitingInOrder(store.workers.values());
     const needs = waiting.filter((w) => w.status === 'needs_input');
     const done = waiting.filter((w) => w.status === 'done');
-    const reviews = store.reviews.items.filter((i) => i.status === 'pending');
     const floors = store.floors.filter((f) => f.id !== store.floor && f.waiting > 0);
     list.replaceChildren();
-    if (!waiting.length && !reviews.length && !floors.length) {
-      list.append(h('p.empty', {}, '👍 Nothing needs you. Workers that stop with a question, finish a take or stage work for review land here.'));
+    if (!waiting.length && !floors.length) {
+      list.append(h('p.empty', {}, '👍 Nothing needs you. Workers that stop with a question, or finish a take land here.'));
       return;
     }
     for (const w of needs) {
@@ -78,18 +75,6 @@ export function openInbox(deps: InboxDeps) {
         modal.close();
         deps.answerWorker(w.id);
       }));
-    }
-    for (const r of reviews) {
-      const card = h(
-        'article.inbox-card',
-        { role: 'button', tabindex: '0', onclick: () => {
-          modal.close();
-          deps.openReviews();
-        } },
-        h('header', {}, h('span.inbox-dot.review'), h('strong', {}, `“${r.title}”`), h('span.inbox-meta', {}, `staged by ${r.by} · ${timeAgo(r.at)}`), h('span.grow'), h('button.btn.primary.small', { type: 'button' }, 'Review')),
-        r.gate ? h('p.inbox-how', {}, `brand-gate ${r.gate}`) : null,
-      );
-      list.append(card);
     }
     for (const f of floors) {
       list.append(
@@ -105,6 +90,6 @@ export function openInbox(deps: InboxDeps) {
     }
   };
 
-  offs.push(...(['workers', 'reviews', 'floors'] as const).map((t) => store.on(t, repaint)));
+  offs.push(...(['workers', 'floors'] as const).map((t) => store.on(t, repaint)));
   repaint();
 }

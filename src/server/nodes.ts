@@ -12,14 +12,11 @@ import type { WebSocket } from 'ws';
 import type { AgentProvider } from '../shared/providers.js';
 import { isAgentProvider } from '../shared/providers.js';
 import type { NodeInfo, NodesState } from '../shared/protocol.js';
-import type { LocalSnapshot } from '../shared/protocol/local-sessions.js';
-import { readSnapshot } from './local-sessions/schema.js';
 
 /** What a satellite sends: the hello first, then heartbeats. */
 export type NodeFrame =
   | { t: 'hello'; name?: string; host: string; platform: string; cpus: number; memGB: number; providers: string[]; version?: string }
-  | { t: 'ping'; memFreeGB?: number }
-  | { t: 'local.snapshot'; snapshot: LocalSnapshot };
+  | { t: 'ping'; memFreeGB?: number };
 
 /** Silent this long and the node counts as gone quiet. */
 const STALE_MS = 60_000;
@@ -41,7 +38,6 @@ interface LiveNode extends SavedNode {
   /** What the machine said it is, from its last hello. */
   hello?: { name: string; host: string; platform: string; cpus: number; memGB: number; providers: AgentProvider[]; version?: string };
   lastSeen: number;
-  snapshot?: LocalSnapshot;
 }
 
 export class Nodes {
@@ -59,7 +55,7 @@ export class Nodes {
     this.sweeper.unref?.();
   }
 
-  state(floorId?: string): NodesState {
+  state(): NodesState {
     const nodes = [...this.nodes.values()]
       .map((n): NodeInfo => {
         const online = !!n.ws && Date.now() - n.lastSeen < STALE_MS;
@@ -75,7 +71,6 @@ export class Nodes {
           online,
           lastSeen: n.lastSeen,
           joinedAt: n.joinedAt,
-          ...(floorId && n.snapshot ? { localSessions: { ...n.snapshot, sessions: n.snapshot.sessions.filter((s) => s.floorId === floorId) } } : {}),
         };
       })
       .sort((a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name));
@@ -164,10 +159,6 @@ export class Nodes {
           node.name = node.hello.name;
           this.save();
         }
-      } else if (frame.t === 'local.snapshot') {
-        const snapshot = readSnapshot(frame.snapshot);
-        if (!snapshot || (node.snapshot && snapshot.observedAt <= node.snapshot.observedAt)) return;
-        node.snapshot = snapshot;
       } else if (frame.t !== 'ping') {
         return;
       }

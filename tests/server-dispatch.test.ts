@@ -267,7 +267,7 @@ test('welcomes a browser and dispatches what it sends', async () => {
   assert.equal(ada?.name, 'Ada');
   assert.equal(ada?.color, '#ff8a5b');
   assert.equal(ada?.floor, floor.id);
-  assert.deepEqual(Object.keys(welcome).slice(-18), ['floor', 'project', 'workers', 'issues', 'pulls', 'queue', 'decor', 'plan', 'services', 'dog', 'ball', 'cars', 'jail', 'jukebox', 'whiteboard', 'meeting', 'cabinet', 'departments']);
+  assert.deepEqual(Object.keys(welcome).slice(-17), ['floor', 'project', 'workers', 'issues', 'pulls', 'queue', 'decor', 'plan', 'services', 'dog', 'ball', 'cars', 'jail', 'jukebox', 'whiteboard', 'meeting', 'cabinet']);
 
   a.send({ t: 'ping', at: 42 });
   const pong = await a.take('pong');
@@ -315,7 +315,7 @@ test('welcomes a browser and dispatches what it sends', async () => {
   assert.equal((await a.take('accounts')).state.sharedPassword, true);
 
   // Frames that aren't messages, or whose type isn't one, are dropped; the office carries on.
-  for (const odd of ['not json', '42', 'null', '"text"', '[]', {}, { t: 'nope' }, { t: 'constructor' }, { t: '__proto__' }, { t: 'toString' }, { t: 'hasOwnProperty' }, { t: '__defineGetter__' }, { t: 7 }, { t: ['ping'], at: 99 }]) a.send(odd);
+  for (const odd of ['not json', '42', 'null', '"text"', '[]', {}, { t: 'nope' }, ...['harness.get', 'harness.apply', 'harness.write', 'harness.own.apply', 'reviews.get', 'reviews.resolve', 'deploys.stage', 'departments.launch', 'departments.add'].map((t) => ({ t })), { t: 'constructor' }, { t: '__proto__' }, { t: 'toString' }, { t: 'hasOwnProperty' }, { t: '__defineGetter__' }, { t: 7 }, { t: ['ping'], at: 99 }]) a.send(odd);
   a.send({ t: 'ping', at: 43 });
   assert.equal((await a.take('pong')).at, 43);
   assert.deepEqual(a.pending('toast'), []);
@@ -332,7 +332,6 @@ test('the toys on a floor, and letting go of them on leaving the floor or the of
   const b = await Browser.open('?name=Di');
   await b.take('welcome');
   await a.take('peer.join');
-  await b.take('reviews');
   await b.take('deploys');
   await b.take('hygiene');
   await b.take('costwall');

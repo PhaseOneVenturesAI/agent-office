@@ -11,18 +11,14 @@ import type { ProviderReadinessClientMsg, ProviderReadinessServerMsg } from './p
 import type { AccountsClientMsg, AccountsServerMsg, SignInsClientMsg, TeamClientMsg } from './protocol/accounts.js';
 import type { ChangesClientMsg, ChangesServerMsg } from './protocol/changes.js';
 import type { CostwallClientMsg, CostwallServerMsg } from './protocol/costwall.js';
-import type { DepartmentsClientMsg, DepartmentsServerMsg } from './protocol/departments.js';
 import type { DeploysClientMsg, DeploysServerMsg } from './protocol/deploys.js';
 import type { FloorClientMsg, FloorServerMsg, PlanClientMsg } from './protocol/floors.js';
 import type { GitHubClientMsg, GitHubServerMsg } from './protocol/github.js';
-import type { HarnessClientMsg, HarnessServerMsg } from './protocol/harness.js';
-import type { PersonalHarnessClientMsg, PersonalHarnessServerMsg } from './protocol/personal-harness.js';
 import type { HygieneClientMsg, HygieneServerMsg } from './protocol/hygiene.js';
 import type { MeetingClientMsg, MeetingServerMsg } from './protocol/meetings.js';
 import type { NodesClientMsg, NodesServerMsg } from './protocol/nodes.js';
 import type { PresenceClientMsg, PresenceServerMsg } from './protocol/presence.js';
 import type { QueueClientMsg, QueueServerMsg } from './protocol/queue.js';
-import type { ReviewsClientMsg, ReviewsServerMsg } from './protocol/reviews.js';
 import type { RooftopClientMsg, RooftopServerMsg } from './protocol/rooftop.js';
 import type { SettingsClientMsg, SettingsServerMsg } from './protocol/settings.js';
 import type { BallClientMsg, CabinetClientMsg, CarClientMsg, DecorClientMsg, DogClientMsg, JukeboxClientMsg, ToysServerMsg, WhiteboardClientMsg } from './protocol/toys.js';
@@ -37,18 +33,14 @@ export * from './protocol/accounts.js';
 export * from './protocol/agents.js';
 export * from './protocol/changes.js';
 export * from './protocol/costwall.js';
-export * from './protocol/departments.js';
 export * from './protocol/deploys.js';
 export * from './protocol/floors.js';
 export * from './protocol/github.js';
-export * from './protocol/harness.js';
-export * from './protocol/personal-harness.js';
 export * from './protocol/hygiene.js';
 export * from './protocol/meetings.js';
 export * from './protocol/nodes.js';
 export * from './protocol/presence.js';
 export * from './protocol/queue.js';
-export * from './protocol/reviews.js';
 export * from './protocol/rooftop.js';
 export * from './protocol/settings.js';
 export * from './protocol/toys.js';
@@ -65,19 +57,15 @@ export type ClientMsg =
   | WorkerClientMsg
   | GitHubClientMsg
   | QueueClientMsg
-  | ReviewsClientMsg
   | MeetingClientMsg
   | FloorClientMsg
   | PlanClientMsg
   | ChangesClientMsg
   | CostwallClientMsg
-  | DepartmentsClientMsg
   | DeploysClientMsg
   | TeamClientMsg
   | AccountsClientMsg
   | SignInsClientMsg
-  | HarnessClientMsg
-  | PersonalHarnessClientMsg
   | HygieneClientMsg
   | NodesClientMsg
   | SettingsClientMsg
@@ -100,16 +88,12 @@ export type ServerMsg =
   | WorkerServerMsg
   | GitHubServerMsg
   | QueueServerMsg
-  | ReviewsServerMsg
   | MeetingServerMsg
   | FloorServerMsg
   | ChangesServerMsg
   | CostwallServerMsg
-  | DepartmentsServerMsg
   | DeploysServerMsg
   | AccountsServerMsg
-  | HarnessServerMsg
-  | PersonalHarnessServerMsg
   | HygieneServerMsg
   | NodesServerMsg
   | SettingsServerMsg
