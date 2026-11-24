@@ -1,14 +1,10 @@
-import { isAutonomy } from '../../providers/autonomy.js';
-import { staffQaExecution } from '../../role-subscriptions/access.js';
 // Departments: the floor's corners of work (see server/departments.ts). Everything but launch is
 // paperwork on the floor's store; launch goes through the same spawn as every hire, after the
 // department composed the worker's prompt.
 import { nextFreeSeat } from '../../../shared/layout.js';
-import { normTitle } from '../../queue.js';
 import { OPEN_CODE_MODEL_MAX } from '../../../shared/providers.js';
 import { isAgentEffort, isAgentProvider, type DepartmentsClientMsg } from '../../../shared/protocol.js';
 import { str } from '../../office/input.js';
-import { canEditManager, canDelegateManager, roleAccessForManager } from '../../role-access.js';
 import { here } from './common.js';
 import type { HandlerMap, ViewPieces } from './types.js';
 
@@ -33,8 +29,6 @@ export const departmentsHandlers = {
     const who = c.peer.name;
     const floor = here(ctx, c);
     if (!floor) return;
-    const edit = canEditManager(ctx, floor, str(msg.id, 16), c.accountId);
-    if (!edit.ok) return ctx.warn(c, edit.why);
     const err = floor.departments.brief(str(msg.id, 16), str(msg.text, 25000), typeof msg.base === 'number' ? msg.base : -1, who);
     if (err) ctx.warn(c, err);
   },
@@ -48,24 +42,18 @@ export const departmentsHandlers = {
   'departments.asset'(ctx, c, msg) {
     const floor = here(ctx, c);
     if (!floor) return;
-    const edit0 = canEditManager(ctx, floor, str(msg.id, 16), c.accountId);
-    if (!edit0.ok) return ctx.warn(c, edit0.why);
     const err = floor.departments.addAsset(str(msg.id, 16), msg, c.peer.name);
     if (err) ctx.warn(c, err);
   },
   'departments.asset.drop'(ctx, c, msg) {
     const floor = here(ctx, c);
     if (!floor) return;
-    const edit1 = canEditManager(ctx, floor, str(msg.id, 16), c.accountId);
-    if (!edit1.ok) return ctx.warn(c, edit1.why);
     const err = floor.departments.dropAsset(str(msg.id, 16), str(msg.asset, 16));
     if (err) ctx.warn(c, err);
   },
   'departments.release'(ctx, c, msg) {
     const floor = here(ctx, c);
     if (!floor) return;
-    const edit2 = canEditManager(ctx, floor, str(msg.id, 16), c.accountId);
-    if (!edit2.ok) return ctx.warn(c, edit2.why);
     floor.departments.release(str(msg.id, 16), str(msg.workerId, 32));
   },
   'departments.launch'(ctx, c, msg) {
@@ -79,7 +67,7 @@ export const departmentsHandlers = {
     const model = msg.model === undefined ? undefined : str(msg.model, OPEN_CODE_MODEL_MAX + 1);
     const effort = isAgentEffort(msg.effort) ? msg.effort : undefined;
     const task = str(msg.prompt, 20000) || undefined;
-    const liveAgents = () => floor.writerIds();
+    const liveAgents = () => floor.workers.list().filter((w) => w.kind === 'agent').map((w) => w.id);
     const hire = () => {
       // Re-checked here, after the sign-in and the fresh fetch: the cap, the department, the role
       // and the desk as they are now, so two launches at once can't both pass a stale check.
@@ -97,178 +85,5 @@ export const departmentsHandlers = {
       ctx.toastFloor(floor, `🏬 ${who} hired ${r.name} as the ${dept.name} department's ${composed.role.name}`);
     };
     ctx.withSignIn(c, ctx.signInFor(msg.provider ?? floor.workers.officeDefault.provider), () => ctx.withFreshBase(c, [floor], hire));
-  },
-  'departments.lead'(ctx, c, msg) {
-    const floor = here(ctx, c);
-    if (!floor) return;
-    const reply = (error?: string) => {
-      if (typeof msg.requestId === 'string') ctx.sendTo(c, { t: 'role.settings.result', requestId: msg.requestId, floor: floor.id, id: str(msg.id, 16), ...(error ? { error } : {}) });
-      else if (error) ctx.warn(c, error);
-    };
-    const edit = canEditManager(ctx, floor, str(msg.id, 16), c.accountId);
-    if (!edit.ok) return reply(edit.why);
-    if (msg.provider !== undefined && (!isAgentProvider(msg.provider) || !floor.project.agentProviders.includes(msg.provider))) {
-      reply('Unknown agent provider');
-      return;
-    }
-    if (msg.provider !== undefined) { const e = ctx.roleSubscriptions?.revoke(floor.id, str(msg.id, 16)); if (e) return reply(e); }
-    const model = msg.model === undefined ? undefined : str(msg.model, OPEN_CODE_MODEL_MAX + 1);
-    const err = floor.departments.setLead(str(msg.id, 16), { name: str(msg.name, 60), ...(msg.provider !== undefined ? { provider: msg.provider } : {}), ...(model !== undefined ? { model } : {}), ...(isAgentEffort(msg.effort) ? { effort: msg.effort } : {}), ...(msg.autonomy !== undefined ? { autonomy: str(msg.autonomy, 40) } : {}) }, c.peer.name);
-    const live = floor.departments.get(str(msg.id, 16))?.lead?.workerId;
-    if (!err && live && isAutonomy(msg.autonomy)) return reply(floor.workers.queueAutonomy(live, msg.autonomy));
-    reply(err);
-  },
-  'departments.access'(ctx, c, msg) {
-    const floor = here(ctx, c);
-    if (!floor) return;
-    const reply = (error?: string) => { if (msg.requestId) ctx.sendTo(c, { t: 'role.settings.result', requestId: msg.requestId, floor: floor.id, id: msg.id, error }); else ctx.warn(c, error); };
-    const edit = canDelegateManager(ctx, floor, str(msg.id, 16), c.accountId);
-    if (!edit.ok) return reply(edit.why);
-    const ask = msg as { controllers?: unknown; audience?: unknown; custodian?: unknown };
-    if (ask.controllers !== undefined || ask.custodian !== undefined || ask.audience !== undefined) { const e = ctx.roleSubscriptions?.revoke(floor.id, str(msg.id, 16)); if (e) return reply(e); }
-    reply(floor.departments.setAccess(str(msg.id, 16), { ...(ask.controllers !== undefined ? { controllers: ask.controllers } : {}), ...(ask.audience !== undefined ? { audience: ask.audience } : {}), ...(ask.custodian !== undefined ? { custodian: ask.custodian } : {}) }));
-  },
-  'departments.lead.clear'(ctx, c, msg) {
-    const floor = here(ctx, c);
-    if (!floor) return;
-    const id = str(msg.id, 16);
-    const edit3 = canEditManager(ctx, floor, id, c.accountId);
-    if (!edit3.ok) return ctx.warn(c, edit3.why);
-    ctx.warn(c, floor.departments.clearLead(id));
-  },
-  'departments.policy'(ctx, c, msg) {
-    const floor = here(ctx, c);
-    if (!floor) return;
-    const edit = canEditManager(ctx, floor, str(msg.id, 16), c.accountId);
-    if (!edit.ok) return ctx.warn(c, edit.why);
-    if (!isAgentProvider(msg.provider) || !floor.project.agentProviders.includes(msg.provider)) {
-      ctx.warn(c, 'Unknown agent provider');
-      return;
-    }
-    const model = msg.model === undefined ? undefined : str(msg.model, OPEN_CODE_MODEL_MAX + 1);
-    const revoked = ctx.roleSubscriptions?.revoke(floor.id, str(msg.id, 16));
-    if (revoked) return ctx.warn(c, revoked);
-    const err = floor.departments.setPolicy(str(msg.id, 16), { provider: msg.provider, ...(model !== undefined ? { model } : {}), ...(isAgentEffort(msg.effort) ? { effort: msg.effort } : {}), mode: msg.mode === 'ask' ? 'ask' : 'policy' }, c.peer.name);
-    if (err) ctx.warn(c, err);
-  },
-  'departments.lead.launch'(ctx, c, msg) {
-    const who = c.peer.name;
-    const floor = here(ctx, c);
-    if (!floor) return;
-    const edit = canEditManager(ctx, floor, str(msg.id, 16), c.accountId);
-    if (!edit.ok) return ctx.warn(c, edit.why);
-    if (msg.provider !== undefined && (!isAgentProvider(msg.provider) || !floor.project.agentProviders.includes(msg.provider))) {
-      ctx.warn(c, 'Unknown agent provider');
-      return;
-    }
-    const id = str(msg.id, 16);
-    const ask = floor.departments.get(id)?.policy?.mode === 'ask';
-    // An explicit pick is the ask-mode picker (a person deciding); policy/lead engine otherwise.
-    const explicit = ask ? { provider: msg.provider, model: msg.model === undefined ? undefined : str(msg.model, OPEN_CODE_MODEL_MAX + 1), effort: isAgentEffort(msg.effort) ? msg.effort : undefined } : undefined;
-    const engine = floor.departments.get(id)?.policy?.provider ?? floor.departments.leadChoice(id)?.provider;
-    const task = str(msg.prompt, 20000) || undefined;
-    const hire = () => {
-      const r = floor.startManager(id, who, c.accountId, explicit, task);
-      if (typeof r === 'string') return ctx.warn(c, r);
-      const dept = floor.departments.get(id)!;
-      ctx.toastFloor(floor, `🎖️ ${who} started ${r.name}'s shift as the ${dept.name} manager`);
-    };
-    ctx.withFreshBase(c, [floor], hire);
-  },
-  'departments.delegate'(ctx, c, msg) {
-    const who = c.peer.name;
-    const floor = here(ctx, c);
-    if (!floor) return;
-    const id = str(msg.id, 16);
-    const dept = floor.departments.get(id);
-    if (!dept) return ctx.warn(c, 'That department is gone');
-    const edit = canEditManager(ctx, floor, id, c.accountId);
-    if (!edit.ok) return ctx.warn(c, edit.why);
-    const title = str(msg.title, 200);
-    const task = str(msg.task, 20000).replace(/\r\n?/g, '\n').trim();
-    if (!title || !task) return ctx.warn(c, 'Give the delegation a title and the task');
-    if (msg.provider !== undefined && (!isAgentProvider(msg.provider) || !floor.project.agentProviders.includes(msg.provider))) {
-      ctx.warn(c, 'Unknown agent provider');
-      return;
-    }
-    const model = msg.model === undefined ? undefined : str(msg.model, OPEN_CODE_MODEL_MAX + 1);
-    const effort = isAgentEffort(msg.effort) ? msg.effort : undefined;
-    // The lead delegates on the policy engine unless the ask-mode picker sent an explicit choice.
-    const policy = dept.policy;
-    const provider = msg.provider ?? policy?.provider;
-    const chosenModel = model ?? (msg.provider === undefined ? policy?.model : undefined);
-    const chosenEffort = effort ?? (msg.provider === undefined ? policy?.effort : undefined);
-    const by = dept.lead ? `${dept.lead.name} (lead)` : who;
-    // The claim refuses before the cap: "already assigned" is the truer answer (queue.add re-checks).
-    if (floor.queue.state().tasks.some((t) => t.status !== 'done' && normTitle(t.title) === normTitle(title))) return ctx.warn(c, `“${title}” is already assigned on this project`);
-    // The task will seat an implementation writer: the project's cap holds here too.
-    const cap = floor.writerCap();
-    if (cap) return ctx.warn(c, cap);
-    const parentId = dept.lead?.workerId && floor.workers.get(dept.lead.workerId) ? dept.lead.workerId : undefined;
-    ctx.withSignIn(c, ctx.signInFor(provider ?? floor.workers.officeDefault.provider), () => {
-      const err = floor.delegate(id, title, task, by, c.accountId, parentId, { provider, model: chosenModel, effort: chosenEffort });
-      if (err) ctx.warn(c, err);
-      else ctx.toastFloor(floor, `📋 ${by} delegated “${title}” to the floor queue`);
-    });
-  },
-  'departments.request.approve'(ctx, c, msg) {
-    const floor = here(ctx, c);
-    if (!floor) return;
-    const id = str(msg.id, 16);
-    const dept = floor.departments.get(id);
-    if (!dept) return ctx.warn(c, 'That department is gone');
-    const edit = canEditManager(ctx, floor, id, c.accountId);
-    if (!edit.ok) return ctx.warn(c, edit.why);
-    const policy = dept.policy;
-    const provider = msg.provider ?? policy?.provider;
-    // Seating an implementation writer: the cap holds at approval time, before the request is spent.
-    const cap = floor.writerCap();
-    if (cap) return ctx.warn(c, `${cap} — the request stays pending`);
-    // The request is only spent once the signed-in execution actually succeeds; a refused sign-in
-    // or a failed queue keeps it pending for the next attempt.
-    const taken = floor.departments.takeRequest(id, str(msg.request, 16));
-    if (typeof taken === 'string') return ctx.warn(c, taken);
-    const model = msg.model !== undefined ? str(msg.model, OPEN_CODE_MODEL_MAX + 1) : policy?.model;
-    const effort = isAgentEffort(msg.effort) ? msg.effort : policy?.effort;
-    const by = dept.lead ? `${dept.lead.name} (lead)` : c.peer.name;
-    const parentId = dept.lead?.workerId && floor.workers.get(dept.lead.workerId) ? dept.lead.workerId : undefined;
-    ctx.withSignIn(c, ctx.signInFor(provider ?? floor.workers.officeDefault.provider), () => {
-      const err = floor.delegate(id, taken.title, taken.task, by, c.accountId, parentId, { provider, model, effort });
-      if (err) {
-        floor.departments.addRequest(id, { title: taken.title, task: taken.task, by: taken.by });
-        ctx.warn(c, `${err} — the request is back pending`);
-      } else ctx.toastFloor(floor, `📋 ${by}'s “${taken.title}” approved and queued`);
-    }, () => {
-      floor.departments.addRequest(id, { title: taken.title, task: taken.task, by: taken.by });
-      ctx.warn(c, 'Sign-in refused — the request stays pending.');
-    });
-  },
-  'departments.request.reject'(ctx, c, msg) {
-    const floor = here(ctx, c);
-    if (!floor) return;
-    const edit4 = canEditManager(ctx, floor, str(msg.id, 16), c.accountId);
-    if (!edit4.ok) return ctx.warn(c, edit4.why);
-    const err = floor.departments.dropRequest(str(msg.id, 16), str(msg.request, 16));
-    if (err) ctx.warn(c, err);
-    else ctx.toastFloor(floor, `${c.peer.name} rejected a delegation request`);
-  },
-  'departments.ask'(ctx, c, msg) {
-    const floor = here(ctx, c);
-    if (!floor) return;
-    const id = str(msg.id, 16), question = str(msg.question, 4000);
-    const reply = (answer: string, error?: string) => {
-      if (c.out || !ctx.stillIn(c) || ctx.floorOf(c) !== floor) return;
-      ctx.sendTo(c, { t: 'departments.qa', id, requestId: msg.requestId, question, answer, error, at: Date.now() });
-      if (error && !msg.requestId) ctx.warn(c, error);
-    };
-    const dept = floor.departments.get(id);
-    if (!dept?.lead) return reply('', 'Name the manager first');
-    const access = roleAccessForManager(ctx, floor, id, c.accountId);
-    if (access.kind === 'none') return reply('', access.why);
-    const consent = staffQaExecution(ctx, floor, id, c.accountId);
-    if (consent.error) return reply('', consent.error);
-    void floor.staffQA(id, question, c.peer.name, consent.owner).then(outcome => {
-      reply(outcome.ok ? outcome.answer : `Unavailable: ${outcome.why}`, outcome.ok ? undefined : outcome.why);
-    }).catch(() => reply('', 'The read-only session failed. Your question is kept; try again.'));
   },
 } satisfies HandlerMap<DepartmentsClientMsg>;

@@ -14,17 +14,3 @@
 .handoff-form label { display: grid; gap: 5px; }
 .handoff-preview { max-height: 36vh; overflow: auto; font-size: 13px; padding: 12px; border: 1px solid currentColor; border-radius: 8px; }
 @media (max-width: 520px) { .worker-conversation .body { padding: 12px; } .conversation-actions .btn { min-height: 40px; } }
-
-.conversation-pending-card {
-  border: 1px solid color-mix(in srgb, #d64545 45%, transparent);
-  background: color-mix(in srgb, #d64545 8%, transparent);
-  border-radius: 10px;
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.conversation-pending-card p { margin: 0; font-size: 13px; }
-
-.conversation-transcript article.staff { opacity: 0.75; border-left: 3px solid color-mix(in srgb, currentColor 25%, transparent); padding-left: 8px; }

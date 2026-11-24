@@ -6,12 +6,6 @@ import type { Interactable } from '../src/client/world/types.js';
 const state = (overrides: Partial<InteractionState> = {}): InteractionState => ({ room: false, note: null, carrying: false, ...overrides });
 const interaction = (kind: Interactable['kind'], extra: Partial<Interactable> = {}): Interactable => ({ kind, x: 0, z: 0, radius: 1, ...extra });
 
-test('permanent role characters accept talk without a runtime worker and never hiring or firing keys', () => {
-  const role = interaction('role' as Interactable['kind']);
-  for (const key of ['E', 'T'] satisfies DeskKey[]) assert.equal(interactionAvailable(role, key, state()), true);
-  for (const key of ['P', 'R', 'X', 'B'] satisfies DeskKey[]) assert.equal(interactionAvailable(role, key, state()), false);
-});
-
 test('unused desk keys are not handled without an interaction target', () => {
   for (const key of ['E', 'P', 'R', 'X', 'B', 'C', 'O'] satisfies DeskKey[]) {
     assert.equal(interactionAvailable(null, key, state()), false, `${key} should remain available to movement/input handling`);

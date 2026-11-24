@@ -1,17 +1,15 @@
-import { ownedWorker } from './worker-access.js';
-import { canUseWorker, publicWorker } from '../../worker-ownership.js';
 // Workers at their desks and the board agents at their kiosks: hiring them, their terminals, their
 // worktrees and pull requests.
 import { MAX_REPOS, type RepoSource } from '../../workers.js';
 import { OPEN_CODE_MODEL_MAX } from '../../../shared/providers.js';
 import { isAgentEffort, isAgentProvider, type WorkerClientMsg } from '../../../shared/protocol.js';
 import { issueNumber, num, str } from '../../office/input.js';
-import { here } from './common.js';
+import { here, workerOf } from './common.js';
 import type { FeatureHooks, HandlerMap, ViewPieces } from './types.js';
 
 const CLEANUPS = new Set(['keep', 'worktree', 'all']);
 
-export const workersView: ViewPieces['workers'] = (ctx, floor) => floor?.workers.list().map((w) => publicWorker(ctx, w)) ?? [];
+export const workersView: ViewPieces['workers'] = (_ctx, floor) => floor?.workers.list() ?? [];
 export const jailView: ViewPieces['jail'] = (_ctx, floor) => floor?.jail.state() ?? { prisoners: [], bones: 0 };
 
 /** The least time between two 'term.typing' notes from one person in one terminal. */
@@ -36,11 +34,6 @@ export const workerHandlers = {
       if (!other || other === floor) return ctx.warn(c, other ? "The worker's own floor's project is already in its workspace" : 'That project is no longer in the building');
       repos.push({ floor: other.id, name: other.def.name, repo: other.def.repo, dir: other.dir });
     }
-    // A manual hire is an implementation writer until something says otherwise: the project's cap holds.
-    if (kind === 'agent') {
-      const cap = floor.writerCap();
-      if (cap) return ctx.warn(c, cap);
-    }
     // A shell is theirs too: `claude auth login` or `gh auth login` typed there signs them in.
     const hire = () => {
       const r = floor.workers.spawn(str(msg.deskId, 32), who, str(msg.prompt, 20000) || undefined, msg.worktree === true, kind, msg.provider, model, effort, undefined, c.accountId, repos, msg.via === 'herald' ? 'herald' : undefined);
@@ -55,12 +48,12 @@ export const workerHandlers = {
     ctx.withSignIn(c, kind === 'agent' ? ctx.signInFor(msg.provider ?? floor.workers.officeDefault.provider) : undefined, () => (msg.worktree === true ? ctx.withFreshBase(c, fresh, hire) : hire()));
   },
   'worker.resume'(ctx, c, msg) {
-    const w = ownedWorker(ctx, c, msg.workerId);
-    if (w) ctx.warn(c, w.floor.workers.resume(w.wid));
+    const w = workerOf(ctx, msg.workerId);
+    ctx.warn(c, w ? w.floor.workers.resume(w.wid) : 'No such worker');
   },
   'worker.kill'(ctx, c, msg) {
     const who = c.peer.name;
-    const w = ownedWorker(ctx, c, msg.workerId, true);
+    const w = workerOf(ctx, msg.workerId);
     if (!w) return;
     const { floor, info } = w;
     // The worker leaves right away; its worktree is dealt with after that, and the outcome follows.
@@ -72,7 +65,7 @@ export const workerHandlers = {
     });
   },
   'worker.worktree'(ctx, c, msg) {
-    const w = ownedWorker(ctx, c, msg.workerId, true);
+    const w = workerOf(ctx, msg.workerId);
     if (!w) return;
     void w.floor.workers.inspectWorktree(w.wid).then((state) => {
       if (state) ctx.sendTo(c, { t: 'worker.worktree', workerId: w.wid, state });
@@ -80,11 +73,11 @@ export const workerHandlers = {
   },
   'worker.rebuild'(ctx, c, msg) {
     const who = c.peer.name;
-    const w = ownedWorker(ctx, c, msg.workerId, true);
+    const w = workerOf(ctx, msg.workerId);
     if (!w) return;
     const { floor } = w;
     // With `all`, every worker on the floor whose worktree was deleted, this one first.
-    const ids = [w.wid, ...(msg.all === true ? floor.workers.list().filter((x) => x.lost && x.id !== w.wid && canUseWorker(ctx, c.accountId, floor.workers.ownerOf(x.id), x.provider)).map((x) => x.id) : [])];
+    const ids = [w.wid, ...(msg.all === true ? floor.workers.list().filter((x) => x.lost && x.id !== w.wid).map((x) => x.id) : [])];
     void (async () => {
       const names: string[] = [];
       const notes: string[] = [];
@@ -107,7 +100,7 @@ export const workerHandlers = {
   },
   'worker.attach'(ctx, c, msg) {
     const who = c.peer.name;
-    const w = ownedWorker(ctx, c, msg.workerId, true);
+    const w = workerOf(ctx, msg.workerId);
     const snap = w?.floor.workers.attach(w.wid, c.id, who);
     if (w && snap) {
       c.attached.add(w.wid);
@@ -122,9 +115,8 @@ export const workerHandlers = {
   },
   'worker.prompt'(ctx, c, msg) {
     const who = c.peer.name;
-    const w = ownedWorker(ctx, c, msg.workerId);
-    if (!w) return;
-    const err = w.floor.workers.prompt(w.wid, str(msg.prompt, 20000), who);
+    const w = workerOf(ctx, msg.workerId);
+    const err = w ? w.floor.workers.prompt(w.wid, str(msg.prompt, 20000), who) : 'No such worker';
     ctx.warn(c, err);
     const issue = w?.info.kind === 'agent' ? issueNumber(msg.issue) : undefined;
     if (w && !err && issue) {
@@ -147,7 +139,7 @@ export const workerHandlers = {
   },
   'worker.pr'(ctx, c, msg) {
     const who = c.peer.name;
-    const w = ownedWorker(ctx, c, msg.workerId, true);
+    const w = workerOf(ctx, msg.workerId);
     if (!w) return;
     const { floor, wid } = w;
     ctx.withGitHub(c, (as) => void floor.workers.openPr(wid, who, as).then((r) => {
@@ -175,12 +167,11 @@ export const workerHandlers = {
   },
   'term.input'(ctx, c, msg) {
     const who = c.peer.name;
-    const w = ownedWorker(ctx, c, msg.workerId, true);
-    if (w && c.attached.has(w.wid)) w.floor.workers.write(w.wid, str(msg.data, 64 * 1024), who);
+    if (c.attached.has(msg.workerId)) ctx.workerFloor(msg.workerId)?.workers.write(msg.workerId, str(msg.data, 64 * 1024), who);
   },
   'term.typing'(ctx, c, msg) {
     // Everyone else in that terminal sees who's typing. A typist says so about once a second.
-    const w = ownedWorker(ctx, c, msg.workerId, true);
+    const w = workerOf(ctx, msg.workerId);
     const now = Date.now();
     if (!w || !c.attached.has(w.wid) || now - (c.typingAt.get(w.wid) ?? 0) < TYPING_GAP_MS) return;
     c.typingAt.set(w.wid, now);
@@ -190,8 +181,7 @@ export const workerHandlers = {
     }
   },
   'term.resize'(ctx, c, msg) {
-    const w = ownedWorker(ctx, c, msg.workerId, true);
-    if (w && c.attached.has(w.wid)) w.floor.workers.resize(w.wid, num(msg.cols), num(msg.rows));
+    if (c.attached.has(msg.workerId)) ctx.workerFloor(msg.workerId)?.workers.resize(msg.workerId, num(msg.cols), num(msg.rows));
   },
 } satisfies HandlerMap<WorkerClientMsg>;
 

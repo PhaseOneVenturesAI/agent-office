@@ -1,4 +1,3 @@
-import { canUseWorker, OWN_WORKER } from '../../worker-ownership.js';
 // The Review Room (see server/reviews.ts): anyone stages a link, anyone accepts or rejects it
 // with a reason; a worker that staged it hears the verdict in its terminal.
 import type { ReviewsClientMsg } from '../../../shared/protocol.js';
@@ -28,7 +27,6 @@ export const reviewsHandlers = {
       const floor = ctx.workerFloor(item.workerId);
       const w = floor?.workers.get(item.workerId);
       if (floor && w && w.kind === 'agent') {
-        if (!canUseWorker(ctx, c.accountId, floor.workers.ownerOf(w.id), w.provider)) return ctx.warn(c, `Review saved. ${OWN_WORKER}`);
         let err = floor.workers.prompt(item.workerId, prompt, c.peer.name);
         if (err === 'Worker is not running') err = floor.workers.resume(item.workerId, prompt);
         if (err) ctx.toastAll(`Couldn't tell ${w.name} the verdict: ${err}`, 'warn');

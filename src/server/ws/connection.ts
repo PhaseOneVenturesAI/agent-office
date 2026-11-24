@@ -83,7 +83,7 @@ export function onConnection(ctx: Ctx, ws: WebSocket, url: URL, session: Session
     map: maps.state(),
     prompts: prompts.state(),
     leaveOnMerge: leaveOnMerge.state(),
-    ...(onRoof ? roofView(ctx) : floorView(ctx, floor, client)),
+    ...(onRoof ? roofView(ctx) : floorView(ctx, floor)),
   });
   screensOf(ctx, client, floor);
   broadcast({ t: 'peer.join', peer: client.peer }, id);

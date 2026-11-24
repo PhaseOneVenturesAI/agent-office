@@ -8,7 +8,6 @@ import * as THREE from 'three';
 import type { Ctx } from '../../core/context';
 import type { Parts } from '../../core/parts';
 import { needingYou } from '../../nextup';
-import { alertsForMe } from '../../notify';
 import { store } from '../../state';
 import { $ } from '../../ui/dom';
 import { bannerText, Fresh, Reminders, waitKey } from './logic';
@@ -30,27 +29,23 @@ export function installNeedsYou(ctx: Ctx, parts: Pick<Parts, 'views' | 'waiting'
   const hidden = new Set<string>();
   const beacons = new Map<string, Beacon>();
 
-  // The banner, flash and alarm are alerts: they follow only the workers you hired (see alertsForMe).
-  // The beacons below stay for everyone's workers — they're part of the room, like the desk glow.
-  const askingMe = () => needingYou(store.workers.values()).filter((w) => alertsForMe(w, store.me));
-
   const banner = new Banner($('hud'), {
     go: (id) => parts.waiting.goToWorker(id),
     hide: () => {
-      for (const w of askingMe()) hidden.add(waitKey(w));
+      for (const w of needingYou(store.workers.values())) hidden.add(waitKey(w));
       paintBanner();
     },
   });
 
   function paintBanner() {
-    const asking = askingMe();
+    const asking = needingYou(store.workers.values());
     for (const key of hidden) if (!asking.some((w) => waitKey(w) === key)) hidden.delete(key);
     banner.show(bannerText(asking.filter((w) => !hidden.has(waitKey(w))), Date.now()));
   }
 
   function sync() {
     // Not ones that were asking already when the page first saw them (a reload, a floor you've just arrived on).
-    if (fresh.take(store.workers).filter((w) => alertsForMe(w, store.me)).length) {
+    if (fresh.take(store.workers).length) {
       banner.flash();
       if (settings.needsYouSound !== 'off') {
         sound.needsYou();
@@ -78,7 +73,7 @@ export function installNeedsYou(ctx: Ctx, parts: Pick<Parts, 'views' | 'waiting'
 
   // How long it has waited ticks on, and the reminder comes round, whether or not a frame is drawn.
   setInterval(() => {
-    const asking = askingMe();
+    const asking = needingYou(store.workers.values());
     if (asking.length) paintBanner();
     if (reminders.due(asking, performance.now()) && settings.needsYouSound === 'remind') sound.needsYou(true);
   }, 1000);

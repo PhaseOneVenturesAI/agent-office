@@ -1,7 +1,3 @@
-import { prepareAutonomy, type AutonomyMode } from '../providers/autonomy.js';
-import { applyWorkerAutonomy, autonomyChoice, queueWorkerAutonomy, refreshPersonalAutonomy } from './autonomy.js';
-import { WorkerApprovals } from '../approvals/service.js';
-import { personalProviderError } from '../worker-ownership.js';
 import { WorkerRemovals } from './removal.js';
 import { AcpClosures } from '../acp-shutdown.js';
 import { WorkerConversations } from './conversations.js';
@@ -37,7 +33,7 @@ import { flushScreens, fullScreens, newTerm, offlineBanner, screenText, type Hea
 import type { HookEnv, OpenedPr, RepoSource, RunAs, Worker, WorkerContext, WorkerEvents, WorkerHandle } from './types.js';
 import { clamp, safeEq, truncate } from './util.js';
 import { COLORS, NAMES, newWorker } from './worker.js';
-import { WorkerTrees, lostMessage, workerSlug } from './worktree.js';
+import { WorkerTrees, lostMessage } from './worktree.js';
 
 const SCREEN_INTERVAL_MS = 250;
 /** How often a steady typist's "last typed" time is refreshed for everyone. */
@@ -53,7 +49,6 @@ const RESTORED_NOTE = '\x1b[2m──── the office restarted · earlier outpu
 
 export class WorkerManager {
   private workers = new Map<string, Worker>();
-  readonly approvals = new WorkerApprovals(this.workers);
   private statePath: string;
   private trees: Worktrees;
   private agentPath: string | null = null;
@@ -209,12 +204,6 @@ export class WorkerManager {
     return this.workers.get(id)?.info;
   }
 
-  queueAutonomy(id: string, mode: AutonomyMode): string | undefined {
-    return queueWorkerAutonomy(this.workers.get(id), () => this.persist(), w => this.emitUpdate(w), mode);
-  }
-  applyAutonomy(id: string, mode: AutonomyMode, source: 'account' | 'explicit' = 'account') { return applyWorkerAutonomy({ ...this.ctx, persist: () => this.persist() }, id, mode, source); }
-  autonomyDetails(id: string) { return { pendingApproval: this.approvals.state(id).queued > 0 }; }
-
   /** The account a worker runs as (see RunAs), if not the office. */
   ownerOf(id: string): string | undefined {
     return this.workers.get(id)?.owner;
@@ -249,7 +238,7 @@ export class WorkerManager {
    * (see meetings.ts), in the meeting's own worktree, which everyone at the table shares. `repos` are
    * other floors' repositories a worker in its own worktree works in too (see makeWorkspace).
    */
-  spawn(deskId: string, by: string, prompt?: string, worktree = false, kind: WorkerKind = 'agent', provider?: AgentProvider, model?: string, effort?: AgentEffort, meeting?: { id: string; worktree?: WorkerInfo['worktree'] }, owner?: string, repos: RepoSource[] = [], via?: 'herald', name?: string, autonomy?: AutonomyMode): WorkerInfo | string {
+  spawn(deskId: string, by: string, prompt?: string, worktree = false, kind: WorkerKind = 'agent', provider?: AgentProvider, model?: string, effort?: AgentEffort, meeting?: { id: string; worktree?: WorkerInfo['worktree'] }, owner?: string, repos: RepoSource[] = [], via?: 'herald'): WorkerInfo | string {
     if (this.closing) return 'This floor is closing; no new workers can start.';
     // Nobody picked (a board agent, say): the office's default worker, model and effort included.
     if (kind === 'agent' && provider === undefined) ({ provider, model, effort } = this.officeDefault);
@@ -274,46 +263,41 @@ export class WorkerManager {
       const paused = this.ledger.hiringPaused;
       if (paused) return paused;
     }
-    const unsupported = personalProviderError(owner, kind, selectedProvider);
-    if (unsupported) return unsupported;
     const signIn = providerAdapter(selectedProvider)?.signIn;
     if (owner && signIn && this.runAs && !this.runAs.ready(owner, signIn)) return this.runAs.why(signIn);
     const full = this.capacity?.full();
     if (full) return full;
     const used = new Set([...this.workers.values()].map((w) => w.info.name.replace(/ 🐚$/, '')));
     const agent = seat.station && STATION_AGENT[seat.station];
-    // A named seat (a department lead takes the lead's name) wins when the name is free; else the next unused one.
-    const picked = agent ? agent.name : name && !used.has(name) ? name : (NAMES.find((n) => !used.has(n)) ?? `Worker ${this.workers.size + 1}`);
+    const name = agent ? agent.name : (NAMES.find((n) => !used.has(n)) ?? `Worker ${this.workers.size + 1}`);
     const id = randomBytes(6).toString('hex');
     let wt: WorkerInfo['worktree'] = meeting?.worktree;
     let others: WorkerRepo[] | undefined;
     if (worktree) {
-      const slug = workerSlug(picked, id);
+      const slug = `${name.toLowerCase()}-${id.slice(0, 4)}`;
       const made = repos.length ? this.makeWorkspace(slug, repos) : this.trees.create(slug);
       if (typeof made === 'string') return made;
       if ('repos' in made) {
         ({ worktree: wt, repos: others } = made);
-        for (const note of made.notes) this.events.toast(`🌿 ${picked}'s worktree of ${note}`, 'info');
+        for (const note of made.notes) this.events.toast(`🌿 ${name}'s worktree of ${note}`, 'info');
       } else {
         const { note, ...ref } = made;
         wt = ref;
-        if (note) this.events.toast(`🌿 ${picked}'s worktree ${note}`, 'info');
+        if (note) this.events.toast(`🌿 ${name}'s worktree ${note}`, 'info');
       }
     }
     const info: WorkerInfo = {
       id,
       kind,
       provider: selectedProvider,
-      ...autonomyChoice(autonomy, kind, owner, selectedProvider, this.runAs),
       model: takesModel(selectedProvider) ? model : undefined,
       effort: takesEffort(selectedProvider) ? effort : undefined,
       deskId,
-      name: kind === 'shell' ? `${picked} 🐚` : picked,
+      name: kind === 'shell' ? `${name} 🐚` : name,
       color: kind === 'shell' ? '#8d99ae' : agent ? agent.color : COLORS[Math.floor(Math.random() * COLORS.length)],
       status: 'starting',
       acked: true,
       createdBy: by,
-      ...(owner ? { owner } : {}),
       createdAt: Date.now(),
       ...(via ? { via } : {}),
       prompt: kind === 'shell' ? undefined : prompt?.trim() || undefined,
@@ -379,7 +363,6 @@ export class WorkerManager {
       const info = this.spawn(deskId, by, clean, false, 'agent', undefined, undefined, undefined, undefined, owner);
       return typeof info === 'string' ? info : { info, hired: true };
     }
-    if (w.owner !== owner) return 'This board agent belongs to another account. Use your own agent or queue the task under your account.';
     // Typed into the question it's asking, the prompt would answer it.
     if (w.info.status === 'needs_input') return `The ${w.info.name} is waiting on an answer in its terminal`;
     const running = !!(w.pty || w.dsh);
@@ -606,9 +589,7 @@ export class WorkerManager {
     const w = this.workers.get(workerId);
     const own = w && providerAdapter(w.info.provider);
     if (!hook || !w || !w.pty || w.info.kind !== 'agent' || !own || (own.hooksAs ?? own.id) !== route || !safeEq(token, w.hookToken)) return false;
-    const accepted = hook.handle(this.handleOf(w), event, payload);
-    if (accepted) this.approvals.observe(workerId, event);
-    return accepted;
+    return hook.handle(this.handleOf(w), event, payload);
   }
 
   /**
@@ -618,7 +599,6 @@ export class WorkerManager {
   shutdown(keep = false): Promise<void> {
     if (this.shutdownDone) return this.shutdownDone;
     this.closing = true;
-    this.approvals.close();
     this.stopping = !keep;
     clearInterval(this.screenTimer);
     clearInterval(this.usageTimer);
@@ -683,9 +663,6 @@ export class WorkerManager {
     const command = this.command(info);
     const commandPath = isShell ? undefined : configured ? this.agentPath : resolveCommand(command);
     const base = isShell ? (WIN && !process.env.SHELL ? [] : ['-l']) : configured ? [...this.agentArgs] : [];
-    refreshPersonalAutonomy(info, w.owner, this.runAs);
-    const autonomyError = prepareAutonomy(info, commandPath ?? undefined, base);
-    if (autonomyError) return this.startFailed(w, autonomyError);
     // Its provider's command line, and anything it sets for this run (see ProviderAdapter.launch).
     const plan: LaunchPlan = adapter ? adapter.launch({ h: this.handleOf(w), args: base, prompt, resumeSessionId, station: DESK_BY_ID.get(info.deskId)?.station, cwd, setup: this.setups[adapter.id] }) : { args: base };
     const { args } = plan;
@@ -710,8 +687,6 @@ export class WorkerManager {
     // A workspace isn't a repository, but it's inside this floor's checkout: git run in it must not
     // find that checkout (and switch its branch, say) instead of saying it's no repository.
     if (info.repos?.length) env.GIT_CEILING_DIRECTORIES = [path.dirname(cwd), env.GIT_CEILING_DIRECTORIES].filter(Boolean).join(path.delimiter);
-    const unsupported = personalProviderError(w.owner, info.kind, info.provider ?? this.defaultProvider);
-    if (unsupported) return this.startFailed(w, unsupported);
     if (w.owner && this.runAs) {
       if (adapter?.signIn && !this.runAs.ready(w.owner, adapter.signIn)) {
         this.startFailed(w, `whoever hired ${info.name} (${info.createdBy}) isn't signed in to ${providerMeta(info.provider)?.name ?? 'its agent'} — they can sign in under ☰ → 🔐 Your sign-ins, then press R here`);

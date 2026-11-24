@@ -9,14 +9,12 @@ import type { CoreState } from '../../core/ctx';
 import { builtFloors } from '../../core/floors';
 import type { Parts } from '../../core/parts';
 import { waitingInOrder, waitingLabel } from '../../nextup';
-import { alertsForMe } from '../../notify';
 import { saveSettings, store } from '../../state';
 import { openAccounts } from '../../ui/accounts';
 import { openBoard } from '../../ui/boards';
 import { openCharacter } from '../../ui/character';
 import { openCostwall } from '../../ui/costwall';
 import { openDepartments } from '../../ui/departments';
-import { openRoles } from '../../ui/admin-roles';
 import { openDeploys } from '../../ui/deploys';
 import { $ } from '../../ui/dom';
 import { toggleFloorMenu } from '../../ui/floormenu';
@@ -57,9 +55,6 @@ export function installHud(ctx: Ctx, core: CoreState, parts: HudParts) {
 
   // ---- The HUD: a few buttons on the top bar, everything else in the ☰ menu ----------------------------
   const waitingNow = () => waitingInOrder(store.workers.values());
-  // The ones you hired: what the waiting chip on the bar alerts you about (see alertsForMe). N still
-  // walks every waiting worker — who's allowed to look hasn't changed.
-  const waitingMine = () => waitingNow().filter((w) => alertsForMe(w, store.me));
   const noMedia = () => (window.isSecureContext ? undefined : 'Voice and screen sharing need HTTPS or localhost — use a TLS proxy, --self-signed, or an SSH tunnel');
   const hud = mountHud(
     [
@@ -114,17 +109,8 @@ export function installHud(ctx: Ctx, core: CoreState, parts: HudParts) {
         section: 'Office',
         shown: () => !!store.floor,
         count: () => store.departments.departments.length,
-        title: () => 'Talk to the CEO and the department managers, see their teams and work — briefs, brand and history underneath',
+        title: () => 'The floor’s corners of work: briefs, roles, brand assets — hiring into a role seats a worker with all of it in the prompt',
         run: () => openDepartments(net),
-      },
-      {
-        id: 'roles',
-        icon: '🛡️',
-        label: 'Roles',
-        section: 'Office',
-        shown: () => !!store.floor,
-        title: () => 'Who controls the project’s characters: the CEO’s owner, each manager’s controllers, Q&A audience, custodian, engine, autonomy',
-        run: () => openRoles(net),
       },
       { id: 'deploys', icon: '🚀', label: 'Deploy board', section: 'Office', title: () => 'The Cloudflare Pages and Workers projects, each one click from staging it for review', run: () => openDeploys(net) },
       { id: 'costwall', icon: '💸', label: 'Cost wall', section: 'Office', title: () => 'Who is spending what, per person and per provider, next to the office ledger', run: () => openCostwall(net) },
@@ -189,18 +175,17 @@ export function installHud(ctx: Ctx, core: CoreState, parts: HudParts) {
         run: () => openUpgrade(net),
       },
       // Up on the top bar while workers wait on someone (N does the same), next to the Workers button.
-      // An alert, so only the ones you hired; N and the inbox still see everyone's.
       {
         id: 'waiting',
-        icon: () => (waitingMine().some((w) => w.status === 'needs_input') ? '🙋' : '✅'),
+        icon: () => (waitingNow().some((w) => w.status === 'needs_input') ? '🙋' : '✅'),
         label: 'Next worker that needs you',
         section: 'Open',
         key: 'N',
-        shown: () => waitingMine().length > 0,
-        status: () => waitingMine().length > 0,
-        chip: () => waitingLabel(waitingMine()).replace(/^(🙋|✅) /, ''),
-        on: () => waitingMine().every((w) => w.status === 'done'),
-        tone: () => (waitingMine().some((w) => w.status === 'needs_input') ? 'danger' : undefined),
+        shown: () => waitingNow().length > 0,
+        status: () => waitingNow().length > 0,
+        chip: () => waitingLabel(waitingNow()).replace(/^(🙋|✅) /, ''),
+        on: () => waitingNow().every((w) => w.status === 'done'),
+        tone: () => (waitingNow().some((w) => w.status === 'needs_input') ? 'danger' : undefined),
         title: () => 'Go to the next worker waiting on someone: the ones that need you first (N)',
         run: waiting.goToNextWaiting,
       },

@@ -76,5 +76,3 @@ agent-office tunnel [office@address | url] [--port <n>] [--office-port <n>] [--n
   the worker stops it. Given an SSH address it opens the tunnel to the office too.
   See docs/tunnel.md.
 ```
-
-Expiring voice relays use server-only `AGENT_OFFICE_TURN_SECRET`, credential-free space-separated `AGENT_OFFICE_TURN_URLS`, and optional `AGENT_OFFICE_TURN_TTL` (600–86400 seconds, default3600). See [relay deployment and verification](self-hosting.md#voice-across-strict-nats). Existing static `--turn` settings remain compatible.

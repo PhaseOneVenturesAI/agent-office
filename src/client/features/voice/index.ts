@@ -5,7 +5,6 @@
 import type { Ctx } from '../../core/context';
 import { store } from '../../state';
 import { $, h, openModal, toast } from '../../ui/dom';
-import { voiceFailureNotice } from './failure';
 
 export interface VoiceDeps {
   /** The office TV, which shows a screen someone's sharing (see features/tv). */
@@ -107,8 +106,14 @@ export function installVoice(ctx: Ctx, deps: VoiceDeps) {
     ctx.hud.refresh();
     refreshShares();
   });
-  const showFailure = voiceFailureNotice();
-  voice.onFailed((id, details) => showFailure(store.peers.get(id)?.name ?? 'someone', details));
+  // Said once a session per person: retrying (restartIce) fails the same way on the same networks.
+  const unreachable = new Set<string>();
+  voice.onFailed((id) => {
+    if (unreachable.has(id)) return;
+    unreachable.add(id);
+    const who = store.peers.get(id)?.name ?? 'someone';
+    toast(`🎙️ Can't connect voice with ${who}: a network between you blocks direct calls. The office needs a TURN server (see self-hosting docs).`, 'warn');
+  });
   ctx.messages.on('peer.join', () => voice.syncPeers());
   ctx.messages.on('peer.leave', () => voice.syncPeers());
   ctx.messages.on('rtc', (msg) => void voice.handleSignal(msg.from, msg.data as never));

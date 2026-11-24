@@ -1,5 +1,4 @@
 import './queue.css';
-import { linearPanel } from './linear';
 import { openDelivery } from './delivery';
 import type { AgentProvider, QueueTask, Usage } from '../../shared/protocol';
 import type { Net } from '../net';
@@ -39,7 +38,6 @@ function outcome(t: QueueTask): string {
 
 export function openQueue(net: Net, actions: QueueActions) {
   const body = h('div.body.queue');
-  const linear = linearPanel(net, actions.openTerminal);
   const close = h('button.btn.close', { 'aria-label': 'Close' }, '✕');
   const limitValue = h('b');
   const minus = h('button.btn', { type: 'button', title: 'Fewer workers at once', 'aria-label': 'Fewer workers at once' }, '−');
@@ -50,9 +48,9 @@ export function openQueue(net: Net, actions: QueueActions) {
   const el = h(
     'div.modal',
     { role: 'dialog', 'aria-label': 'Task queue', style: 'width:min(800px,100%)' },
-    h('header', {}, h('h2', {}, '📋 Tasks'), close),
+    h('header', {}, h('h2', {}, '📋 Task queue'), limit, close),
     body,
-    h('footer', {}, h('span.grow', {}, 'Take a task yourself or invite your own agent to help. You decide when the work is complete.')),
+    h('footer', {}, h('span.grow', {}, 'The queue keeps going while you are away. Set “workers at once” to 0 to pause it.')),
   );
 
   const ta = h('textarea', { rows: 2, placeholder: 'Describe a task for the next free worker…', 'aria-label': 'New task' }) as HTMLTextAreaElement;
@@ -149,16 +147,15 @@ export function openQueue(net: Net, actions: QueueActions) {
 
   // The form stays put and only the list below it re-renders, so worker updates don't pull focus out of the textarea.
   const list = h('div');
-  const agentWork = h('details', {}, h('summary', {}, '🤖 Agent work queue'), limit, form, list);
-  body.append(linear.element, agentWork);
+  body.append(form, list);
 
   const render = () => {
     const q = store.queue;
     limitValue.textContent = q.maxWorkers === 0 ? 'Paused' : String(q.maxWorkers);
     minus.toggleAttribute('disabled', q.maxWorkers <= 0);
-    const running = q.tasks.filter((t) => !t.linear && t.status === 'running');
-    const queued = q.tasks.filter((t) => !t.linear && t.status === 'queued');
-    const done = q.tasks.filter((t) => !t.linear && t.status === 'done').slice().reverse();
+    const running = q.tasks.filter((t) => t.status === 'running');
+    const queued = q.tasks.filter((t) => t.status === 'queued');
+    const done = q.tasks.filter((t) => t.status === 'done').slice().reverse();
     const m = store.machine;
     const parts: (HTMLElement | null)[] = [
       h(
@@ -194,7 +191,6 @@ export function openQueue(net: Net, actions: QueueActions) {
   const modal = openModal(el, {
     doing: '📥 at the queue',
     onClose: () => {
-      linear.close();
       unsubs.forEach((u) => u());
       clearInterval(tick);
     },

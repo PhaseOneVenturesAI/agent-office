@@ -1,4 +1,3 @@
-import { openWorkerConversation } from '../../ui/worker-conversation';
 /**
  * Who's waiting on you: N (and the count in the Workers panel) takes you to each in turn, and the
  * compass points to the ones you can't see. Also going to a worker's desk, opening its terminal
@@ -10,7 +9,7 @@ import type { Ctx } from '../../core/context';
 import type { CoreState } from '../../core/ctx';
 import type { Parts } from '../../core/parts';
 import { NextUp, waitingInOrder, waitingLabel } from '../../nextup';
-import { alertsForMe, waitingOnSomeone } from '../../notify';
+import { waitingOnSomeone } from '../../notify';
 import { store } from '../../state';
 import { openChanges } from '../../ui/changes';
 import { Compass, type Bearing } from '../../ui/compass';
@@ -40,7 +39,7 @@ export function installWaiting(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'wo
     }
     const waiting = waitingInOrder(store.workers.values());
     const of = waiting.length > 1 ? ` (${waiting.findIndex((x) => x.id === w.id) + 1} of ${waiting.length})` : '';
-    nextToast = toast(`${w.status === 'needs_input' ? `🙋 ${w.name} needs you` : `✅ ${w.name} is done`}${of}. E opens its conversation`);
+    nextToast = toast(`${w.status === 'needs_input' ? `🙋 ${w.name} needs you` : `✅ ${w.name} is done`}${of}. E opens its terminal`);
   }
 
   /** Puts you behind worker `id`, looking over its shoulder, with any window closed. False when there's no getting there (you're between floors, or it's gone). */
@@ -56,7 +55,7 @@ export function installWaiting(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'wo
   /** From a notification about worker `id`: over to its desk, with its terminal open to answer it. */
   function answerWorker(id: string) {
     goToWorker(id);
-    openWorker(id);
+    openWorkerTerminal(id);
   }
 
   /** The waiting worker you're standing at, if any: N skips it while anyone else is waiting. */
@@ -76,9 +75,7 @@ export function installWaiting(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'wo
   }
 
   function renderWaiting() {
-    // An alert — "need you" — so it counts only the workers you hired (see alertsForMe). N and the
-    // compass still know about everyone's; the pill just doesn't claim they need you.
-    const waiting = waitingInOrder(store.workers.values()).filter((w) => alertsForMe(w, store.me));
+    const waiting = waitingInOrder(store.workers.values());
     const el = $('waiting');
     el.classList.toggle('hidden', !waiting.length);
     el.classList.toggle('all-done', waiting.every((w) => w.status === 'done'));
@@ -122,16 +119,6 @@ export function installWaiting(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'wo
     openTerminal(net, id, () => openWorkerChanges(id), find);
   }
 
-  /** The game's default for agents; shells and explicit terminal/search actions stay terminals. */
-  function openWorker(id: string) {
-    const w = store.workers.get(id);
-    if (!w) return;
-    if (w.kind !== 'agent') return openWorkerTerminal(id);
-    if (w.lost) return parts.actions.fixLostWorktree(w);
-    if (isAsleep(w.status)) parts.actions.resumeWorker(w);
-    openWorkerConversation(net, id, () => openWorkerTerminal(id));
-  }
-
   /** 🔎 the chat and every terminal; a terminal line opens that terminal right at it. */
   function showSearch() {
     openSearch(openWorkerTerminal);
@@ -157,5 +144,5 @@ export function installWaiting(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'wo
     openQueue(net, { openTerminal: openWorkerTerminal });
   }
 
-  return { goToNextWaiting, goToWorker, answerWorker, renderWaiting, openWorker, openWorkerTerminal, openWorkerChanges, showSearch, showQueue };
+  return { goToNextWaiting, goToWorker, answerWorker, renderWaiting, openWorkerTerminal, openWorkerChanges, showSearch, showQueue };
 }
