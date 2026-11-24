@@ -22,8 +22,8 @@ export class WorkerNameplate extends THREE.Group {
     if (text === this.ownerText) return;
     this.ownerText = text;
     if (this.ownerSprite) { this.remove(this.ownerSprite); disposeSprite(this.ownerSprite); }
-    this.ownerSprite = textSprite(text, { bg: '#2b2d42', color: '#fffaf3', size: 24, border: '#fffaf3' });
-    this.ownerSprite.position.y = -0.11;
+    this.ownerSprite = textSprite(text, { bg: '#2b2d42', color: '#d6cbbd', size: 18, border: '#2b2d42' });
+    this.ownerSprite.position.y = -0.09;
     this.add(this.ownerSprite);
   }
 
