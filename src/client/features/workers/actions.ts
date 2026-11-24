@@ -27,8 +27,7 @@ import { providerLabel, resolvedProvider } from '../../ui/provider';
 import { openPull } from '../../ui/pull';
 import { openRepoPulls, workerRepos } from '../../ui/repos';
 import { openTerminal } from '../../ui/terminal';
-import { openLeadChooser } from '../../ui/dept-lead';
-import { openCeoChooser } from '../../ui/ceo';
+import { openRoleCharacter, roleKeyForWorker } from '../../ui/role-character';
 import { hiringPaused, usageLabel, usageTitle } from '../../ui/usage';
 
 // The kinds of thing you can use that this defines (see InteractKinds in world/types.ts).
@@ -387,7 +386,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
     const spent = w.kind === 'agent' && w.usage ? usageLabel(w.usage, workerProvider) : '';
     const shell = w.kind === 'shell';
     // A department manager's or the CEO's character is approachable as themselves: T talks to
-    // them through the role chooser; E opens Conversation directly.
+    // them through their authorized Conversation or isolated Ask entry point.
     const leadDept = w.kind === 'agent' ? store.departments.departments.find((d) => d.lead?.workerId === w.id) : undefined;
     const isCeo = w.kind === 'agent' && !!store.ceo.ceo && store.ceo.ceo.workerId === w.id;
     const role = isCeo || !!leadDept;
@@ -398,7 +397,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
         h('span.title', {}, `${sign ? `🪧 ${sign} · ` : ''}${isCeo ? '👔 ' : leadDept ? '🎖️ ' : ''}${w.name} · ${STATUS_LABEL[w.status]}`),
         doing ? aside(doing) : '',
         spent ? h('span.cost', { title: usageTitle(w.usage!, workerProvider) }, spent) : '',
-        key('E', w.kind === 'agent' ? 'Conversation' : 'Open terminal'),
+        key('E', role ? 'Talk' : w.kind === 'agent' ? 'Conversation' : 'Open terminal'),
         talkName ? key('T', `Talk to ${talkName}`) : '',
         key('C', 'Changes'),
         isAsleep(w.status) ? key('R', shell ? 'Restart' : 'Resume') : key('P', shell ? 'Run command' : 'Prompt'),
@@ -458,16 +457,14 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
       if (!it.deskId) return;
       if (key === 'L') return openDeskLabel(net, it.deskId);
       const w = store.workerAtDesk(it.deskId);
+      if (key === 'E' && w?.lost) return parts.waiting.openWorker(w.id);
+      const role = w && roleKeyForWorker(w.id);
+      if ((key === 'E' || key === 'T') && role) return openRoleCharacter(net, role);
       // Nobody is hired at the meeting table: a meeting seats its own workers there.
       if (!w && plan().byId.get(it.deskId)?.room) return key === 'E' ? parts.meeting.showMeeting() : undefined;
       if (key === 'B' && !w) return openShell(it.deskId);
       if (key === 'P') return promptAtDesk(it.deskId);
       if (key === 'E') return w ? parts.waiting.openWorker(w.id) : hireAtDesk(it.deskId);
-      if (key === 'T' && w?.kind === 'agent') {
-        if (store.ceo.ceo?.workerId === w.id) return openCeoChooser(net, w.id);
-        const dept = store.departments.departments.find((d) => d.lead?.workerId === w.id);
-        if (dept) return openLeadChooser(net, dept, w.id);
-      }
       if (key === 'C' && w) return openWorkerChanges(w.id);
       if (key === 'R' && w && isAsleep(w.status)) return resumeWorker(w);
       if (key === 'X' && w) {

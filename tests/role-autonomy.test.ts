@@ -38,3 +38,21 @@ test('permission preference changes wait for restart and rollback on persistence
   assert.match(WorkerManager.prototype.queueAutonomy.call(ctx as never, 'w', 'off')!, /could not be saved/);
   assert.equal(info.autonomyRequested, 'autonomous');
 });
+
+ test('current inspected provider versions preserve automatic and supervised launch policies', () => {
+  for (const [provider, version] of [['claude', '2.1.331'], ['codex', '0.171.0']] as const) {
+    for (const mode of ['autonomous', 'supervised', 'off'] as const) {
+      const info = { provider, autonomyRequested: mode } as WorkerInfo;
+      const args: string[] = [];
+      assert.equal(prepareAutonomy(info, '/fake/cli', args, () => version), undefined);
+      assert.deepEqual(args, provider === 'claude'
+        ? ['--permission-mode', mode === 'autonomous' ? 'auto' : 'manual']
+        : mode === 'autonomous' ? ['--sandbox', 'workspace-write', '--approve-for-me']
+        : ['--sandbox', 'read-only', '--ask-for-approval', 'on-request']);
+      assert.equal(info.autonomyApplied?.acknowledged, false);
+    }
+    const info = { provider, autonomyRequested: 'autonomous' } as WorkerInfo;
+    assert.match(prepareAutonomy(info, '/fake', [], () => version + '-unverified')!, /not verified/);
+    assert.match(prepareAutonomy(info, '/fake', ['--dangerously-bypass-approvals-and-sandbox'], () => version)!, /conflicting/);
+  }
+});

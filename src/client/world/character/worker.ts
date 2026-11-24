@@ -12,6 +12,7 @@ import { globe, papers } from './worker-props';
 import { DANCE, groove, type Dancing, type Stage } from './worker-dance';
 import { DEAD, STARVED, bones, crossedEyes, slump } from './worker-jail';
 import { packUp, waddle, type Leaving } from './worker-leave';
+import { updateWorkerNameplate, type WorkerNameplateRole } from './worker-nameplate';
 import { dressUp, growBeard, wearGarb } from './worker-dress';
 
 /** The little Claude worker that sits at a desk. Forward is +z. */
@@ -34,6 +35,7 @@ export class Worker {
   /** Its worktree was deleted outside the office (WorkerInfo.lost): its bubble says so until it's fixed. */
   private lost = false;
   private nameTag: THREE.Sprite | null = null;
+  private nameRole?: WorkerNameplateRole;
   private eyes: THREE.Mesh[] = [];
   private blinkAt = Math.random() * 4;
   status: WorkerStatus = 'starting';
@@ -240,13 +242,11 @@ export class Worker {
 
   setName(name: string) {
     this.label = name;
-    if (this.nameTag) {
-      this.root.remove(this.nameTag);
-      disposeSprite(this.nameTag);
-    }
-    this.nameTag = textSprite(name, { bg: '#2b2d42', color: '#fffaf3', size: 36, border: '#fffaf3' });
-    this.nameTag.position.y = 1.55;
-    this.root.add(this.nameTag);
+    this.nameTag = updateWorkerNameplate(this.root, this.nameTag, name, this.nameRole);
+  }
+
+  setRole(role?: WorkerNameplateRole) {
+    this.nameRole = role; this.setName(this.label);
   }
 
   setStatus(status: WorkerStatus, bounce: boolean) {

@@ -41,31 +41,68 @@ credentials, project settings and user skills are not inherited.
 
 - **Kimi 2.7.2:** verified embedded tool-policy implementation; an isolated config disables all
   tools, ACP declares no MCP servers, and additional approval requests are rejected.
-- **Claude Code 2.1.330:** unavailable. Empty tools and strict MCP flags were verified, but
-  safe/restricted mode does not disable administrator-managed hooks or integrations. A local
-  file check cannot establish effective remote policy. No unverified native adapter is enabled.
-- **Codex 0.171.0-alpha.13:** unavailable. Read-only sandboxing and individual tool flags do not
-  establish a global text-only tool boundary. Office never silently switches providers.
+- **Codex 0.171.0 on Linux, `gpt-6.2-sol` only:** a pinned static model catalog removes shell,
+  patch and model-advertised tools; explicit capability controls remove MCP/apps, hooks,
+  delegation, memory, browser and other action tools. Native dummy transport verified an empty
+  tool catalog and rejection of forged tool calls. No project or source-home configuration is
+  copied. The native CLI receives a fresh home/cwd, strict config, an ephemeral session, and the
+  approved question on stdin. Unknown/unspecified models and changed versions are refused.
+- **Claude Code 2.1.331:** unavailable. `--safe-mode` preserves subscription auth, but a native
+  dummy test demonstrated that managed startup hooks still execute with an empty tool catalog.
+  A local managed `disableAllHooks` setting stops them only when that policy wins; remote policy
+  can override the local source. No Claude Q&A adapter is enabled.
+
+Codex requires an explicit personal custodian even in shared-password offices. Office reads only
+that account's canonical `auth.json`, requires a ChatGPT OAuth login and a consistent account ID,
+and copies only its current access token into native `chatgptAuthTokens` mode. It never copies
+or writes a refresh token, invokes refresh, or changes the canonical sign-in. If fewer than three
+minutes remain, refresh through the custodian's existing native session/sign-in and retry. A
+concurrent native refresh may make an in-flight Q&A fail; retry reads the new snapshot. This
+avoids rotating a disposable copy and losing the owner's renewable login. API keys, PAT/agent
+identity tokens, host-login fallback, inherited provider URLs and custom runtime configuration
+are refused. `CODEX_ACCESS_TOKEN` is not used: this version treats it as PAT/agent identity.
+
+The process has a two-minute deadline and one-megabyte output ceiling; unexpected tool events,
+invalid output, failed auth and cleanup failures return unavailable. Answers enter only the
+separate staff Q&A history. This native no-tools boundary is not advertised as an OS sandbox.
 
 Unsupported-provider messages direct staff to a manager controller. A separate Q&A provider
 choice needs explicit owner authorization and is not implemented. Version checks are refreshed
 at launch, including prerelease suffixes. Temporary Kimi homes are removed on setup failures;
 closure errors return a failure instead of leaving the caller waiting indefinitely.
 
-Only source/help inspection and fake executable tests were used; no paid provider turn or native
-authentication change was performed. Capability references: [Claude CLI](https://code.claude.com/docs/en/cli-reference),
+The Codex adapter also has a loopback-only native dummy-provider regression fixture (see
+`tests/fixtures/codex-qa-native/README.md`). It does not use real credentials or verify live
+subscription acceptance; the fixture performs no paid provider turn or real authentication
+change. Capability references: [Claude CLI](https://code.claude.com/docs/en/cli-reference),
 [managed hook scope](https://code.claude.com/docs/en/settings-reference#disableallhooks), and
-[Codex tool composition](https://github.com/openai/codex/blob/main/codex-rs/core/src/tools/spec_plan.rs).
+[Codex tool composition](https://github.com/openai/codex/blob/rust-v0.171.0/codex-rs/core/src/tools/spec_plan.rs).
 
 ## Talking to the characters
 
 The CEO and managers are permanent characters: send-home and role deletion are refused server-side
 (browser, hook, and landed-merge paths), and the desk hint shows them protected. Pause and continue
-preserve their identities and history. Walk up and press **T** or **E** to open Conversation;
-**Terminal** is an explicit fallback. Conversation includes durable, paged history (the provider
+preserve their identities and history. Click a character, or walk up and press **T** or **E**. Owners
+and controllers with current subscription access open Conversation; **Terminal** is an explicit
+fallback. An off-shift role offers an explicit **Start shift** on its saved engine (the existing
+ask-each-time policy still shows its picker). Staff in a manager's Q&A audience open the same
+isolated Ask used in Roles, including its separate custodian consent. Looking at or approaching a
+character never starts a provider, shares credentials, or grants consent. Conversation includes durable, paged history (the provider
 session stays the bounded execution context), clickable artifact links, supported native approval
 choices, and honest status labels (turn ended ≠ reviewed; stopped ≠ completed). Unsupported questions
 open in Terminal. Dictation and read-aloud reuse the existing browser speech and say so.
+
+Off-shift characters use the existing worker appearance and desks on the original map.
+Gold nameplates identify the CEO (with a small crown) and each department manager, whether
+active or off shift. The role and personal name appear once; a default name such as `CEO` or
+`MarketingManager` does not repeat the title. Regular worker tags keep their existing colors.
+Nameplate sprites and textures are reused until the displayed name or role changes. Each role's
+display home is retained in `.agent-office/role-homes.json`: first from its retained worker's seat,
+otherwise from an existing built department/office desk. It is a display reference, not a runtime
+worker or reserved seat. If the desk is occupied, the character stands beside it; shared home
+references use distinct nearby spots. A real role worker replaces the off-shift figure. Floor and
+map changes remove the old figure and hit target. An unreadable home file is preserved and reported,
+rather than overwritten or presented as a successful home assignment.
 
 ## Roles view (☰ → 🛡️ Roles)
 
@@ -94,7 +131,8 @@ are the front door.
 
 ## Limits (honest)
 
-- Off-shift characters are card + desk presence, not a standing 3D character.
+- Display homes reserve no worker capacity and never expand the map. Only a launched role has a
+  provider runtime; the off-shift character itself does not consume a session.
 - Staff Q&A draws on the approved snapshot, not the manager's full history; the manager's own
   session is what preserves controller history. Kimi's tool-free home is verified against its
   documented config and the office's permission denials; a paid one-shot behavioral re-verification
@@ -147,8 +185,8 @@ Verified installed modes:
 
 | Provider | Automatic | Manual (`off` / `supervised`) |
 | --- | --- | --- |
-| Claude Code 2.1.330 | `--permission-mode auto` | `--permission-mode manual` |
-| Codex 0.171.0-alpha.13 | `--approve-for-me --sandbox workspace-write` | `--ask-for-approval on-request --sandbox read-only` |
+| Claude Code 2.1.330 / 2.1.331 | `--permission-mode auto` | `--permission-mode manual` |
+| Codex 0.171.0-alpha.13 / 0.171.0 | `--approve-for-me --sandbox workspace-write` | `--ask-for-approval on-request --sandbox read-only` |
 | Kimi 2.7.2 ACP | `session/set_mode` with `auto` | `session/set_mode` with `default` |
 
 Kimi's ACP subcommand ignores root `--yolo` and `--auto` flags. ACP advertises `auto` for safe
@@ -171,3 +209,7 @@ For agents, desk **E**, the workers sidebar and waiting notifications open Conve
 Roles settings are saved explicitly and confirmed by a correlated server response. Rejected saves retain the entered values and show an inline error; typing a newer draft while a save is pending does not make that draft “saved.” Worker and department updates preserve the mounted editors, focus, pending staff question and unsubmitted consent choice. A changed consent scope is fetched again for review rather than silently authorizing its new people/provider. Ask refusals and provider failures end the pending indicator with an inline reason and retain the question for retry.
 
 Requested autonomy and current-session launch settings are displayed separately. Saving a preference does not claim to change an existing process. Legacy unconfirmed labels are identified as such and need an explicit save. Runtime launch details come from the provider adapter; missing details remain “not reported,” not an inferred effective permission mode.
+
+The 23 November 2026 deployment check inspected Claude 2.1.331 and Codex 0.171.0 help on the actual VPS. Both retain the launch modes above. These exact versions are accepted alongside the earlier inspected versions; unknown versions and conflicting permission flags still fail closed. This verifies the requested launch configuration, not runtime permission acknowledgment or isolated staff Q&A support.
+
+CEO assignment commands accept an objective on stdin or with `--objective`; `--execute` explicitly starts the manager. The generated CEO instructions use those supported arguments. Role display names, including spaces and emoji, stay intact while worktree and branch names use a safe slug.

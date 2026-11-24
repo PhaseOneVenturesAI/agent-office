@@ -42,17 +42,17 @@ curl -fsSL https://raw.githubusercontent.com/AgentSystemLabs/agent-office/main/i
 - **Who's spending what, on the wall.** The 💸 Cost wall (☰ menu) adds every agent's session usage up per person and per provider — tokens, and dollars where the provider can price them — next to the office ledger's tracked spend for today and all time. It follows the numbers as they move. Session corrections can lower tracked totals, but cannot make today's spend negative or credit later spending against the daily budget.
 - **Your team's computers, on the wall.** A laptop or a home machine joins the office with `agent-office join <office-url> --token …` (an admin mints the token in ☰ → 🛰️ Satellites) and shows up there: online or not, what it is, and which agent CLIs it could run. The token's hash is all the office keeps. Optional explicit Paradev mappings add read-only, timestamped local-session observations; Cloudflare Access uses your normal user login. Temporary Office outages reconnect with capped backoff using the same credentials; Ctrl-C stops even while waiting. See [local presence and CI evidence](docs/local-presence-delivery.md).
 - **Reuse existing CI evidence.** PRs and linked queue records show real GitHub runs for their head commit, one watcher per run/attempt and shared reads. Missing checkout, target and configuration evidence stays visibly incomplete; these controls never start CI.
-- **From your phone, too.** `/lite` is the office in 2D: every worker and what it's waiting on, its terminal with the keys a phone keyboard lacks, and the boards. The 3D office offers it on a phone or a slow computer.
+- **From your phone, too.** `/lite` is the office in 2D: every worker and what it's waiting on, agent Conversations with an explicit Terminal fallback and mobile keypad, and the boards. Agent cards and notifications open Conversation; shells keep their terminal. The 3D office offers it on a phone or a slow computer.
 - **GitHub on the walls.** Issues and pull requests hang on cork boards. Hand an issue to a worker, queue tasks, give a worker its own git worktree and open its PR with one key (if one gets deleted behind the office's back, the worker waits at its desk until you rebuild it). One task can span several projects: the worker gets a worktree of each, and a PR in each that links the others.
 - **Agents that manage agents.** Project CEOs assign objectives to department managers, and authorized managers delegate workers through the floor queue. Ordinary workers cannot create an orchestration tree; people can still start personal agents on their own sign-ins. A worker that opens its pull request itself (`gh pr create`) shows it at its desk, and one the office missed can be told which is its own (`office-workers pr`). Permanent CEOs and managers cannot be sent home or deleted.
 - **The Review Room.** Creative work waits for a human verdict (☰ → 🎬 Review room). Stage a link with `office-workers review <url> --title "…"` or `stage_review`, then accept or reject it with a reason. The verdict stays with that deliverable in review history and goes back to its originating worker. It never becomes a global rule for other projects.
-- **Together.** Voice, chat, screen sharing on the lounge TV and a shared whiteboard. Self-hosted offices can use [expiring TURN relay credentials](docs/self-hosting.md#voice-across-strict-nats) when direct calls cannot connect.
+- **Together.** Voice, chat, screen sharing on the lounge TV and a shared whiteboard. Self-hosted offices can use [expiring TURN relay credentials](docs/self-hosting.md#voice-across-strict-nats) when direct calls cannot connect. A failed voice connection offers **Copy details** with local connection diagnostics; nothing is sent automatically, and credentials, names and network addresses are excluded.
 
 - **Other maps.** Turn the whole building into a castle: sit on a throne of iron blades while your workers line up before you when they're done, send new ones off through the Hand of the King, and watch their beards grow long and grey as they toil. Send one home and the Kingsguard runs up from the dungeon, marches it down the stairs and throws it in a cell, where it starves, dies and rots down to a skeleton. Or into a space station in orbit, the Earth turning outside its windows: you run it from the captain's chair on the bridge, and a worker sent home is marched to the airlock and blown out into space, to drift off past the observation windows with everyone who went before it. Or make a map of your own, with its own way of seeing workers off in JSON ([docs/maps.md](docs/maps.md)).
 
 There's a lot more (a rooftop bar, an office dog, an arcade, supercars in the garage to drive round a scenic loop past a farm, pines, mountains and a beach): see [docs/features.md](docs/features.md).
 
-**Departments on each floor.** Open **☰ → Departments** or the 2D view: one **CEO per project** — a permanent character privately owned by the project owner — directs the department **managers**, who delegate the actual workers through the floor queue. Walk up to any of them and press **T** to talk. Staff ask managers read-only questions on a separate no-tools session that never touches the manager’s own session; **☰ → 🛡️ Roles** shows who controls each character — owner, controllers, Q&A audience, custodian, engine, autonomy. [Department workflow and limits](docs/features.md#departments-and-versioned-deliverables).
+**Departments on each floor.** Open **☰ → Departments** or the 2D view: one **CEO per project** — a permanent character privately owned by the project owner — directs the department **managers**, who delegate the actual workers through the floor queue. Gold nameplates identify the CEO and each department manager, on or off shift; regular workers keep their existing tags. Characters remain visible off shift at their saved homes in the existing office; an occupied home puts them beside its desk without reserving worker capacity. Click a character or press **E / T**: authorized owners/controllers open Conversation with an explicit Terminal fallback, or explicitly start an off-shift role on its saved engine. Staff can ask managers read-only questions directly from the character on a separate no-tools session that never touches the manager’s own session; **☰ → 🛡️ Roles** shows who controls each character — owner, controllers, Q&A audience, custodian, engine, autonomy. [Department workflow and limits](docs/features.md#departments-and-versioned-deliverables).
 
 ## Requirements
 
@@ -418,6 +418,8 @@ Server edits restart the server, not the workers. After changing `ptyhost.ts`, b
 
 [docs/code-layout.md](docs/code-layout.md) says where the code lives, and where a new feature's pieces go.
 
+For local walking/rendering changes, `node tests/walking-performance-ui.mjs` exercises the actual office with synthetic workers, records frame timings and captures desktop/390px screenshots. See [the performance fixture](docs/code-layout.md#walking-and-picking-checks) for baseline comparison and limits.
+
 The rules for coding agents working on this repository are in [`AGENTS.md`](AGENTS.md), which Codex, OpenCode and most other agent CLIs read. `CLAUDE.md` only imports it for Claude Code, so new rules go in `AGENTS.md`.
 
 Every change to the app that lands on `main` is published as a GitHub release by [`.github/workflows/release.yml`](.github/workflows/release.yml), and `install.sh` installs the newest one. Bump `package.json`'s version to start a new minor.
@@ -444,6 +446,10 @@ Every change to the app that lands on `main` is published as a GitHub release by
 [MIT](LICENSE)
 
 ### Existing agents: readiness, conversation and handoffs
+
+Named role workers keep their display names while Office creates safe branch and worktree names for them.
+
+Conversation keeps the agent’s status, replies and message draft in front. Expand **Conversation details** for model information and speech behavior.
 
 In **Your sign-ins → Provider readiness**, check whether this Office host can find each CLI, what account evidence it has, and the selected versus last reported model for your workers on the current floor. Credential presence does not prove service access; remaining subscription quota stays **unknown**. This panel never switches providers or models.
 
@@ -481,8 +487,10 @@ Retired role workers retain their private-role access rules after an engine swap
 
 Engine swaps wait for server confirmation; an interrupted role update can be retried with **Finish role swap** without repeating its handoff.
 
-Staff Q&A currently supports verified Kimi2.7.2 only. Claude and Codex report why isolated Q&A is unavailable and direct staff to a manager controller; providers never switch automatically. See [Q&A capabilities](docs/department-leads.md#staff-qa--isolated-from-the-manager).
+Staff Q&A supports verified Kimi 2.7.2 and, on Linux, Codex 0.171.0 with explicitly selected `gpt-6.2-sol`. Codex uses the consenting custodian’s personal ChatGPT access token, without copying refresh credentials; expired or unsupported sign-ins fail closed. Claude remains unavailable because managed startup hooks can run outside its tool restrictions. Models and providers never switch automatically. See [Q&A capabilities](docs/department-leads.md#staff-qa--isolated-from-the-manager).
 Shared department managers use explicit subscription consent in **Roles**: the named custodian approves the exact project, department, provider and controllers, including same-provider department workers. Staff Q&A is a separate optional consent. Personal workers and private CEOs retain their ownership rules.
 
 Project CEOs and department managers are permanent: pause/continue in Conversation preserves the identity and history. Explicit autonomy settings now select verified provider modes at the next process start; the Roles view distinguishes saved policy from the current launch. See [role autonomy](docs/department-leads.md#runtime-autonomy).
 Desk **E**, worker-list clicks and waiting notifications open Conversation for agents; Terminal remains an explicit fallback. Roles preserves unsent drafts during live worker updates and confirms settings saves only after the server acknowledges them.
+
+Role autonomy also recognizes the inspected Claude Code 2.1.331 and Codex 0.171.0 releases. Existing sessions keep their current settings; unknown CLI versions still require verification before a new role launch. See [runtime autonomy](docs/department-leads.md#runtime-autonomy).

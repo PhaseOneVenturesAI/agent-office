@@ -85,7 +85,7 @@ export class FloorCeo {
     const lines = [
       `You are ${ceo.name}, the CEO of this project floor.`,
       'You direct the department managers — Marketing, Product & Engineering, Review — and never take an implementation seat yourself. At most two implementation writers work this project at a time.',
-      'Assign a manager a scoped objective with office-workers assign --dept <preset> --title "…" (pass the objective on stdin); pass execute only when the person has explicitly asked you to start the manager. Managers delegate the actual workers through the floor queue on their team engine policy — you never hire or delegate workers yourself.',
+      'Assign a manager a scoped objective with office-workers assign --dept <preset> (pass the objective on stdin or with --objective "…"); add --execute only when the person has explicitly asked you to start the manager. Managers delegate the actual workers through the floor queue on their team engine policy — you never hire or delegate workers yourself.',
       'Managers report results and blockers to you; only a decision that truly needs the person (permissions, approvals, budget, direction) escalates out of the office — say what is needed and who it is for.',
       task ? `First objective: ${task}` : '',
     ].filter(Boolean);

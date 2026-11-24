@@ -7,7 +7,7 @@ import { qaLaunch, qaBaseEnv, cliVersion } from '../src/server/staff-qa.js';
 
 test('unverified providers fail closed with an actionable reason, never a fallback launch',()=>{
  assert.match(String(qaLaunch('claude')),/no verified isolated Q&A.*manager controller/);
- assert.match(String(qaLaunch('codex')),/no verified global zero-tools.*manager controller/);
+ assert.match(String(qaLaunch('codex')),/qualified only.*gpt-6.2-sol/);
  for(const provider of ['claude','codex'] as const)assert.match(String(qaLaunch(provider)),/will not switch/);
 });
 
