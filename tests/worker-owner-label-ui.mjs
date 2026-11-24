@@ -5,7 +5,7 @@ import { chromium } from 'playwright-core';
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 const root = realpathSync(process.env.OFFICE_LABEL_ROOT ?? process.cwd());
-const out = process.env.OFFICE_LABEL_OUTPUT ?? '/tmp/agent-office-owner-tag-polish'; mkdirSync(out, { recursive: true });
+const out = process.env.OFFICE_LABEL_OUTPUT ?? '/tmp/agent-office-single-nameplate'; mkdirSync(out, { recursive: true });
 const server = await createServer({ configFile: root + '/vite.config.ts', root: root + '/src/client', cacheDir: root + '/node_modules/.vite-owner-label', server: { host: '127.0.0.1', port: 0, fs: { allow: [root, realpathSync(root + '/node_modules')] } } }); await server.listen();
 const browser = await chromium.launch({ executablePath: process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 2 });
@@ -45,7 +45,7 @@ try {
     const stable = JSON.stringify(old) === JSON.stringify(label.children.map(c => c.uuid));
     const owners = [...a.parts.views.workerViews.values()].map(v => v.model.nameTag.ownerText);
     s.workers.get('worker-0').ownerName = 'Updated owner'; s.emit('workers');
-    const updated = label.ownerText === 'Owner: Updated owner' && label.children.length === 2;
+    const updated = label.ownerText === 'Owner: Updated owner' && label.children.length === 1;
     s.workers.get('worker-0').ownerName = 'Jonathan'; s.emit('workers');
     return { stable, updated, owners };
   });

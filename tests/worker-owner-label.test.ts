@@ -9,11 +9,11 @@ test('owner label reuses textures until verified text changes and disposes repla
   t.after(() => before ? Object.defineProperty(globalThis, 'document', before) : Reflect.deleteProperty(globalThis, 'document'));
   const label = new WorkerNameplate(); label.setName('Issues agent'); label.setOwner('Info');
   const children = [...label.children]; let disposed = 0;
-  (children[1] as any).material.map.addEventListener('dispose', () => disposed++);
+  (children[0] as any).material.map.addEventListener('dispose', () => disposed++);
   for (let i = 0; i < 20; i++) { label.setName('Issues agent'); label.setOwner('Info'); }
-  assert.deepEqual(label.children, children); assert.deepEqual(drawn, ['Issues agent', 'Owner: Info']);
-  label.setOwner('Former account'); assert.equal(disposed, 1); assert.equal(label.children.length, 2);
-  label.setName('☠️ Issues agent'); assert.equal(label.children.length, 2);
+  assert.deepEqual(label.children, children); assert.deepEqual(drawn, ['Issues agent', 'Owner: Unknown', 'Issues agent', 'Owner: Info']);
+  label.setOwner('Former account'); assert.equal(disposed, 1); assert.equal(label.children.length, 1);
+  label.setName('☠️ Issues agent'); assert.equal(label.children.length, 1);
   label.setOwner(undefined); assert.equal(drawn.at(-1), 'Owner: Unknown');
   label.setOwner('Office'); assert.equal(drawn.at(-1), 'Owner: Office');
   label.dispose(); assert.equal(label.children.length, 0);
