@@ -38,6 +38,8 @@ export interface WorkerInfo {
   effort?: AgentEffort;
   /** Explicit launch policy; separate from a role’s saved preference. */
   autonomyRequested?: 'off' | 'supervised' | 'autonomous';
+  autonomySource?: 'account' | 'explicit';
+  autonomyError?: string;
   autonomyApplied?: { mode: 'off' | 'supervised' | 'autonomous'; provider: string; detail: string; acknowledged: boolean };
   deskId: string;
   name: string;

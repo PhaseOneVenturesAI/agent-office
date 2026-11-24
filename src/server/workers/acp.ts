@@ -39,9 +39,10 @@ export function launchAcp(ctx: WorkerContext, w: Worker, term: HeadlessTerminal,
       firstPrompt: options.prompt,
     },
     {
-      autonomy: (mode) => {
+      autonomy: (mode, source) => {
         if (w.dsh !== session) return;
-        info.autonomyApplied = { mode, provider: 'kimi', acknowledged: true, detail: `Kimi ACP acknowledged ${mode === 'autonomous' ? 'safe automatic approvals' : 'manual approvals'}` };
+        info.autonomyApplied = mode ? { mode, provider: 'kimi', acknowledged: true, detail: `Kimi ${source === 'observed' ? 'reports' : 'acknowledged'} ${mode === 'autonomous' ? 'automatic review' : 'manual approvals'}` } : undefined;
+        if (mode === info.autonomyRequested) delete info.autonomyError;
         ctx.emit(w); ctx.persist();
       },
       assistant: (text) => { if (w.dsh === session) ctx.assistant(w, { id: `${info.sessionId}:${randomUUID()}`, text }); },

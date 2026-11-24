@@ -1,4 +1,6 @@
 import type { RolePresenceClientMsg, RolePresenceServerMsg } from './protocol/role-presence.js';
+import type { PersonalAutonomyClientMsg, PersonalAutonomyServerMsg } from './protocol/personal-autonomy.js';
+export * from './protocol/personal-autonomy.js';
 export * from './protocol/role-presence.js';
 import type { VoiceIceClientMsg, VoiceIceServerMsg } from './protocol/voice-ice.js';
 export * from './protocol/voice-ice.js';
@@ -66,6 +68,7 @@ export * from './protocol/usage.js';
 export * from './protocol/workers.js';
 
 export type ClientMsg =
+  | PersonalAutonomyClientMsg
   | RolePresenceClientMsg
   | VoiceIceClientMsg
   | RoleSubscriptionClientMsg
@@ -106,6 +109,7 @@ export type ClientMsg =
   | DogClientMsg;
 
 export type ServerMsg =
+  | PersonalAutonomyServerMsg
   | RolePresenceServerMsg
   | VoiceIceServerMsg
   | RoleSubscriptionServerMsg
