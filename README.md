@@ -486,3 +486,5 @@ Shared department managers use explicit subscription consent in **Roles**: the n
 
 Project CEOs and department managers are permanent: pause/continue in Conversation preserves the identity and history. Explicit autonomy settings now select verified provider modes at the next process start; the Roles view distinguishes saved policy from the current launch. See [role autonomy](docs/department-leads.md#runtime-autonomy).
 Desk **E**, worker-list clicks and waiting notifications open Conversation for agents; Terminal remains an explicit fallback. Roles preserves unsent drafts during live worker updates and confirms settings saves only after the server acknowledges them.
+
+Role autonomy also recognizes the inspected Claude Code 2.1.331 and Codex 0.171.0 releases. Existing sessions keep their current settings; unknown CLI versions still require verification before a new role launch. See [runtime autonomy](docs/department-leads.md#runtime-autonomy).
