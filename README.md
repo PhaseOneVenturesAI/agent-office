@@ -445,6 +445,8 @@ Every change to the app that lands on `main` is published as a GitHub release by
 
 ### Existing agents: readiness, conversation and handoffs
 
+Conversation keeps the agent’s status, replies and message draft in front. Expand **Conversation details** for model information and speech behavior.
+
 In **Your sign-ins → Provider readiness**, check whether this Office host can find each CLI, what account evidence it has, and the selected versus last reported model for your workers on the current floor. Credential presence does not prove service access; remaining subscription quota stays **unknown**. This panel never switches providers or models.
 
 Open an agent from its desk, worker list or waiting notification to enter **Conversation**. Claude, Kimi and Codex show complete assistant replies and supported native permission requests as clickable choices. Type or dictate a draft, review it, then press **Send**. **Speak new replies** opts into browser/OS speech; **Stop audio** stops playback and dictation, while **Interrupt turn** interrupts a running agent. **Terminal** remains available for unsupported questions and setup screens. Kimi approvals are shown one at a time in arrival order; the worker keeps asking for input until every pending request is answered. No terminal output is read aloud. See [agent conversation and handoffs](docs/agents.md#conversation-and-explicit-handoffs) and [approval capabilities](docs/conversation-approvals.md) for boundaries and recovery behavior.

@@ -36,6 +36,7 @@ export function openWorkerConversation(net: Net, workerId: string, terminal: () 
   const terminalButton = h('button.btn', { type: 'button' }, 'Terminal');
   const handoff = h('button.btn', { type: 'button' }, 'Handoff');
   const note = h('p.note', {}, 'Loading this existing agent…');
+  const engineDetails = h('p.note');
   const approvals = approvalCard(net, workerId, () => { modal.close(); terminal(); });
   const earlier = h('button.btn.small', { type: 'button' }, 'Load earlier messages');
   const transcript = h('div.conversation-transcript', { role: 'log', 'aria-label': 'Conversation transcript', 'aria-live': 'polite' });
@@ -50,10 +51,11 @@ export function openWorkerConversation(net: Net, workerId: string, terminal: () 
   const el = h('div.modal.worker-conversation', { role: 'dialog', 'aria-label': `${worker.name} conversation` },
     h('header', {}, h('h2', {}, `${worker.name} · Conversation`), close), h('div.body', {},
       h('div.conversation-actions', {}, terminalButton, handoff), note, approvals.element,
-      h('p.note', {}, 'This is the ongoing conversation: replies appear here, links open the artifact, and history pages in below. The character keeps its session and model. Supported permission choices appear here. Terminal remains available for other questions and setup prompts.'),
       earlier, transcript, form,
       h('div.conversation-actions', {}, h('label', {}, voice, ' Speak new replies'), stop, interrupt),
-      h('p.note', {}, speaker.available ? 'Dictation and read-aloud use your browser/OS speech; review sensitive work in text. Closing or disconnecting stops audio.' : 'Speech is unavailable in this browser; typed messages still work.')));
+      h('details', {}, h('summary', {}, 'Conversation details'), engineDetails,
+        h('p.note', {}, 'You’re talking to this agent in its existing session. Open Terminal for setup prompts and other terminal actions.'),
+        h('p.note', {}, speaker.available ? 'Dictation and read-aloud use your browser/OS speech. Closing or disconnecting stops audio.' : 'Speech is unavailable in this browser; typed messages still work.'))));
   const renderMessage = (m: ConversationMessage, fresh: boolean) => {
     if (transcript.querySelector(`[data-id="${CSS.escape(m.id)}"]`)) return;
     const who = m.role === 'assistant' ? worker.name : m.by ? `You (${m.by})` : 'You';
@@ -74,7 +76,8 @@ export function openWorkerConversation(net: Net, workerId: string, terminal: () 
       ? 'Disconnected. Draft kept; reconnect to continue.'
       : !supported
         ? 'Structured replies are unavailable for this provider; use its terminal.'
-        : `${w.provider ?? 'Agent'} · ${statusLine} · selected model ${w.model ?? 'provider default'} · last reported ${w.usage?.model ?? 'unknown'} · quota unknown here`;
+        : `${w.provider ?? 'Agent'} · ${statusLine}`;
+    engineDetails.textContent = `Selected model: ${w.model ?? 'provider default'}. Last reported: ${w.usage?.model ?? 'unknown'}. Subscription quota is unavailable here.`;
     approvals.paint();
   };
   const offMessage = net.onMessage((msg) => {
