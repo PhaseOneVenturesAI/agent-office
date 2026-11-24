@@ -1,3 +1,4 @@
+import { canUseWorker, OWN_WORKER } from '../worker-ownership.js';
 import type http from 'node:http';
 import { DESK_BY_ID } from '../../shared/layout.js';
 import type { Ctx } from '../office/context.js';
@@ -24,7 +25,9 @@ export async function officeQueue(ctx: Ctx, req: http.IncomingMessage, res: http
   };
   if (req.method === 'GET') return send(res, 200, view());
   if (req.method === 'DELETE') {
-    const err = floor.queue.remove(url.searchParams.get('task') ?? '');
+    const task = floor.queue.state().tasks.find((t) => t.id === url.searchParams.get('task'));
+    if (!task || !canUseWorker(ctx, floor.workers.ownerOf(agent.id), task.owner, task.provider ?? floor.workers.defaultProvider)) return send(res, 403, { error: OWN_WORKER });
+    const err = floor.queue.remove(task.id);
     return err ? send(res, 400, { error: err }) : send(res, 200, view());
   }
   if (req.method !== 'POST') return send(res, 405, { error: 'GET, POST or DELETE' });

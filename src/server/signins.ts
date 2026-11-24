@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { migratePersonalGitConfig, personalEnv } from './personal-env.js';
 import * as pty from '@lydell/node-pty';
 import type { SignInKind, SignInState, SignInsState } from '../shared/protocol.js';
 import { codexSignedIn, codexWho, defaultCodexHome, defaultKimiHome, deviceLogin, findCodex, findGithub, findKimi, kimiSignedIn, lastWords, plain, run, seed, trust, writeGitConfig, type Flow } from './signin-flows.js';
@@ -20,8 +21,8 @@ import { codexSignedIn, codexWho, defaultCodexHome, defaultKimiHome, deviceLogin
  * `codex login --device-auth` or `gh auth login --web` against the account's folders and hands the
  * browser the page to open (and the one-time code). A token from `claude setup-token`, a Kimi or
  * OpenAI API key, or a GitHub token can be pasted instead, and a shell at a desk runs with the same
- * folders, so `claude auth login` typed there works too. Admins may keep using the office machine's
- * own sign-ins.
+ * folders, so `claude auth login` typed there works too. Named accounts, including admins, always
+ * use their own sign-ins. Legacy selections of the office's credentials are ignored.
  *
  * An office without accounts (you alone, on the shared password) never comes here: everything runs
  * on the machine's own CLIs, exactly as before.
@@ -89,8 +90,8 @@ export class SignIns {
     private gh: string | null,
     /** The office's own environment, which everyone's is built on. */
     private base: () => Record<string, string>,
-    /** Whether the account may use the office's own sign-ins (admins). */
-    private mayUseOffice: (accountId: string) => boolean,
+    /** Retained constructor compatibility; named accounts never use office credentials. */
+    _mayUseOffice: (accountId: string) => boolean,
     private onChange: (accountId: string) => void,
   ) {
     this.homes = path.join(dataDir, 'homes');
@@ -104,14 +105,14 @@ export class SignIns {
       kimi: { ...l.kimi, how: this.how(id, s, 'kimi') },
       codex: { ...l.codex, how: this.how(id, s, 'codex') },
       github: { ...l.github, how: this.how(id, s, 'github') },
-      office: this.mayUseOffice(id),
+      office: false,
     };
   }
 
   /** Whether `id` has a sign-in of `which` its workers can start on, as far as the last look knows. */
   ready(id: string, which: SignInKind): boolean {
     const s = this.load(id);
-    return this.how(id, s, which) !== 'login' || !!s.seen?.[which];
+    return s[which]?.use !== 'office' && (this.how(id, s, which) === 'token' || !!s.seen?.[which]);
   }
 
   /** What to tell someone who needs `which` signed in first. */
@@ -147,6 +148,7 @@ export class SignIns {
   apply(id: string, env: Record<string, string>, dirs: string[] = [], only?: SignInKind): Record<string, string> {
     const s = this.load(id);
     const home = this.prepare(id);
+    personalEnv(env, home);
     const skip = (k: SignInKind) => only !== undefined && only !== k;
     if (!skip('claude') && this.how(id, s, 'claude') !== 'office') {
       for (const k of CLAUDE_VARS) delete env[k];
@@ -175,7 +177,7 @@ export class SignIns {
   ghAs(id: string): GhAs | undefined | string {
     const s = this.load(id);
     if (this.how(id, s, 'github') === 'office') return undefined;
-    if (!s.seen?.github) return this.why('github');
+    if (!this.ready(id, 'github')) return this.why('github');
     return { key: id, env: this.apply(id, this.base(), [], 'github') };
   }
 
@@ -260,15 +262,9 @@ export class SignIns {
     return r.code === 0 ? undefined : `GitHub didn't take that token: ${r.last || 'gh auth login failed'}`;
   }
 
-  /** Uses the office machine's own sign-in (admins only). */
-  useOffice(id: string, which: SignInKind): string | undefined {
-    if (!this.mayUseOffice(id)) return "Only admins can use the office's own sign-ins";
-    this.stop(id, which);
-    const s = this.load(id);
-    s[which] = { use: 'office' };
-    this.save(id, s);
-    void this.look(id, true);
-    return undefined;
+  /** Kept for older clients: account roles never grant somebody else's subscription. */
+  useOffice(_id: string, which: SignInKind): string {
+    return this.why(which);
   }
 
   async signOut(id: string, which: SignInKind) {
@@ -317,17 +313,18 @@ export class SignIns {
 
   // ---------------------------------------------------------------------------
 
-  /** How `which` signs `id` in. A demoted admin's 'office' no longer counts: back to their own. */
-  private how(id: string, s: Saved, which: SignInKind): SignInState['how'] {
+  /** Old office selections resolve to personal login, never the host's credentials. */
+  private how(_id: string, s: Saved, which: SignInKind): SignInState['how'] {
     const use = s[which]?.use;
-    if (use === 'office') return this.mayUseOffice(id) ? 'office' : 'login';
     return use === 'token' ? 'token' : 'login';
   }
 
   private get(id: string): Live {
     let l = this.live.get(id);
     if (!l) {
-      const seen = this.load(id).seen ?? {};
+      const saved = this.load(id);
+      const seen = { ...saved.seen };
+      for (const kind of KINDS) if (saved[kind]?.use === 'office') delete seen[kind];
       l = {
         claude: seen.claude ? { status: 'ok', who: seen.claude } : { status: 'none' },
         kimi: seen.kimi ? { status: 'ok', who: seen.kimi } : { status: 'none' },
@@ -354,6 +351,7 @@ export class SignIns {
       seed(path.join(home, 'claude'));
       this.writeGitConfig(id);
     }
+    migratePersonalGitConfig(home);
     return home;
   }
 
@@ -386,14 +384,14 @@ export class SignIns {
 
   /** The environment for a CLI run as `id`'s own login of a kind (never a pasted token or the office's). */
   private envFor(id: string, vars: string[], sub: string, key: string): Record<string, string> {
-    const env = this.base();
+    const env = personalEnv(this.base(), this.prepare(id));
     for (const k of vars) delete env[k];
     env[key] = path.join(this.prepare(id), sub);
     return env;
   }
 
   private githubEnv(id: string): Record<string, string> {
-    const env = this.base();
+    const env = personalEnv(this.base(), this.prepare(id));
     for (const k of GITHUB_VARS) delete env[k];
     const home = this.prepare(id);
     env.GH_CONFIG_DIR = path.join(home, 'gh');
@@ -627,7 +625,9 @@ export class SignIns {
   /** Keeps who the last look found, for the next start of the office. */
   private remember(id: string, which: SignInKind, who: string | undefined) {
     const s = this.load(id);
-    if ((s.seen?.[which] ?? undefined) === who) return;
+    const legacy = s[which]?.use === 'office';
+    if (legacy) delete s[which]; // The inspection above used only this account's native home.
+    if (!legacy && (s.seen?.[which] ?? undefined) === who) return;
     s.seen = { ...s.seen, [which]: who };
     if (!who) delete s.seen[which];
     this.save(id, s);
