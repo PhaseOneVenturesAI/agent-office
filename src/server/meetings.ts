@@ -1,9 +1,8 @@
 import { dismissMeeting } from './meeting-dismiss.js';
-import { execFile } from 'node:child_process';
+import { COMMIT_ASK_MS, commitMeeting, type CommitAsk } from './meeting-commit.js';
 import { randomBytes } from 'node:crypto';
 import { closeSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { promisify } from 'node:util';
 import { MEETING_SEATS } from '../shared/layout.js';
 import { MEETING_NOTES_DIR, MEETING_PATTERNS, isMeetingPattern, meetingRecord, outputProblem, slugify } from '../shared/meetings.js';
 import { isAgentEffort, isAgentProvider, tokensOf, type AgentChoice, type AgentEffort, type AgentProvider, type Meeting, type MeetingRecord, type MeetingRequest, type MeetingState, type MeetingTurn, type WorkerInfo, type WorkerStatus } from '../shared/protocol.js';
@@ -11,8 +10,6 @@ import { validateWorkerEffort, validateWorkerModel } from './agents.js';
 import { providerMeta, takesEffort, takesModel } from '../shared/providers.js';
 import { gitError, type WorktreeRef, type WorktreeState } from './worktrees.js';
 import { PROMPTS, fillPrompt, type PromptId, type PromptVars } from '../shared/prompts.js';
-
-const execFileP = promisify(execFile);
 
 /** What the meeting room needs from the worker manager. Narrow on purpose, so a test can fake it. */
 export interface MeetingWorkers {
@@ -82,7 +79,8 @@ interface Part {
  * worker leaves. What the table has used is added up to be shown, and never stops it.
  *
  * Everyone at the table shares the meeting's own git worktree (in a git project). When it's done,
- * the office commits the output there, or for a review panel posts it on the pull request. The
+ * the office commits the output there, with a commit message the meeting writes itself (its own
+ * canned one when none comes in time), or for a review panel posts it on the pull request. The
  * workers stay at the table to be looked at until the room is cleared or the next meeting is called.
  */
 export class MeetingRoom {
@@ -98,6 +96,8 @@ export class MeetingRoom {
   private closing = false;
   /** When each handed-over part's worker was first seen ready without having started on it. */
   private readySince = new Map<MeetingTurn, number>();
+  /** How long a finished meeting is waited on for its commit message (see meeting-commit.ts). */
+  private commitAskMs: number;
 
   constructor(
     /** The project's checkout. */
@@ -107,7 +107,9 @@ export class MeetingRoom {
     /** Git worktrees, in a project that's a git repository. */
     private trees: MeetingTrees | undefined,
     private events: MeetingEvents,
+    opts: { commitAskMs?: number } = {},
   ) {
+    this.commitAskMs = opts.commitAskMs ?? COMMIT_ASK_MS;
     this.statePath = path.join(dataDir, 'meetings.json');
     this.restore();
     this.timer = setInterval(() => this.tick(), PUMP_MS);
@@ -424,7 +426,8 @@ export class MeetingRoom {
         },
       );
     } else if (m.worktree) {
-      void commitAll(cwd, `${m.title}\n\n${p.label} meeting in Agent Office, called by ${m.calledBy}. Output: ${m.output}`, m.notes).then(
+      const trailer = `${p.label} meeting in Agent Office, called by ${m.calledBy}. Output: ${m.output}`;
+      void commitMeeting(cwd, m.notes, `${m.title}\n\n${trailer}`, trailer, this.commitAsk(m, cwd), (id, text) => this.workers.prompt(id, text, BY), this.commitAskMs).then(
         (sha) => {
           m.commit = sha;
           this.changed();
@@ -435,6 +438,15 @@ export class MeetingRoom {
         },
       );
     }
+  }
+
+  /** Who to ask for the commit message (the first of the table still there), and what they're told. */
+  private commitAsk(m: Meeting, cwd: string): CommitAsk | undefined {
+    const here = new Set(this.workers.list().filter((w) => w.status !== 'exited').map((w) => w.id));
+    const seat = m.seats.find((s) => s.workerId && here.has(s.workerId));
+    if (!seat) return undefined;
+    const file = path.join(cwd, m.notes, 'commit-message.txt');
+    return { workerId: seat.workerId!, file, text: this.say('meeting.commit', { title: m.title, output: m.output, file }) };
   }
 
   /** Stops the meeting short, saying why. Whoever is still busy is told to stop (Esc). */
@@ -700,18 +712,6 @@ export class MeetingRoom {
       // corrupt state file: an empty room
     }
   }
-}
-
-/**
- * Commits everything in a checkout but `leaveOut` (the notes); resolves to the commit's short hash, or
- * undefined when there was nothing to commit.
- */
-async function commitAll(cwd: string, message: string, leaveOut: string): Promise<string | undefined> {
-  const git = async (args: string[]) => (await execFileP('git', args, { cwd, encoding: 'utf8', timeout: 60_000 })).stdout.trim();
-  await git(['add', '-A', '--', '.', `:(exclude)${leaveOut}`]);
-  if (!(await git(['diff', '--cached', '--name-only']))) return undefined;
-  await git(['commit', '-q', '-m', message]);
-  return git(['rev-parse', '--short', 'HEAD']);
 }
 
 /** The start of a file, at most `bytes` of it. */

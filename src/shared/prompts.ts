@@ -358,6 +358,15 @@ const DEFS = {
     text: `Read every reviewer's findings ({{findings}}). Drop the duplicates, keeping the clearest wording, and write one combined review to {{output}} in Markdown: a short summary with your verdict first, then the findings, the most serious first, each tagged with the lens it came from in bold brackets like **[{{exampleRole}}]**, with its file:line. Don't post it: the office posts it on the pull request once the file is written. ${OUTPUT}`,
   },
 
+  'meeting.commit': {
+    group: 'meetings',
+    label: 'Commit message',
+    used: 'When a meeting in a git worktree is done, the head of the table writes the commit message the office commits the checkout with. None in time: the office writes its own.',
+    vars: { title: "The meeting's title", output: "The meeting's output file", file: 'Where the commit message goes' },
+    needs: ['file'],
+    text: 'The meeting is over, and the office is about to commit everything in this checkout on the meeting\'s branch. Write the commit message for it to {{file}}: a summary line of 72 characters or fewer, a blank line, then a short body saying what the meeting produced and why (run git status and git diff if you need a reminder; the meeting is “{{title}}”, its output {{output}}). Write just the message, nothing else, then end your turn.',
+  },
+
   // --- 🏷️ Worker signs ---
   'office.namer': {
     group: 'office',
