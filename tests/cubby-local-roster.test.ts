@@ -40,9 +40,9 @@ test('factory, Paradev and direct sources dedupe process/session; only canonical
   writeFileSync(path.join(boards, 'cubby.json'), JSON.stringify({ plan: ['Explicit plan'], needsYou: ['Explicit decision'], hidden: 'SECRET' }));
   writeFileSync(path.join(f.project, 'STATUS.md'), 'SECRET random markdown never read');
   const result = await roster(f.config, { home: f.home, scan: async () => ({ complete: true, processes: [
-    { pid: 11, ppid: 10, tool: 'codex', cwd: f.tree, harness: true },
-    { pid: 20, ppid: 1, tool: 'claude', cwd: f.project, harness: false },
-    { pid: 30, ppid: 1, tool: 'kimi', cwd: f.project, harness: false },
+    { pid: 11, ppid: 10, tool: 'codex', cwd: f.tree },
+    { pid: 20, ppid: 1, tool: 'claude', cwd: f.project },
+    { pid: 30, ppid: 1, tool: 'kimi', cwd: f.project },
   ] }), run: async (_bin, args) => {
     if (args[0] === 'projects') return JSON.stringify([{ id: 'project', path: f.project }, { id: 'outside', path: f.outside }]);
     if (args[0] === 'workspaces') { assert.equal(args[4], 'project'); return JSON.stringify([{ id: 'workspace', worktreePath: f.project }]); }
@@ -57,7 +57,7 @@ test('factory, Paradev and direct sources dedupe process/session; only canonical
 test('roster snapshot bounds agent count/bytes and keeps unverified sources visibly unknown', async (t) => {
   const f = fixture(t);
   const result = await roster(f.config, { home: f.home, scan: async () => ({ complete: false, processes:
-    Array.from({ length: 300 }, (_, i) => ({ pid: i + 10, ppid: 1, tool: 'claude', cwd: f.project, harness: false })) }),
+    Array.from({ length: 300 }, (_, i) => ({ pid: i + 10, ppid: 1, tool: 'claude', cwd: f.project })) }),
     run: async () => { throw new Error('SECRET API credential'); } });
   assert.equal(result.agents.length, 128); assert.ok(Buffer.byteLength(JSON.stringify(result)) <= 64 * 1024);
   assert.match(result.error!, /coverage unavailable/); assert.ok(!result.error!.includes('SECRET'));

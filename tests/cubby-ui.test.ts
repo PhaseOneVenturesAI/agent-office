@@ -88,7 +88,7 @@ test('signs say only a name, the lamp and the count for anyone else', () => {
   assert.equal(model.faceOf(other), 'other');
 });
 
-test('a session opened directly shows its tool, branch and state, never its task', () => {
+test('a session local session shows its tool, branch and state, never its task', () => {
   const card = model.agentCard(agent('d', 'direct', { task: 'secret prompt text', progress: 'more' }));
   assert.ok(!JSON.stringify(card).includes('secret'));
   assert.ok(!JSON.stringify(card).includes('more'));

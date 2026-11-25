@@ -26,13 +26,13 @@ export const nodesHandlers = {
     ctx.sendTo(c, { t: 'nodes.token', ...invite });
   },
   'nodes.rename'(ctx, c, msg) {
-    if (!admin(ctx, c)) return;
+    if (!admin(ctx, c) || !ctx.nodes.mayManage(str(msg.id, 20), viewer(ctx, c))) return;
     const name = str(msg.name, 60).trim();
     if (!name) return ctx.warn(c, 'A machine needs a name');
     if (!ctx.nodes.rename(str(msg.id, 20), name)) ctx.warn(c, 'That machine is gone already');
   },
   'nodes.revoke'(ctx, c, msg) {
-    if (!admin(ctx, c)) return;
+    if (!admin(ctx, c) || !ctx.nodes.mayManage(str(msg.id, 20), viewer(ctx, c))) return;
     if (!ctx.nodes.revoke(str(msg.id, 20))) ctx.warn(c, 'That machine is gone already');
   },
 } satisfies HandlerMap<NodesClientMsg>;

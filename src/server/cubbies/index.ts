@@ -22,16 +22,17 @@ export class Cubbies {
   state(floorId?: string, owner?: string): CubbiesState {
     if (!this.enabled || !floorId || !this.floorExists(floorId)) return { enabled: false, cubbies: [], setupAllowed: false };
     return { enabled: true, floorId, setupAllowed: !!owner && !!this.accountName(owner), cubbies: [...this.records.rows.values()]
-      .filter(r => r.floorId === floorId && !!this.accountName(r.owner))
+      .filter(r => r.floorId === floorId)
       .map(r => {
-        const live = this.live.get(r.id), online = !!live?.admitted && this.nodes.isOnline(r.nodeId);
+        const mine = r.owner === owner && !!this.accountName(r.owner);
+        const live = this.live.get(r.id), online = !!this.accountName(r.owner) && !!live?.admitted && this.nodes.isOnline(r.nodeId);
         const stale = online && live.interior.observedAt !== undefined && this.now() - live.interior.observedAt > 60_000;
         const working = online && !stale ? live.interior.agents.filter(a => a.status === 'working').length : 0;
         const interior = live?.interior ?? this.empty(r);
         const privateView = stale ? { ...interior, agents: interior.agents.map(a => ({ ...a, status: 'unknown' as const })), error: 'Local roster has not refreshed. Check the connector on your computer.' } : interior;
-        return { id: r.id, slot: r.slot, ownerName: this.accountName(r.owner)!, mine: r.owner === owner,
+        return { id: r.id, slot: r.slot, ownerName: this.accountName(r.owner) ?? 'Former account', mine,
           lamp: !online ? 'asleep' as const : working ? 'working' as const : 'online' as const, working,
-          ...(owner === r.owner ? { interior: privateView } : {}) };
+          ...(mine ? { interior: privateView } : {}) };
       }).sort((a, b) => a.slot - b.slot) };
   }
   setup(floorId: string, owner: string, slot: number, name: string, look: Look) {
@@ -41,7 +42,8 @@ export class Cubbies {
     if (previous && previous.owner !== owner) throw Error('That cubby is already set up');
     if (previous && this.nodes.isOnline(previous.nodeId)) throw Error('Stop your local connection before setting this cubby up again');
     const leadName = short(name, 32).trim(); if (!leadName) throw Error('Give your lead a name');
-    const invite = this.nodes.invite('Cubby computer', 'private', owner);
+    if (!previous && [...this.records.rows.values()].some(r => r.owner === owner && r.floorId === floorId && !r.computerId)) throw Error('Connect your pending cubby before setting up another computer');
+    const invite = this.nodes.invite('Cubby computer', 'private', owner, true);
     const r: CubbyRecord = { ...previous, id: previous?.id ?? id(), floorId, owner, nodeId: invite.id, slot, leadName, look: sanitizeLook(look, lookFromSeed(owner)) };
     this.records.rows.set(r.id, r);
     try { this.records.save(); } catch (e) {
@@ -56,6 +58,7 @@ export class Cubbies {
     if (!this.enabled || !r || r.floorId !== floorId || r.owner !== owner || !this.accountName(owner)) throw Error('Only the owner can talk to this lead');
     if (!live?.admitted || !this.nodes.isOnline(r.nodeId)) throw Error('Your computer is asleep. Reconnect it to talk to your lead');
     if (typeof text !== 'string' || !text.trim() || text.length > 8000) throw Error('Send a message between 1 and 8,000 characters');
+    this.expire(live);
     if (live.pending) throw Error('Your lead is still replying. Check its local permission prompt if it needs you');
     const requestId = id(), at = this.now();
     const frame: CubbyRelayFrame = { t: 'cubby.chat', ...live.binding, requestId, at, text: short(text, 8000).trim(), signature: '' };
@@ -66,6 +69,7 @@ export class Cubbies {
   /** Node disconnects, expiry and revocation immediately clear the chat admission. */
   refresh() {
     for (const [key, live] of this.live) {
+      this.expire(live);
       const r = this.records.rows.get(key);
       if (!r || !this.nodes.isOnline(r.nodeId)) {
         live.admitted = false;
@@ -74,6 +78,12 @@ export class Cubbies {
       }
     }
     this.changed();
+  }
+  private expire(live: Live) {
+    // Native turns have a ten-minute deadline; this only releases the UI, never dispatches a retry.
+    if (!live.pending || this.now() - live.pending.at < 12 * 60_000) return;
+    this.line(live, { id: id(), role: 'notice', text: 'The lead did not reply in time. Check its local conversation before sending again; no automatic retry was made.', at: this.now() });
+    live.pending = undefined;
   }
   private empty(r: CubbyRecord): CubbyInterior { return { computerName: r.computerName ?? 'Your computer', leadName: r.leadName, look: r.look, agents: [], plan: [], needsYou: [], chat: [] }; }
   private line(live: Live, line: CubbyChatLine) { live.interior.chat = [...live.interior.chat, line].slice(-40); }

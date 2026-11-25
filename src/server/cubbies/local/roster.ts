@@ -78,8 +78,7 @@ export async function roster(config: LocalConfig, deps: RosterDeps = {}): Promis
   } catch { errors.push('Paradev metadata unavailable'); }
   for (const p of scan.processes) {
     if (!scoped(p.cwd)) continue;
-    if (p.tool === 'agent-worker' && scan.processes.some((child) => child.ppid === p.pid)) continue;
-    add({ id: `pid:${p.pid}`, tool: p.tool, role: 'direct', task: p.harness ? 'Harness worker' : `${p.tool} session`,
+    add({ id: `pid:${p.pid}`, tool: p.tool, role: 'direct', task: `${p.tool} session`,
       branch: clean(config.branches.get(p.cwd)), status: 'unknown' }, p.pid, p.session);
   }
   let plan: string[] = [], needsYou: string[] = [];

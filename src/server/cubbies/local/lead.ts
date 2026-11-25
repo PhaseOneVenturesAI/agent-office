@@ -70,7 +70,7 @@ export class NativeLead implements Lead {
       if (!scan.complete) throw new LeadError('Cannot verify whether the local lead is busy; process inspection is unavailable');
       if (sessionBusy(this.config)) throw new LeadError('Selected lead is open in another native terminal or desktop; close that session before connecting chat');
       // Conservative: a live same-provider project session owns its native terminal.
-      if (scan.processes.some((p) => p.tool === this.config.provider || p.tool === 'agent-worker')) throw new LeadError('Project lead is busy in a local terminal; no concurrent session was started');
+      if (scan.processes.some((p) => p.tool === this.config.provider)) throw new LeadError('Project lead is busy in a local terminal; no concurrent session was started');
       const existing = claudeSessionFile(this.config);
       if (!existing && !this.config.fresh) throw new LeadError('Selected native session is missing or archived in this account profile; no new lead was created');
       const args = ['--print', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose',

@@ -1,10 +1,16 @@
 import type { CubbiesClientMsg } from '../../../shared/protocol/cubbies.js';
 import type { Ctx } from '../../office/context.js';
+import type { Client } from '../../office/client.js';
 import type { HandlerMap, ViewPieces } from './types.js';
 export const cubbiesView: ViewPieces['cubbies'] = (ctx, floor, c) => ctx.cubbies?.state(floor?.id, c.accountId) ?? { enabled: false, cubbies: [], setupAllowed: false };
+const last = new WeakMap<Client, string>();
 export function cubbiesChanged(ctx: Ctx) {
   if (!ctx.cubbies) return; // Services are constructed before the context is assigned.
-  for (const c of ctx.clients.values()) ctx.sendTo(c, { t: 'cubbies', state: cubbiesView(ctx, ctx.floorOf(c), c) });
+  for (const c of ctx.clients.values()) {
+    const state = cubbiesView(ctx, ctx.floorOf(c), c), key = JSON.stringify(state);
+    if (last.get(c) === key) continue;
+    last.set(c, key); ctx.sendTo(c, { t: 'cubbies', state });
+  }
 }
 export const cubbiesHandlers = {
   'cubbies.get'(ctx, c) { ctx.sendTo(c, { t: 'cubbies', state: cubbiesView(ctx, ctx.floorOf(c), c) }); },

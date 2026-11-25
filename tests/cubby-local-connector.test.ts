@@ -44,7 +44,7 @@ test('signed ready gates chat; bad signatures, bindings, age and remote command/
   f.connector.receive(chat());
   await tick();
   assert.deepEqual(f.received, ['owner chat']);
-  assert.equal(f.sent.filter((frame) => frame.t === 'cubby.reply').length, 1);
+  assert.equal(f.sent.filter((frame) => frame.t === 'cubby.reply' && !frame.error).length, 1);
 });
 
 test('dedupe survives reconnect, old ready cannot rebind, and reconnect never launches queued work', async (t) => {
@@ -79,4 +79,15 @@ test('wrong token and mutated signed text cannot run, even after ready', async (
   const frame = JSON.parse(chat()); frame.text = 'tampered'; f.connector.receive(JSON.stringify(frame));
   frame.signature = relaySignature(cubbyKey('other token'), frame); f.connector.receive(JSON.stringify(frame));
   await tick(); assert.equal(f.received.length, 0);
+});
+
+
+test('valid multibyte owner text fits the wire; expired signed text receives a visible error without running', async t => {
+  const f = fixture(t); f.connector.receive(ready());
+  f.connector.receive(chat({ requestId: 'expired', at: now - 61_000 })); await tick();
+  assert.equal(f.received.length, 0);
+  assert.ok(f.sent.some(frame => frame.t === 'cubby.reply' && frame.requestId === 'expired' && frame.error));
+  const text = '字'.repeat(8000);
+  f.connector.receive(chat({ requestId: 'multibyte', text })); await tick();
+  assert.equal(f.received.length, 1); assert.equal(f.received[0]?.length, text.length);
 });

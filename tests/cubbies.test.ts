@@ -135,3 +135,33 @@ test('an online computer with stale observations does not keep advertising old w
   assert.equal(stale.interior!.agents[0].status, 'unknown');
   assert.match(stale.interior!.error!, /not refreshed/);
 });
+
+
+test('cubby computers stay owner-only on the Satellite wall, including after reload', t => {
+  const f = fixture(t), invite = f.setup(); f.connect(invite.token);
+  const nodeId = f.cubbies.records.rows.get(invite.id)!.nodeId;
+  assert.equal(f.nodes.state({id:'alice',admin:false}).nodes.length,1);
+  assert.deepEqual(f.nodes.state({id:'bob',admin:true}).nodes,[]);
+  assert.equal(f.nodes.mayManage(nodeId,{id:'bob',admin:true}),false);
+  const reload = new Nodes(f.dir,()=>{}); t.after(()=>reload.close());
+  assert.deepEqual(reload.state({id:'bob',admin:true}).nodes,[]);
+  assert.equal(reload.state({id:'alice'}).nodes.length,1);
+});
+
+test('one owner cannot reserve every free slot before connecting a computer', t => {
+  const f = fixture(t); f.setup();
+  assert.throws(()=>f.setup('alice',1),/pending cubby/);
+  assert.doesNotThrow(()=>f.setup('bob',1));
+});
+
+
+test('a missing reply expires visibly without replaying work or accepting a late reply', t => {
+  let now = Date.now(); const f = fixture(t, true, () => now), invite = f.setup(), ws = f.connect(invite.token);
+  f.cubbies.chat('floor', 'alice', invite.id, 'owner message');
+  const request = ws.sent[1]; now += 13 * 60_000; f.cubbies.refresh();
+  assert.equal(ws.sent.length, 2, 'expiry sends no new prompt');
+  assert.match(f.cubbies.state('floor','alice').cubbies[0].interior!.chat.at(-1)!.text, /did not reply in time/);
+  ws.frame({t:'cubby.reply',floorId:'floor',requestId:request.requestId,text:'late answer'});
+  assert.equal(f.cubbies.state('floor','alice').cubbies[0].interior!.chat.length,2);
+  assert.doesNotThrow(()=>f.cubbies.chat('floor','alice',invite.id,'explicit new message'));
+});

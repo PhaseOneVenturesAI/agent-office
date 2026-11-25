@@ -73,7 +73,7 @@ test('unknown process state, live project session, and same-session desktop in a
   const f = fixture(t);
   const unknown = new NativeLead(f.config, async () => ({ complete: false, processes: [] }));
   await assert.rejects(unknown.send('owner message', new AbortController().signal), /Cannot verify/);
-  const busy = new NativeLead(f.config, async () => ({ complete: true, processes: [{ pid: 9, ppid: 8, tool: 'claude', cwd: f.config.project, harness: false }] }));
+  const busy = new NativeLead(f.config, async () => ({ complete: true, processes: [{ pid: 9, ppid: 8, tool: 'claude', cwd: f.config.project }] }));
   await assert.rejects(busy.send('owner message', new AbortController().signal), /busy/);
   const dir = path.join(f.config.claudeHome, 'sessions'); mkdirSync(dir);
   writeFileSync(path.join(dir, process.pid + '.json'), JSON.stringify({ sessionId: session, pid: process.pid, cwd: '/other/scratch' }));

@@ -47,7 +47,7 @@ export class CubbyConnector {
   }
   receive(data: string | Buffer | ArrayBuffer | Buffer[]): void {
     const size = Array.isArray(data) ? data.reduce((n, part) => n + part.length, 0) : typeof data === 'string' ? Buffer.byteLength(data) : data.byteLength;
-    if (!this.send || this.closed || size > 16 * 1024) return;
+    if (!this.send || this.closed || size > 64 * 1024) return;
     const raw = typeof data === 'string' ? data : Array.isArray(data) ? Buffer.concat(data).toString('utf8')
       : Buffer.isBuffer(data) ? data.toString('utf8') : Buffer.from(data).toString('utf8');
     let frame: CubbyRelayFrame;
@@ -68,9 +68,11 @@ export class CubbyConnector {
     if (!this.binding || bindingKeys.some((key) => frame[key] !== this.binding![key]) ||
       typeof frame.text !== 'string' || !frame.text.trim() || frame.text.length > 8000 ||
       typeof frame.requestId !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(frame.requestId) ||
-      !Number.isSafeInteger(frame.at) || Math.abs(this.now() - frame.at) > 60_000) return;
+      !Number.isSafeInteger(frame.at)) return;
+    if (Math.abs(this.now() - frame.at) > 60_000) { this.reply(frame.requestId, 'Message expired or computer clocks disagree. Check the computer clock and send again.', true); return; }
     // Keep all IDs for this join process, across reconnects. Saturation fails closed.
-    if (this.seen.has(frame.requestId) || this.seen.size >= MAX_SEEN) return;
+    if (this.seen.has(frame.requestId)) return;
+    if (this.seen.size >= MAX_SEEN) { this.reply(frame.requestId, 'Restart the local connector before sending more messages.', true); return; }
     this.seen.set(frame.requestId, frame.at);
     if (this.abort || this.lead.busy) { this.reply(frame.requestId, 'Project lead is busy; send a new message when it is free.', true); return; }
     const generation = this.generation;

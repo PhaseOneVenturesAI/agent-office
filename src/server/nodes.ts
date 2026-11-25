@@ -40,6 +40,8 @@ interface SavedNode {
   visibility: NodeVisibility;
   /** The account that invited it, when the office has accounts. */
   owner?: string;
+  /** Cubby computers are visible only to their owner, including on the Satellites wall. */
+  ownerOnly?: boolean;
   /** An admin renamed it: the machine's next hello no longer overwrites the name. */
   custom?: boolean;
 }
@@ -77,7 +79,7 @@ export class Nodes {
 
   state(viewer: NodeViewer = {}): NodesState {
     const nodes = [...this.nodes.values()]
-      .filter((n) => n.visibility === 'everyone' || viewer.admin || (!!viewer.id && n.owner === viewer.id))
+      .filter((n) => n.ownerOnly ? !!viewer.id && n.owner === viewer.id : n.visibility === 'everyone' || viewer.admin || (!!viewer.id && n.owner === viewer.id))
       .map((n): NodeInfo => {
         const online = !!n.ws && Date.now() - n.lastSeen < STALE_MS;
         return {
@@ -101,14 +103,18 @@ export class Nodes {
   }
 
   /** Mints a join token; the node exists from here, the token is answered with and forgotten. */
-  invite(name?: string, visibility: NodeVisibility = 'everyone', owner?: string): { id: string; name: string; token: string } {
+  invite(name?: string, visibility: NodeVisibility = 'everyone', owner?: string, ownerOnly = false): { id: string; name: string; token: string } {
     const id = randomBytes(4).toString('hex');
     const token = `ao_node_${randomBytes(24).toString('hex')}`;
     const label = (name ?? '').trim().slice(0, 60);
-    this.nodes.set(id, { id, name: label, token: hash(token), joinedAt: Date.now(), visibility, ...(owner ? { owner } : {}), lastSeen: 0 });
+    this.nodes.set(id, { id, name: label, token: hash(token), joinedAt: Date.now(), visibility, ...(owner ? { owner } : {}), ...(ownerOnly ? { ownerOnly: true } : {}), lastSeen: 0 });
     this.save();
     this.onChange();
     return { id, name: label || id, token };
+  }
+
+  mayManage(id: string, viewer: NodeViewer): boolean {
+    const n = this.nodes.get(id); return !!n && (!n.ownerOnly || (!!viewer.id && n.owner === viewer.id));
   }
 
   /** Calls a node something else; the rename pins the name, so the machine's next hello keeps it. */
@@ -256,6 +262,7 @@ export class Nodes {
           visibility: n.visibility === 'private' ? 'private' : 'everyone',
           ...(typeof n.owner === 'string' && n.owner ? { owner: n.owner } : {}),
           ...(n.custom ? { custom: true } : {}),
+          ...(n.ownerOnly ? { ownerOnly: true } : {}),
           lastSeen: 0,
         });
       }
@@ -267,7 +274,7 @@ export class Nodes {
   private save() {
     try {
       mkdirSync(path.dirname(this.file), { recursive: true });
-      const nodes: SavedNode[] = [...this.nodes.values()].map(({ id, name, token, joinedAt, visibility, owner, custom }) => ({
+      const nodes: SavedNode[] = [...this.nodes.values()].map(({ id, name, token, joinedAt, visibility, owner, custom, ownerOnly }) => ({
         id,
         name,
         token,
@@ -275,6 +282,7 @@ export class Nodes {
         visibility,
         ...(owner ? { owner } : {}),
         ...(custom ? { custom } : {}),
+        ...(ownerOnly ? { ownerOnly } : {}),
       }));
       writeFileSync(this.file, JSON.stringify({ nodes }, null, 2), { mode: 0o600 });
     } catch {

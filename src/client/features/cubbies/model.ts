@@ -57,7 +57,7 @@ export const ROLE_LABEL: Record<CubbyRole, string> = {
   reviewer: 'Reviewer',
   factory: 'Factory',
   paradev: 'Paradev',
-  direct: 'Opened directly',
+  direct: 'Local session',
 };
 
 export const STATUS_TEXT: Record<CubbyStatus, string> = { idle: 'ready', working: 'working', 'needs-you': 'needs you', unknown: 'unknown' };
@@ -68,7 +68,7 @@ export const STATUS_TEXT: Record<CubbyStatus, string> = { idle: 'ready', working
  */
 export function agentCard(a: CubbyAgent): { name: string; title: string; body: string } {
   const tool = clip(a.tool || 'Agent', 20);
-  if (a.role === 'direct') return { name: `${tool} · opened directly`, title: a.status === 'working' ? 'Busy' : STATUS_TEXT[a.status], body: a.branch ? `🌿 ${clip(a.branch, 40)}` : '' };
+  if (a.role === 'direct') return { name: `${tool} · local session`, title: a.status === 'working' ? 'Busy' : STATUS_TEXT[a.status], body: a.branch ? `🌿 ${clip(a.branch, 40)}` : '' };
   const title = clip(a.task || ROLE_LABEL[a.role], 60);
   const body = [a.progress ? clip(a.progress, 60) : '', a.branch ? `🌿 ${clip(a.branch, 40)}` : ''].filter(Boolean).join(' · ');
   return { name: `${tool} · ${ROLE_LABEL[a.role]}`, title, body };

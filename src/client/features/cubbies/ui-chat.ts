@@ -125,7 +125,7 @@ export function openAgentCard(w: CubbyWindows, cubbyId: string, agentId: string)
     if (a.role === 'direct') {
       body.replaceChildren(
         ...rows(['Tool', a.tool], ['Branch', a.branch || '—'], ['State', asleep ? '💤 asleep' : a.status === 'working' ? 'busy' : STATUS_TEXT[a.status]]),
-        h('p.cb-note', {}, `You opened this session yourself, so its conversation stays in ${a.tool}.`),
+        h('p.cb-note', {}, `This conversation stays in ${a.tool}. Office shows only its tool, branch and state.`),
       );
       return;
     }

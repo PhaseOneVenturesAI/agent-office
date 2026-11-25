@@ -60,6 +60,7 @@ const shot = async (name) => {
     await page.setViewportSize({ width, height });
     await page.waitForTimeout(450);
     await page.screenshot({ path: `${out}/${name}-${suffix}.png` });
+    if (name === 'chat' || name === 'setup') await page.locator(`.cubby-${name}`).screenshot({ path: `${out}/${name}-dialog-${suffix}.png` });
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
 };
@@ -187,7 +188,7 @@ try {
   await shot('chat');
 
   // A helper's card from the roster; a direct session shows tool, branch and state only.
-  await page.locator('.cb-roster button', { hasText: 'Opened directly' }).click();
+  await page.locator('.cb-roster button', { hasText: 'Local session' }).click();
   await page.waitForSelector('.cubby-agent');
   const direct = await page.locator('.cubby-agent').innerText();
   assert.match(direct, /spike\/search/);
