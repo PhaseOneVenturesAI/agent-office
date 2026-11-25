@@ -19,6 +19,8 @@ export interface QueueTask {
   addedBy: string;
   /** The account that queued it: its worker runs on that account's own sign-ins. None: the office's own. */
   owner?: string;
+  /** The coworkers (account ids) its worker is shared with when it sits down (see WorkerInfo.sharedWith); nobody picked keeps it private. */
+  sharedWith?: string[];
   addedAt: number;
   status: TaskStatus;
   /** The worker seated for it (it may have gone home since). */
@@ -42,7 +44,7 @@ export interface QueueState {
 }
 
 export type QueueClientMsg =
-  | { t: 'queue.add'; prompt: string; title?: string; issue?: number; provider?: AgentProvider; model?: string; effort?: AgentEffort }
+  | { t: 'queue.add'; prompt: string; title?: string; issue?: number; provider?: AgentProvider; model?: string; effort?: AgentEffort; sharedWith?: string[] }
   | { t: 'queue.remove'; taskId: string }
   /** Move a queued task up (-1) or down (+1) the queue. */
   | { t: 'queue.move'; taskId: string; delta: number }

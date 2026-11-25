@@ -31,7 +31,7 @@ import type { OfficePrompts } from '../prompts.js';
 import type { LeaveOnMerge } from '../leave-on-merge.js';
 import type { ChatLog } from '../history.js';
 import type { Arcade, HighScores } from '../cabinet.js';
-import type { AgentProvider, FloorInfo, Me, ServerMsg, ServiceInfo, ServicesState, SignInKind } from '../../shared/protocol.js';
+import type { AgentProvider, FloorInfo, Me, ServerMsg, ServiceInfo, ServicesState, SignInKind, WorkerInfo } from '../../shared/protocol.js';
 import type { Client } from './client.js';
 import type { Spot } from './input.js';
 
@@ -117,6 +117,8 @@ export interface Messaging {
   /** To everyone on one floor. */
   toFloor(floor: Floor, msg: ServerMsg, droppable?: boolean): void;
   toastFloor(floor: Floor | undefined, text: string, level?: ToastLevel): void;
+  /** About one worker, to the people on its floor who may see it (its owner, the admins, the coworkers it's shared with). */
+  toastWorker(floor: Floor | undefined, worker: WorkerInfo, owner: string | undefined, text: string, level?: ToastLevel): void;
   /** To everyone else on the same floor as `c`: nobody on another floor can see them. */
   toNeighbors(c: Client, msg: ServerMsg, droppable?: boolean): void;
   /** Tells just this person why their request didn't happen; nothing when there's no error. */

@@ -1,4 +1,4 @@
-import { canUseWorker, OWN_WORKER } from '../../worker-ownership.js';
+import { canUseWorker, OWN_WORKER, sanitizeSharedWith } from '../../worker-ownership.js';
 import type { Ctx } from '../../office/context.js';
 import type { Client } from '../../office/client.js';
 // The floor's task queue: adding, moving and retrying tasks, and how many workers it keeps busy.
@@ -34,7 +34,7 @@ export const queueHandlers = {
     const effort = isAgentEffort(msg.effort) ? msg.effort : undefined;
     // Its worker runs on the sign-ins of whoever queued it, whenever it gets a desk.
     ctx.withSignIn(c, ctx.signInFor(msg.provider ?? floor.workers.officeDefault.provider), () => {
-      const err = floor.queue.add(str(msg.prompt, 20000), who, str(msg.title, 200), issue, msg.provider, model, effort, c.accountId);
+      const err = floor.queue.add(str(msg.prompt, 20000), who, str(msg.title, 200), issue, msg.provider, model, effort, c.accountId, sanitizeSharedWith(ctx, c.accountId, msg.sharedWith));
       if (err) ctx.warn(c, err);
       else ctx.toastFloor(floor, `📋 ${who} queued ${issue !== undefined ? `issue #${issue}` : 'a task'}`);
     });

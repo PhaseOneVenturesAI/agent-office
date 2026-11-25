@@ -1,16 +1,15 @@
-import { ownedWorker } from './worker-access.js';
+import { ownedWorker, usableWorker } from './worker-access.js';
 // The Changes window at a desk: what a worker changed, and committing, discarding or opening a pull
 // request for it.
 import { agentCommitPrompt } from '../../changes.js';
 import { childEnv } from '../../workers.js';
 import type { ChangesClientMsg } from '../../../shared/protocol.js';
 import { repoOf, str } from '../../office/input.js';
-import { workerOf } from './common.js';
 import type { FeatureHooks, HandlerMap } from './types.js';
 
 export const changesHandlers = {
   'changes.watch'(ctx, c, msg) {
-    const w = workerOf(ctx, msg.workerId);
+    const w = usableWorker(ctx, c, msg.workerId, true);
     if (w) w.floor.changes.watch(w.wid, c.id, repoOf(msg.repo));
   },
   'changes.unwatch'(ctx, c, msg) {
@@ -23,7 +22,7 @@ export const changesHandlers = {
     const file = str(msg.path, 4096);
     const repo = repoOf(msg.repo);
     const floor = ctx.workerFloor(workerId);
-    if (!floor) {
+    if (!floor || !usableWorker(ctx, c, workerId, true)) {
       ctx.sendTo(c, { t: 'changes.diff', workerId, repo, path: file, diff: '', truncated: false, error: 'No such worker' });
       return;
     }

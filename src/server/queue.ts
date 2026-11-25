@@ -17,7 +17,7 @@ export interface QueueWorkers {
   deskOccupied(deskId: string): boolean;
   /** How many rows the floor's back office is built out, for its desks (see WING). */
   wing?(): number;
-  spawn(deskId: string, by: string, prompt: string, worktree: boolean, kind: 'agent', provider: AgentProvider, model?: string, effort?: AgentEffort, meeting?: undefined, owner?: string): WorkerInfo | string;
+  spawn(deskId: string, by: string, prompt: string, worktree: boolean, kind: 'agent', provider: AgentProvider, model?: string, effort?: AgentEffort, meeting?: undefined, owner?: string, sharedWith?: string[]): WorkerInfo | string;
   /** Resolves with a line about what became of the worker's worktree. */
   kill(id: string): Promise<{ note?: string; error?: string }>;
   /** Fetches what a new worktree starts from; undefined when there's nothing to wait for (see Worktrees.fetch). */
@@ -87,8 +87,8 @@ export class TaskQueue {
   }
 
   /** Queues a task. With no `provider`, it runs on the office's default worker, model and effort included. */
-  /** Queues a task; `owner` is the account adding it, whose sign-ins its worker will run on. */
-  add(prompt: string, by: string, title?: string, issue?: number, provider?: AgentProvider, model?: string, effort?: AgentEffort, owner?: string): string | undefined {
+  /** Queues a task; `owner` is the account adding it, whose sign-ins its worker will run on, and `sharedWith` the coworkers its worker is shared with (see WorkerInfo.sharedWith). */
+  add(prompt: string, by: string, title?: string, issue?: number, provider?: AgentProvider, model?: string, effort?: AgentEffort, owner?: string, sharedWith?: string[]): string | undefined {
     if (provider === undefined) ({ provider, model, effort } = this.workers.officeDefault ?? { provider: this.workers.defaultProvider });
     if (!isAgentProvider(provider) || (provider === 'custom' && this.workers.defaultProvider !== 'custom')) return 'Unknown agent provider';
     const unsupported = personalProviderError(owner, 'agent', provider);
@@ -111,6 +111,7 @@ export class TaskQueue {
       prompt: clean,
       addedBy: by,
       ...(owner ? { owner } : {}),
+      ...(sharedWith?.length ? { sharedWith: [...sharedWith] } : {}),
       addedAt: Date.now(),
       status: 'queued',
     };
@@ -159,7 +160,7 @@ export class TaskQueue {
     if (t.status !== 'done') return 'That task is still on the queue';
     if (t.issue !== undefined && this.tasks.some((x) => x !== t && x.issue === t.issue && x.status !== 'done')) return `Issue #${t.issue} is already on the queue`;
     this.tasks.splice(this.tasks.indexOf(t), 1);
-    const fresh: QueueTask = { id: t.id, provider: t.provider, model: t.model, effort: t.effort, issue: t.issue, title: t.title, prompt: t.prompt, addedBy: t.addedBy, owner: t.owner, addedAt: Date.now(), status: 'queued' };
+    const fresh: QueueTask = { id: t.id, provider: t.provider, model: t.model, effort: t.effort, issue: t.issue, title: t.title, prompt: t.prompt, addedBy: t.addedBy, owner: t.owner, sharedWith: t.sharedWith, addedAt: Date.now(), status: 'queued' };
     this.tasks.push(fresh);
     this.changed();
     this.pump();
@@ -342,7 +343,7 @@ export class TaskQueue {
       const desk = free ?? this.recycleDesk();
       if (!desk) break;
       const note = this.useWorktree ? this.events.worktreeNote?.() ?? PROMPTS['queue.worktree'].text : '';
-      const r = this.workers.spawn(desk, `${t.addedBy} (queue)`, note ? `${t.prompt}\n\n${note}` : t.prompt, this.useWorktree, 'agent', t.provider ?? this.workers.defaultProvider, t.model, t.effort, undefined, t.owner);
+      const r = this.workers.spawn(desk, `${t.addedBy} (queue)`, note ? `${t.prompt}\n\n${note}` : t.prompt, this.useWorktree, 'agent', t.provider ?? this.workers.defaultProvider, t.model, t.effort, undefined, t.owner, t.sharedWith);
       changed = true;
       if (typeof r === 'string') {
         t.status = 'done';
@@ -401,6 +402,7 @@ export class TaskQueue {
           prompt: s.prompt,
           addedBy: s.addedBy ?? '?',
           owner: typeof s.owner === 'string' && s.owner ? s.owner : undefined,
+          sharedWith: Array.isArray(s.sharedWith) && s.sharedWith.length ? s.sharedWith.filter((x): x is string => typeof x === 'string' && !!x) : undefined,
           addedAt: s.addedAt ?? Date.now(),
           status: s.status === 'running' || s.status === 'done' ? s.status : 'queued',
           workerId: s.workerId,

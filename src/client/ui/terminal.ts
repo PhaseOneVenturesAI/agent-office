@@ -15,6 +15,7 @@ import { DROP_MAX_BYTES, droppedPaths } from '../../shared/drops';
 import { engineLabel, providerUsageNote, providerUsageState, providerWaitingLabel, resolvedProvider } from './provider';
 import { naturalKey } from './termkeys';
 import { termTabs } from './termtabs';
+import { canShareWorker, onPeople, openShare, wantPeople } from './share';
 import { dictateField, dictation } from './dictate';
 
 /** A line to scroll to once the terminal has loaded: a search hit (see search.ts). */
@@ -120,6 +121,8 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
   }, '🧠 Models');
   const typed = h('span.typed', {});
   const conversation = info.kind === 'agent' ? h('button.btn', { type: 'button' }, 'Conversation') : null;
+  // Who can see and take over this terminal (WorkerInfo.sharedWith); its owner (or an admin) changes that.
+  const shareBtn = h('button.btn', { type: 'button', title: 'Who can see this worker: share its terminal with coworkers, or make it private', 'aria-label': 'Who can see this worker' }, '👥');
   // The Esc key leaves the terminal, so this is how Esc reaches the program: to close a menu like
   // Claude's /skills, or to interrupt it. Ctrl+[ does the same from the keyboard.
   const escBtn = h('button.btn', {
@@ -151,7 +154,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
   );
   host.append(mic.live);
   // The keypad has an Esc of its own, and a 🎤 on its prompt box.
-  const el = h('div.modal.term', { role: 'dialog', 'aria-label': `${info.name} terminal` }, h('header', {}, dot, title, pill, cost, viewers, typed, conversation, modelsBtn, keypad ? null : mic.button, keypad ? null : escBtn, onChanges ? changesBtn : null, hideBtn, closeBtn), tabs.bar, host, tabs.pages, keypad);
+  const el = h('div.modal.term', { role: 'dialog', 'aria-label': `${info.name} terminal` }, h('header', {}, dot, title, pill, cost, viewers, typed, conversation, shareBtn, modelsBtn, keypad ? null : mic.button, keypad ? null : escBtn, onChanges ? changesBtn : null, hideBtn, closeBtn), tabs.bar, host, tabs.pages, keypad);
 
   const term = new Terminal({
     fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
@@ -264,6 +267,8 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
     cost.textContent = w.kind !== 'agent' ? '' : usageState === 'tracked' && w.usage ? usageLabel(w.usage, workerProvider) : waiting ? waiting : usageState === 'untracked' ? 'usage untracked' : '';
     cost.title = w.kind === 'agent' && w.usage ? usageTitle(w.usage, workerProvider) : w.kind === 'agent' ? providerUsageNote(workerProvider!) : '';
     renderPresence(w);
+    shareBtn.classList.toggle('hidden', !canShareWorker(w));
+    shareBtn.textContent = w.sharedWith?.length ? `👥 ${w.sharedWith.length}` : '👥';
     const openCode = w.kind === 'agent' && resolvedProvider(w.provider, store.project) === 'opencode';
     modelsBtn.classList.toggle('hidden', !openCode);
     modelsBtn.toggleAttribute('disabled', !openCode || !ready || isAsleep(w.status));
@@ -329,6 +334,9 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
   };
   listeners.add(onMsg);
   const unsub = store.on('workers', refresh);
+  // The 👥 shows once the coworker directory says this one's yours to share.
+  const unsubPeople = onPeople(refresh);
+  wantPeople([info]);
   // A viewer's name or color can change while they're here.
   const unsubPeers = store.on('peers', () => {
     const w = store.workers.get(workerId);
@@ -344,6 +352,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
       if (byEsc && ready && screenMentionsEsc(term)) toast(`Esc left the terminal. To send ${store.workers.get(workerId)?.name ?? info.name} an Esc (to close a menu), use ⎋ Esc at the top or Ctrl+[`);
       listeners.delete(onMsg);
       unsub();
+      unsubPeople();
       unsubPeers();
       clearInterval(typingTimer);
       ro.disconnect();
@@ -362,6 +371,10 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
     },
   };
   conversation?.addEventListener('click', () => { modal.close(); openWorkerConversation(net, workerId, () => openTerminal(net, workerId, onChanges, undefined, opts)); });
+  shareBtn.addEventListener('click', () => {
+    const w = store.workers.get(workerId);
+    if (w) openShare(w);
+  });
   hideBtn.addEventListener('click', () => modal.close());
   closeBtn.addEventListener('click', () => modal.close());
   changesBtn.addEventListener('click', () => {

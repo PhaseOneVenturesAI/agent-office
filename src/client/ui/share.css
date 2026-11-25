@@ -1,0 +1,11 @@
+/* The 👥 people picker (hire, ask-a-worker, the queue) and the share dialog on a worker's card. */
+.share-picks { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 10px 0 0; font-size: 13px; font-weight: 800; }
+.share-picks.hidden, .share-picks.ask-off { display: none; }
+.share-picks > span { color: var(--muted); margin-right: 2px; }
+.share-picks label.repo-pick { display: inline-flex; gap: 5px; align-items: center; margin: 0; padding: 2px 10px 2px 6px; border: 2px solid var(--ink); border-radius: 999px; background: #fff; cursor: pointer; font-weight: 800; }
+.share-picks label.repo-pick:has(input:checked) { border-color: var(--accent); background: var(--paper-2); }
+.share-picks .repo-pick input { margin: 0; accent-color: var(--accent); }
+form.modal.share { width: min(460px, 100%); }
+form.modal.share .share-picks { margin: 0; }
+/* The 👥 on a worker's sidebar row and terminal header. */
+.share-btn { padding: 1px 7px; font-size: 12px; align-self: center; }

@@ -51,13 +51,27 @@ const controls: WorkerClientMsg[] = [
   {t:'worker.attach',workerId:'worker'}, {t:'term.input',workerId:'worker',data:'yes\r'},
   {t:'term.resize',workerId:'worker',cols:100,rows:30},
 ];
-for (const msg of controls) test(`${msg.t} denies a different account, including admins, and allows the owner`, () => {
+for (const msg of controls) test(`${msg.t} denies a different account, and allows the owner`, () => {
   const denied = fixture();
   (workerHandlers[msg.t as keyof typeof workerHandlers] as Function)(denied.ctx,denied.client,msg);
   assert.equal(denied.calls.length,0); assert.ok(denied.warnings.length);
   const own = fixture('alice');
   (workerHandlers[msg.t as keyof typeof workerHandlers] as Function)(own.ctx,own.client,msg);
   assert.ok(own.calls.length);
+});
+
+// Taking over is typing, not ownership: a shared coworker uses the terminal but doesn't manage the
+// worker, and an admin always gets in (issue #77 made both opt-in on top of the owner).
+for (const msg of controls) test(`${msg.t} allows a shared coworker and an admin, refuses management to the coworker`, () => {
+  const shared = fixture();
+  shared.info.sharedWith = ['bob'];
+  (workerHandlers[msg.t as keyof typeof workerHandlers] as Function)(shared.ctx,shared.client,msg);
+  if (msg.t === 'worker.resume') { assert.equal(shared.calls.length,0); assert.ok(shared.warnings.length); }
+  else assert.ok(shared.calls.length, `${msg.t} should reach a shared coworker`);
+  const admin = fixture();
+  admin.ctx.accounts = {get:(id:string)=>({name:id,role:id==='bob'?'admin':'member'})} as never;
+  (workerHandlers[msg.t as keyof typeof workerHandlers] as Function)(admin.ctx,admin.client,msg);
+  assert.ok(admin.calls.length, `${msg.t} should reach an admin`);
 });
 
 test('worker controls require current floor and shared-password workers still work', () => {
@@ -120,16 +134,18 @@ test('private terminal screens are filtered while public workers carry the accou
 
 test('initial and updated worker labels resolve the stored credential owner, not the character name', () => {
   const f = fixture('alice'); f.info.createdBy = 'Editable character';
-  assert.equal(workersView(f.ctx, f.floor as any)[0].ownerName, 'Alice');
+  assert.equal(workersView(f.ctx, f.floor as any, f.client)[0].ownerName, 'Alice');
   const sent: any[] = [];
   f.client.ws.send = ((json: string) => sent.push(JSON.parse(json))) as any;
   f.ctx.clients = new Map([[f.client.id, f.client]]);
   messaging(f.ctx).toFloor(f.floor as any, { t: 'worker.update', worker: f.info });
   assert.equal(sent[0].worker.ownerName, 'Alice');
   f.ctx.accounts.get = () => undefined;
-  assert.equal(workersView(f.ctx, f.floor as any)[0].ownerName, 'Former account');
+  assert.equal(workersView(f.ctx, f.floor as any, f.client)[0].ownerName, 'Former account');
+  // An office-owned worker is the admins' (and shared-password guests') to see now.
   f.floor.workers.ownerOf = () => undefined;
-  assert.equal(workersView(f.ctx, f.floor as any)[0].ownerName, 'Office');
+  f.client.accountId = undefined;
+  assert.equal(workersView(f.ctx, f.floor as any, f.client)[0].ownerName, 'Office');
 });
 
 test('restored worker updates wait for the floor constructor to assign its manager', () => {
@@ -144,7 +160,7 @@ test('restored worker updates wait for the floor constructor to assign its manag
   buildingFloor.workers = f.floor.workers;
   send(buildingFloor, { t: 'worker.update', worker: f.info });
   assert.equal(sent[0].worker.ownerName, 'Alice');
-  assert.equal(workersView(f.ctx, buildingFloor)[0].ownerName, 'Alice');
+  assert.equal(workersView(f.ctx, buildingFloor, f.client)[0].ownerName, 'Alice');
 });
 
 test('unsupported providers never silently use the host account; shared-password mode is unchanged', () => {
