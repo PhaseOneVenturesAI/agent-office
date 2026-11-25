@@ -1,6 +1,6 @@
 // The cubby hall in a real browser: the actual main.ts, office, renderer and PlayerController, with the
-// cubbies feature installed the way the root will install it (appended to the served main.ts only; the
-// file on disk is untouched). Two synthetic accounts' cubbies and synthetic agents only: no providers,
+// cubbies feature installed by main.ts. Test placements exercise the room components only;
+// they are not the pending hall geometry. Two synthetic accounts' cubbies and synthetic agents only: no providers,
 // no live office, no real tokens. Screenshots at desktop and 390 px go to OFFICE_CUBBY_OUTPUT.
 //
 //   node tests/cubby-ui.mjs
@@ -75,7 +75,7 @@ try {
   await page.route('**/api/login', (r) => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ accounts: true, shared: false, cloudflare: true }) }));
   await page.route('**/main.ts*', async (r) => {
     const response = await r.fetch();
-    const body = (await response.text()) + "\nimport { installCubbies as __installCubbies } from './features/cubbies';\nwindow.__audit = { ctx, core, parts, cubbies: __installCubbies(ctx) };\n";
+    const body = (await response.text()) + "\nwindow.__audit = { ctx, core, parts, cubbies: parts.cubbies };\n";
     await r.fulfill({ response, body });
   });
   await page.routeWebSocket(/\/ws(?:\?|$)/, (ws) => {
@@ -182,6 +182,8 @@ try {
   await page.waitForTimeout(150);
   assert.deepEqual(sent.filter((m) => m.t === 'cubbies.chat'), [{ t: 'cubbies.chat', id: 'cub-me', text: 'Ship the checkout fix first' }]);
   assert.equal(await page.locator('.cubby-chat .btn.close').count(), 1, 'the chat has its ✕');
+  // Keep the injection assertion above, then use ordinary fixture copy for the review capture.
+  await page.evaluate(() => { const s = window.__office.store; s.cubbies.cubbies[0].interior.chat[1].text = 'Checkout fix lands first, then the cart polish.'; s.emit('cubbies'); });
   await shot('chat');
 
   // A helper's card from the roster; a direct session shows tool, branch and state only.

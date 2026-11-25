@@ -14,11 +14,11 @@ function socket() {
     send(raw: string) { this.sent.push(JSON.parse(raw)); },
     frame(frame: unknown) { this.emit('message', Buffer.from(JSON.stringify(frame))); } };
 }
-function fixture(t: { after(fn: () => void): void }, enabled = true) {
+function fixture(t: { after(fn: () => void): void }, enabled = true, now = Date.now) {
   const dir = mkdtempSync(path.join(tmpdir(), 'office-cubby-'));
   let cubbies: Cubbies | undefined;
   const nodes = new Nodes(dir, () => cubbies?.refresh());
-  cubbies = new Cubbies(dir, enabled, nodes, owner => ({ alice: 'Alice', bob: 'Bob' })[owner as 'alice'], id => ['floor', 'other'].includes(id), () => {});
+  cubbies = new Cubbies(dir, enabled, nodes, owner => ({ alice: 'Alice', bob: 'Bob' })[owner as 'alice'], id => ['floor', 'other'].includes(id), () => {}, now);
   t.after(() => { nodes.close(); rmSync(dir, { recursive: true, force: true }); });
   const setup = (owner = 'alice', slot = 0, floor = 'floor') => cubbies!.setup(floor, owner, slot, 'Nova', {skin: 1, hair: 2, style: 3});
   const connect = (token: string, floor = 'floor', computerId = 'computer-alice') => {
@@ -121,4 +121,17 @@ test('owner can recover a lost setup token offline without freeing the room or c
   const wrongComputer = f.connect(next.token, 'floor', 'other-computer'); assert.deepEqual(wrongComputer.sent, []);
   const correct = f.connect(next.token); assert.equal(correct.sent[0].t, 'cubby.ready');
   assert.equal(f.cubbies.state('floor', 'alice').cubbies[0].lamp, 'online');
+});
+
+
+test('an online computer with stale observations does not keep advertising old work as live', t => {
+  let now = Date.now();
+  const f = fixture(t, true, () => now), invite = f.setup(), ws = f.connect(invite.token);
+  ws.frame(roster());
+  assert.equal(f.cubbies.state('floor', 'alice').cubbies[0].working, 1);
+  now += 70_000;
+  const stale = f.cubbies.state('floor', 'alice').cubbies[0];
+  assert.equal(stale.lamp, 'online'); assert.equal(stale.working, 0);
+  assert.equal(stale.interior!.agents[0].status, 'unknown');
+  assert.match(stale.interior!.error!, /not refreshed/);
 });

@@ -6,7 +6,6 @@
  * (store.cubbies.enabled) or the hall hasn't placed the cubbies (setPlacements).
  */
 import * as THREE from 'three';
-import type { ClientMsg } from '../../../shared/protocol';
 import type { CubbiesClientMsg, CubbyInfo } from '../../../shared/protocol/cubbies';
 import type { Ctx } from '../../core/context';
 import { aside, hintTitle, key } from '../../core/hint';
@@ -55,8 +54,7 @@ export function installCubbies(ctx: Ctx): Cubbies {
   let added: { into: Collider[]; list: Collider[] } | null = null;
   let shown = false;
 
-  // Until protocol.ts's ClientMsg lists CubbiesClientMsg (the root's to add), it goes out as one.
-  const send = (m: CubbiesClientMsg) => ctx.net.send(m as unknown as ClientMsg);
+  const send = (m: CubbiesClientMsg) => ctx.net.send(m);
   const cubbyById = (id: string): CubbyInfo | undefined => store.cubbies.cubbies.find((c) => c.id === id);
   const windows: CubbyWindows = {
     cubby: cubbyById,
@@ -136,7 +134,7 @@ export function installCubbies(ctx: Ctx): Cubbies {
   ctx.messages.onAny((m) => {
     // Answers only the account that asked (see CubbiesServerMsg); never logged.
     const t = m as unknown as { t: string; id?: unknown; floorId?: unknown; token?: unknown };
-    if (t.t !== 'cubbies.token' || typeof t.token !== 'string' || typeof t.floorId !== 'string') return;
+    if (t.t !== 'cubbies.token' || typeof t.token !== 'string' || typeof t.floorId !== 'string' || t.floorId !== store.floor) return;
     const token = { token: t.token, floorId: t.floorId };
     if (setup?.open) setup.showToken(token);
     else if (performance.now() - askedAt < TOKEN_WAIT) openJoin(token);
@@ -158,17 +156,18 @@ export function installCubbies(ctx: Ctx): Cubbies {
       const info = roomOf(it)?.info;
       if (!info) {
         const can = store.cubbies.setupAllowed;
-        return { k: `cubby-free-${can}`, parts: [hintTitle('✨ Free cubby'), can ? key('E', 'Set up') : aside('ask an admin to set one up')] };
+        return { k: `cubby-free-${can}`, parts: [hintTitle('✨ Free cubby'), can ? key('E', 'Set up') : aside('sign in to set up your cubby')] };
       }
       if (info.mine) {
         const where = info.interior ? `Runs on your ${clip(info.interior.computerName, 24)}` : 'waiting for your computer to join';
-        return { k: `cubby-mine-${where}`, parts: [hintTitle('🚪 Your cubby'), aside(where)] };
+        return { k: `cubby-mine-${where}`, parts: [hintTitle('🚪 Your cubby'), aside(where), ...(info.lamp === 'asleep' ? [key('E', 'Set up')] : [])] };
       }
       const what = info.lamp === 'asleep' ? '💤 asleep' : `${Math.max(0, info.working | 0)} working · private`;
       return { k: `cubby-other-${info.ownerName}-${what}`, parts: [hintTitle(`🔒 ${clip(info.ownerName, 22)}`), aside(what)] };
     },
     use: (it, k) => {
-      if (k !== 'E' || roomOf(it)?.info || !store.cubbies.setupAllowed || setup?.open) return;
+      const info = roomOf(it)?.info;
+      if (k !== 'E' || (info && (!info.mine || info.lamp !== 'asleep')) || !store.cubbies.setupAllowed || setup?.open) return;
       const slot = at(it).slot;
       setup = openSetup(slot, (leadName, look) => {
         askedAt = performance.now();

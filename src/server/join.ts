@@ -154,6 +154,10 @@ export async function joinCommand(argv: string[]): Promise<number> {
   }
 
   try { url = officeOrigin(url); } catch { console.error('Use an http(s) office origin without credentials, path, query or fragment'); return 2; }
+  const origin = new URL(url);
+  if (cubbies && origin.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(origin.hostname)) {
+    console.error('Cubby chat requires HTTPS, except on your own loopback computer.'); return 2;
+  }
   let access: Awaited<ReturnType<typeof accessHeaders>> | undefined;
   if (cloudflareAccess) {
     try { access = await accessHeaders(url); } catch { console.error(ACCESS_HELP); return 1; }

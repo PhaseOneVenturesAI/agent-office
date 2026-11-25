@@ -79,3 +79,8 @@ test('local cubby flags require opt-in and remote plaintext chat is rejected bef
   assert.equal(await joinCommand(['http://localhost', '--token', 'test', '--floor', 'f']), 2);
   assert.equal(await joinCommand(['http://example.invalid', '--token', 'test', '--cubbies', '--floor', 'f', '--project', '/unused']), 2);
 });
+
+
+test('cubby chat refuses an unencrypted remote origin before local setup or any connection', async () => {
+  assert.equal(await joinCommand(['http://example.test', '--token', 'fixture', '--cubbies']), 2);
+});

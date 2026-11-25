@@ -25,10 +25,13 @@ export class Cubbies {
       .filter(r => r.floorId === floorId && !!this.accountName(r.owner))
       .map(r => {
         const live = this.live.get(r.id), online = !!live?.admitted && this.nodes.isOnline(r.nodeId);
-        const working = online ? live.interior.agents.filter(a => a.status === 'working').length : 0;
+        const stale = online && live.interior.observedAt !== undefined && this.now() - live.interior.observedAt > 60_000;
+        const working = online && !stale ? live.interior.agents.filter(a => a.status === 'working').length : 0;
+        const interior = live?.interior ?? this.empty(r);
+        const privateView = stale ? { ...interior, agents: interior.agents.map(a => ({ ...a, status: 'unknown' as const })), error: 'Local roster has not refreshed. Check the connector on your computer.' } : interior;
         return { id: r.id, slot: r.slot, ownerName: this.accountName(r.owner)!, mine: r.owner === owner,
           lamp: !online ? 'asleep' as const : working ? 'working' as const : 'online' as const, working,
-          ...(owner === r.owner ? { interior: live?.interior ?? this.empty(r) } : {}) };
+          ...(owner === r.owner ? { interior: privateView } : {}) };
       }).sort((a, b) => a.slot - b.slot) };
   }
   setup(floorId: string, owner: string, slot: number, name: string, look: Look) {

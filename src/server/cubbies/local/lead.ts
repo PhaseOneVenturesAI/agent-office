@@ -6,7 +6,7 @@ import { jsonFile, nativeEnv, run, type Run } from './io.js';
 import { alive } from './lock.js';
 import { processes, type ProcessScan } from './processes.js';
 
-export const CODEX_BLOCKER = 'Codex desktop chat unavailable: the installed native turn/start protocol can steer an active turn and has no atomic idle-only ownership guard. Use the existing Codex conversation locally; no second lead was started.';
+export const CODEX_BLOCKER = 'Codex desktop chat is unavailable: this connector has no supported connection to the existing desktop lead. Continue in that conversation locally; no second lead was started.';
 export const APPROVAL_NOTICE = 'Native permission approval needs your local Claude terminal. Resume the same session locally to review it; Office cannot approve tools.';
 export class LeadError extends Error {}
 export interface Lead {
