@@ -166,8 +166,8 @@ export class CubbyConnector {
         note = ask(this.devices, { requestId: frame.requestId, key: frame.publicKey, label: frame.label }, this.now());
       } else {
         if (!['add', 'deny', 'revoke'].includes(frame.action) || typeof frame.target !== 'string' || frame.target.length > 200) return;
-        if (!this.trusted((key) => verifyOwnerDevice(key, frame))) note = 'That change wasn’t signed by a device this computer trusts, so nothing changed.';
-        else { const done = change(this.devices, frame.action, frame.target, this.now()); note = done.note ?? done.error; }
+        const done = change(this.devices, frame.action, frame.target, this.now(), key => verifyOwnerDevice(key, frame));
+        note = done.note ?? done.error;
       }
     } catch { note = 'Couldn’t update this computer’s trusted devices. Nothing changed.'; }
     this.sendDevices(note);

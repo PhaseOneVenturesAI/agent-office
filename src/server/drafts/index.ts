@@ -29,6 +29,7 @@ export class Drafts {
   async kickoff(id: string, confirm: unknown, owner: string | undefined, cubbies: Cubbies) {
     const def = this.building.list().find(d => d.id === id), r = this.records.rows.get(id);
     if (!def?.draft || !r || r.kickedOffAt !== undefined || !this.owns(id, owner)) throw Error('No such floor');
+    if (!this.canStart(owner)) throw Error('Only designated project starters can kick off a project');
     if (!this.remote) throw Error('Kickoff is not switched on in this office yet');
     if (typeof confirm !== 'string' || confirm.trim().toLowerCase() !== r.name.toLowerCase()) throw Error('Type the project name again to kick it off');
     if (this.kicking.has(id)) throw Error('Kickoff is already in progress');
@@ -85,7 +86,7 @@ export class Drafts {
     }
   }
   state(floorId: string | undefined, owner: string | undefined, cubbies: Cubbies): DraftsState {
-    const state: DraftsState = { enabled: this.enabled, canStart: this.canStart(owner), canKickoff: this.enabled && !!this.remote };
+    const state: DraftsState = { enabled: this.enabled, canStart: this.canStart(owner), canKickoff: this.enabled && !!this.remote && this.canStart(owner) };
     const saved = floorId && this.records.rows.get(floorId);
     if (saved && !this.building.list().find(d => d.id === floorId)?.draft && saved.launched) {
       state.launched = saved.launched;

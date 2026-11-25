@@ -16,12 +16,18 @@ import path from 'node:path';
 import { MAX_DEVICE_REQUESTS, MAX_OWNER_DEVICES, type CubbyDevice, type CubbyDeviceRequest, type CubbyNodeFrame } from '../../../shared/protocol/cubbies.js';
 import { ownerDeviceCode, ownerFingerprint, ownerPublicKey } from '../wire.js';
 import { clean, jsonFile } from './io.js';
+import { withDeviceLock } from './device-lock.js';
 
 /** A trusted device: its public key and how it's shown. */
 export interface Pin { key: string; fingerprint: string; label: string; addedAt: number }
 /** A device asking to be trusted. */
 export interface Waiting { requestId: string; key: string; label: string; code: string; at: number }
-export interface DeviceStore { pins(): Pin[]; waiting(): Waiting[]; save(pins: Pin[], waiting: Waiting[]): void }
+interface DeviceState { pins: Pin[]; waiting: Waiting[] }
+export interface DeviceStore {
+  pins(): Pin[]; waiting(): Waiting[];
+  /** Reads and edits fresh state under the shared lock; only changed lists are written. */
+  update<T>(edit: (state: DeviceState) => T): T;
+}
 
 /** How long a request waits for approval. */
 export const WAIT_MS = 10 * 60_000;
@@ -51,13 +57,22 @@ export function readPins(state: string, floor: string): Pin[] | undefined {
   if (!pins.length || pins.length > MAX_OWNER_DEVICES) throw new Error('Invalid local owner key record');
   return pins;
 }
-export function writePins(state: string, floor: string, pins: Pin[]) {
+function putPins(state: string, floor: string, pins: Pin[]) {
   put(pinFile(state, floor), { floor, devices: pins.map(({ key, label, addedAt }) => ({ key, label, addedAt, fingerprint: ownerFingerprint(key).match(/.{4}/g)!.join('-') })) });
+}
+export function updatePins(state: string, floor: string, edit: (pins: Pin[] | undefined) => Pin[] | undefined) {
+  withDeviceLock(pinFile(state, floor), () => {
+    const pins = readPins(state, floor), next = edit(pins);
+    if (next && next !== pins) putPins(state, floor, next);
+  });
+}
+export function writePins(state: string, floor: string, pins: Pin[]) {
+  updatePins(state, floor, () => pins);
 }
 
 /** The project's files, re-read on every use; with no pin record yet, the key given at join. */
 export function fileStore(state: string, floor: string, joinKey: string): DeviceStore {
-  return {
+  const read = {
     pins: () => readPins(state, floor) ?? [pinOf(joinKey, 'First device', 0)],
     waiting: () => {
       const file = waitFile(state, floor);
@@ -67,11 +82,23 @@ export function fileStore(state: string, floor: string, joinKey: string): Device
         return Array.isArray(list) ? list.filter((w: any) => typeof w?.key === 'string' && typeof w.requestId === 'string').slice(0, MAX_DEVICE_REQUESTS) : [];
       } catch { return []; }
     },
-    save(pins, waiting) { writePins(state, floor, pins); put(waitFile(state, floor), waiting); },
   };
+  return { ...read, update(edit) {
+    return withDeviceLock(pinFile(state, floor), () => {
+      const current = { pins: read.pins(), waiting: read.waiting() };
+      const beforePins = JSON.stringify(current.pins), beforeWaiting = JSON.stringify(current.waiting);
+      const result = edit(current);
+      if (JSON.stringify(current.pins) !== beforePins) putPins(state, floor, current.pins);
+      if (JSON.stringify(current.waiting) !== beforeWaiting) put(waitFile(state, floor), current.waiting);
+      return result;
+    });
+  } };
 }
 export function memoryStore(pins: Pin[], waiting: Waiting[] = []): DeviceStore {
-  return { pins: () => pins.slice(), waiting: () => waiting.slice(), save(p, w) { pins = p.slice(); waiting = w.slice(); } };
+  return { pins: () => structuredClone(pins), waiting: () => structuredClone(waiting), update(edit) {
+    const current = structuredClone({ pins, waiting }), result = edit(current);
+    pins = current.pins; waiting = current.waiting; return result;
+  } };
 }
 
 const fresh = (waiting: Waiting[], now: number) => waiting.filter((w) => now - w.at < WAIT_MS && w.at - now < 60_000);
@@ -79,35 +106,40 @@ const fresh = (waiting: Waiting[], now: number) => waiting.filter((w) => now - w
 /** A new device asks to be trusted. Returns what changed, for the owner's chat, or nothing. */
 export function ask(store: DeviceStore, r: { requestId: string; key: string; label: string }, now: number): string | undefined {
   ownerPublicKey(r.key);
-  const pins = store.pins();
-  let waiting = fresh(store.waiting(), now);
-  if (pins.some((p) => p.key === r.key)) return;
-  waiting = waiting.filter((w) => w.key !== r.key);
-  if (waiting.length >= MAX_DEVICE_REQUESTS) waiting.shift();
-  const label = clean(r.label, 40) || 'Device';
-  waiting.push({ requestId: r.requestId, key: r.key, label, code: ownerDeviceCode(r.key), at: now });
-  store.save(pins, waiting);
-  return `📱 ${label} asks to talk to your lead. Its code is ${ownerDeviceCode(r.key)}: approve it only on a device you already use, and only if that device shows the same code.`;
+  return store.update((state) => {
+    const pins = state.pins;
+    let waiting = fresh(state.waiting, now);
+    if (pins.some((p) => p.key === r.key)) return;
+    waiting = waiting.filter((w) => w.key !== r.key);
+    if (waiting.length >= MAX_DEVICE_REQUESTS) waiting.shift();
+    const label = clean(r.label, 40) || 'Device';
+    waiting.push({ requestId: r.requestId, key: r.key, label, code: ownerDeviceCode(r.key), at: now });
+    state.waiting = waiting;
+    return `📱 ${label} asks to talk to your lead. Its code is ${ownerDeviceCode(r.key)}: approve it only on a device you already use, and only if that device shows the same code.`;
+  });
 }
 
-/** A change a trusted device signed (already checked), or the owner made on this computer. */
-export function change(store: DeviceStore, action: 'add' | 'deny' | 'revoke', target: string, now: number): { note?: string; error?: string } {
-  const pins = store.pins();
-  const waiting = fresh(store.waiting(), now);
-  if (action === 'revoke') {
-    const gone = pins.find((p) => p.fingerprint === target);
-    if (!gone) return { error: 'That device isn’t trusted any more.' };
-    if (pins.length === 1) return { error: 'That’s the only device that can talk to your lead, so it stays. Add another one first.' };
-    store.save(pins.filter((p) => p !== gone), waiting);
-    return { note: `🔒 ${gone.label} can’t talk to your lead any more.` };
-  }
-  const asked = waiting.find((w) => w.key === target);
-  if (!asked) return { error: 'That request has expired. Ask again from the new device.' };
-  const rest = waiting.filter((w) => w !== asked);
-  if (action === 'deny') { store.save(pins, rest); return { note: `🚫 Didn’t add ${asked.label}.` }; }
-  if (pins.length >= MAX_OWNER_DEVICES) return { error: `A cubby trusts at most ${MAX_OWNER_DEVICES} devices. Remove one first.` };
-  store.save([...pins, pinOf(asked.key, asked.label, now)], rest);
-  return { note: `✅ ${asked.label} can talk to your lead now.` };
+/** A signed change (verified under the lock), or a change the owner made on this computer. */
+export function change(store: DeviceStore, action: 'add' | 'deny' | 'revoke', target: string, now: number, authorized?: (key: string) => boolean): { note?: string; error?: string } {
+  return store.update((state) => {
+    const pins = state.pins;
+    if (authorized && !pins.some(p => authorized(p.key))) return { error: 'That change wasn’t signed by a device this computer trusts, so nothing changed.' };
+    const waiting = fresh(state.waiting, now);
+    if (action === 'revoke') {
+      const gone = pins.find((p) => p.fingerprint === target);
+      if (!gone) return { error: 'That device isn’t trusted any more.' };
+      if (pins.length === 1) return { error: 'That’s the only device that can talk to your lead, so it stays. Add another one first.' };
+      state.pins = pins.filter((p) => p !== gone); state.waiting = waiting;
+      return { note: `🔒 ${gone.label} can’t talk to your lead any more.` };
+    }
+    const asked = waiting.find((w) => w.key === target);
+    if (!asked) return { error: 'That request has expired. Ask again from the new device.' };
+    const rest = waiting.filter((w) => w !== asked);
+    if (action === 'deny') { state.waiting = rest; return { note: `🚫 Didn’t add ${asked.label}.` }; }
+    if (pins.length >= MAX_OWNER_DEVICES) return { error: `A cubby trusts at most ${MAX_OWNER_DEVICES} devices. Remove one first.` };
+    state.pins = [...pins, pinOf(asked.key, asked.label, now)]; state.waiting = rest;
+    return { note: `✅ ${asked.label} can talk to your lead now.` };
+  });
 }
 
 /** What the office shows the owner: fingerprints, names and codes only, never a key. */
