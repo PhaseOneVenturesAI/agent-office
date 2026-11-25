@@ -14,12 +14,13 @@ function fixture(defaultProvider: AgentProvider = 'claude') {
     defaultProvider,
     list: () => workers,
     deskOccupied: (desk) => workers.some((w) => w.deskId === desk),
-    spawn(deskId, by, prompt, worktree, kind, provider, model, effort) {
+    spawn(deskId, by, prompt, worktree, kind, provider, model, effort, _meeting, _owner, sharedWith) {
       const id = `worker-${hired++}`;
       const worker: WorkerInfo = {
         id, deskId, kind, provider, model, effort, prompt, name: 'Test',
         color: '#ffffff', status: 'working', acked: false, createdBy: by,
         createdAt: Date.now(), cols: 80, rows: 24, viewers: [], viewerIds: [],
+        sharedWith: sharedWith?.length ? sharedWith : undefined,
         worktree: worktree ? { path: `.agent-office/worktrees/${id}`, branch: `office/${id}`, base: 'abc' } : undefined,
       };
       workers.push(worker);
@@ -422,4 +423,30 @@ test("a queue worker that switches to a branch of its own takes its task's branc
     headRefName: 'fix-login', baseRefName: 'main', createdAt: new Date().toISOString(), updatedAt: '', additions: 0, deletions: 0, checks: 'none', body: '', closes: [],
   }]);
   assert.equal(q.state().tasks[0].pr?.number, 242);
+});
+
+test('a task’s sharing passes to the worker it seats, and survives restart and retry', (t) => {
+  const f = fixture(); t.after(() => f.close());
+  const q = f.open(); q.setLimit(0);
+  assert.equal(q.add('Fix login', 'Tester', undefined, undefined, 'claude', undefined, undefined, 'acct-alice', ['acct-bob']), undefined);
+  // Private by default next to it: a task queued without coworkers.
+  assert.equal(q.add('Tidy docs', 'Tester', undefined, undefined, 'claude', undefined, undefined, 'acct-alice'), undefined);
+  const [shared, priv] = q.state().tasks;
+  assert.deepEqual(shared.sharedWith, ['acct-bob']);
+  assert.equal(priv.sharedWith, undefined);
+  q.shutdown();
+
+  // The queue file keeps it, and the workers seated after the restart inherit it (or its absence).
+  const restored = f.open(); restored.setLimit(2);
+  assert.deepEqual(restored.state().tasks[0].sharedWith, ['acct-bob']);
+  assert.deepEqual(f.workers[0].sharedWith, ['acct-bob']);
+  assert.equal(f.workers[1].sharedWith, undefined);
+
+  // Finished and requeued, the task still seats a shared worker.
+  f.workers[0].status = 'done'; restored.onWorker(f.workers[0]);
+  f.workers[1].status = 'done'; restored.onWorker(f.workers[1]);
+  restored.setLimit(0);
+  assert.equal(restored.retry(restored.state().tasks[0].id), undefined);
+  restored.setLimit(1);
+  assert.deepEqual(f.workers.at(-1)?.sharedWith, ['acct-bob']);
 });

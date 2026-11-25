@@ -30,6 +30,7 @@ export function saveWorkers(file: string, workers: Iterable<Worker>, stopping: b
     color: info.color,
     createdBy: info.createdBy,
     createdAt: info.createdAt,
+    sharedWith: info.sharedWith,
     prompt: info.prompt,
     handoff: info.handoff,
     worktree: info.worktree,
@@ -90,6 +91,7 @@ export function restoreWorkers(file: string, workers: Map<string, Worker>, defau
         acked: true,
         createdBy: s.createdBy ?? '?',
         createdAt: s.createdAt ?? Date.now(),
+        sharedWith: validSharedWith(s.sharedWith),
         prompt: s.prompt,
         handoff: savedHandoff(s.handoff),
         worktree: s.worktree,
@@ -130,4 +132,11 @@ export function restoreWorkers(file: string, workers: Map<string, Worker>, defau
 function validTask(t: unknown): WorkerTask | undefined {
   const v = t as Partial<WorkerTask> | undefined;
   return typeof v?.name === 'string' && typeof v.summary === 'string' ? { name: v.name, summary: v.summary } : undefined;
+}
+
+/** The coworkers a restored worker was shared with (see WorkerInfo.sharedWith), as saved. */
+function validSharedWith(v: unknown): string[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const ids = [...new Set(v.filter((x): x is string => typeof x === 'string' && !!x))];
+  return ids.length ? ids : undefined;
 }

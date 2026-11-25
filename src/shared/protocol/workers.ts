@@ -45,8 +45,16 @@ export interface WorkerInfo {
   /** When it last went to done or needs_input (ms), so N goes to whoever has waited longest first. */
   waitingSince?: number;
   createdBy: string;
+  /** The account it runs for (its credential owner), as an account id; only sent to those allowed to see the worker. */
+  owner?: string;
   /** Verified credential owner's display name, or Office / Former account; never a token or email. */
   ownerName?: string;
+  /**
+   * The coworkers (account ids) this worker is shared with: they can see its card and open and type
+   * into its terminal, next to its owner and the admins. Nobody picked: only the owner (and admins)
+   * can. Meeting and board workers stay floor-wide whatever this says. Change it with 'worker.share'.
+   */
+  sharedWith?: string[];
   createdAt: number;
   prompt?: string;
   /** Latest explicit task handoff; independent of the credential account. */
@@ -181,10 +189,14 @@ export interface JailState {
 
 export type WorkerClientMsg =
   /** With `issue`, the worker is there for that GitHub issue: it moves to In progress at once, is assigned on GitHub (which keeps it there) and taken off the queue. */
-  /** With `repos` (other floors' ids), the worker works in their repositories too, each in a worktree of its own (see WorkerInfo.repos). */
-  | { t: 'worker.spawn'; deskId: string; prompt?: string; worktree?: boolean; kind?: WorkerKind; provider?: AgentProvider; model?: string; effort?: AgentEffort; issue?: number; repos?: string[]; via?: 'herald' }
+  /** With `repos` (other floors' ids), the worker works in their repositories too, each in a worktree of its own (see WorkerInfo.repos). `sharedWith`: the coworkers it's shared with (see WorkerInfo.sharedWith); nobody picked keeps it private. */
+  | { t: 'worker.spawn'; deskId: string; prompt?: string; worktree?: boolean; kind?: WorkerKind; provider?: AgentProvider; model?: string; effort?: AgentEffort; issue?: number; repos?: string[]; via?: 'herald'; sharedWith?: string[] }
   | { t: 'worker.resume'; workerId: string }
   | { t: 'worker.kill'; workerId: string; cleanup?: WorktreeCleanup }
+  /** Change who a worker is shared with (see WorkerInfo.sharedWith); its owner or an admin only. */
+  | { t: 'worker.share'; workerId: string; with: string[] }
+  /** The coworkers a worker can be shared with (the office's accounts); answered with `worker.people`. */
+  | { t: 'worker.people' }
   /** Asks what the worker's worktree holds; answered with a `worker.worktree` message. */
   | { t: 'worker.worktree'; workerId: string }
   /** Puts a lost worker's worktree back and starts it again (see WorkerInfo.lost); `all`: every lost worker on the floor. */
@@ -207,6 +219,8 @@ export type WorkerClientMsg =
 
 export type WorkerServerMsg =
   | { t: 'worker.update'; worker: WorkerInfo }
+  /** The coworkers a worker can be shared with (asked with 'worker.people'); `you` is your own account id, for telling yours from the others. */
+  | { t: 'worker.people'; you?: string; people: { id: string; name: string }[] }
   /** A worker's gone; `jail`, when it was sent home on a map that locks workers up (MapPlan.sendHome), with it in there now. */
   | { t: 'worker.remove'; workerId: string; jail?: JailState }
   | { t: 'worker.worktree'; workerId: string; state: WorktreeState }

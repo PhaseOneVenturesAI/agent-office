@@ -7,11 +7,18 @@ import { DESK_BY_ID } from '../../shared/layout';
 import { $, h, STATUS_LABEL, timeAgo } from './dom';
 import { usageLabel, usageTitle } from './usage';
 import { providerLabel, providerUsageState, providerWaitingLabel, resolvedProvider, modelBadge } from './provider';
+import { canShareWorker, onPeople, openShare, wantPeople } from './share';
+
+// The 👥 buttons wait on the coworker directory (worker.people): draw again once it's in.
+let repaint: (() => void) | null = null;
+onPeople(() => repaint?.());
 
 export function renderWorkers(onOpen: (id: string) => void) {
+  repaint = () => renderWorkers(onOpen);
   const ul = $('workers');
   ul.replaceChildren();
   const workers = needyFirst(store.workers.values());
+  wantPeople(workers);
   for (const w of workers) {
     const asking = w.status === 'needs_input' && !w.lost;
     const provider = w.kind === 'agent' ? providerLabel(w.provider, store.project) : null;
@@ -23,14 +30,28 @@ export function renderWorkers(onOpen: (id: string) => void) {
     const sub = [provider && `⚙️ ${provider}${badge ? ` · ${badge}` : ''}${usageNote}`, w.worktree && `🌿 ${w.worktree.branch}`, w.repos?.length && `🗂️ ${w.repos.length + 1} repos`, w.pr && `🔀 PR #${w.pr.number}`, w.activity || w.title || w.prompt].filter(Boolean).join(' · ');
     // What it's stopped on, and since when, on a line of its own under its name.
     const ask = asking ? h('span.ask', {}, `🙋 ${w.activity ?? 'Waiting on an answer'}${w.waitingSince ? ` · ${timeAgo(w.waitingSince)}` : ''}`) : null;
+    // Who can see and take over its terminal; only its owner (or an admin) changes that.
+    const subAll = [sub, w.sharedWith?.length ? `👥 shared with ${w.sharedWith.length}` : ''].filter(Boolean).join(' · ');
+    const shareBtn = canShareWorker(w)
+      ? h('button.btn.share-btn', {
+          type: 'button',
+          title: w.sharedWith?.length ? `Shared with ${w.sharedWith.length} coworker${w.sharedWith.length === 1 ? '' : 's'} — change who can see and take over its terminal` : 'Private to you — share its terminal with coworkers',
+          'aria-label': `Who can see ${w.name}`,
+          onclick: (e: Event) => {
+            e.stopPropagation();
+            openShare(w);
+          },
+        }, '👥')
+      : null;
     ul.append(
       h(
         'li',
         { class: asking ? 'needs-you-row' : '', onclick: () => onOpen(w.id), title: asking ? `${w.name} needs you: open its terminal to answer` : `Open ${w.name}'s terminal` },
         h('span.dot', { style: `background:${w.color}` }),
-        h('span.name', {}, w.name, sub ? h('span.sub', {}, sub) : null,
+        h('span.name', {}, w.name, subAll ? h('span.sub', {}, subAll) : null,
           usageState === 'tracked' && w.usage ? h('span.cost', { title: usageTitle(w.usage, providerKind) }, usageLabel(w.usage, providerKind)) : null),
         w.lost ? h('span.pill.lost', { title: 'Its worktree was deleted outside agent-office: open it to fix it' }, 'worktree deleted') : h('span.pill', { class: w.status }, asking ? 'NEEDS YOU' : (STATUS_LABEL[w.status] ?? w.status)),
+        shareBtn,
         ask,
       ),
     );

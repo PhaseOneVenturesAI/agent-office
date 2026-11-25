@@ -25,5 +25,5 @@ export interface FeatureHooks {
   closedOn?(ctx: Ctx, c: Client, floor: Floor): void;
 }
 
-/** A piece of what someone arriving on a floor is sent (see FloorView), or the lobby's when `floor` is undefined. */
-export type ViewPieces = { [K in Exclude<keyof FloorView, 'floor'>]: (ctx: Ctx, floor: Floor | undefined) => FloorView[K] };
+/** A piece of what someone arriving on a floor is sent (see FloorView), or the lobby's when `floor` is undefined, as `c` may see it. */
+export type ViewPieces = { [K in Exclude<keyof FloorView, 'floor'>]: (ctx: Ctx, floor: Floor | undefined, c: Client) => FloorView[K] };

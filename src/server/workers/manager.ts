@@ -210,6 +210,15 @@ export class WorkerManager {
     return this.workers.get(id)?.owner;
   }
 
+  /** Changes who a worker is shared with (see WorkerInfo.sharedWith), and tells everyone allowed to see it. */
+  share(id: string, sharedWith?: string[]): void {
+    const w = this.workers.get(id);
+    if (!w) return;
+    w.info.sharedWith = sharedWith?.length ? [...sharedWith] : undefined;
+    this.emitUpdate(w);
+    this.persist();
+  }
+
   /** Each worker's terminal process and directory, to tell whose servers are whose. */
   owners(): ServiceOwner[] {
     return [...this.workers.values()].map((w) => ({
@@ -239,7 +248,7 @@ export class WorkerManager {
    * (see meetings.ts), in the meeting's own worktree, which everyone at the table shares. `repos` are
    * other floors' repositories a worker in its own worktree works in too (see makeWorkspace).
    */
-  spawn(deskId: string, by: string, prompt?: string, worktree = false, kind: WorkerKind = 'agent', provider?: AgentProvider, model?: string, effort?: AgentEffort, meeting?: { id: string; worktree?: WorkerInfo['worktree'] }, owner?: string, repos: RepoSource[] = [], via?: 'herald'): WorkerInfo | string {
+  spawn(deskId: string, by: string, prompt?: string, worktree = false, kind: WorkerKind = 'agent', provider?: AgentProvider, model?: string, effort?: AgentEffort, meeting?: { id: string; worktree?: WorkerInfo['worktree'] }, owner?: string, sharedWith?: string[], repos: RepoSource[] = [], via?: 'herald'): WorkerInfo | string {
     if (this.closing) return 'This floor is closing; no new workers can start.';
     // Nobody picked (a board agent, say): the office's default worker, model and effort included.
     if (kind === 'agent' && provider === undefined) ({ provider, model, effort } = this.officeDefault);
@@ -303,6 +312,8 @@ export class WorkerManager {
       acked: true,
       createdBy: by,
       createdAt: Date.now(),
+      // A meeting's table and a board agent are the floor's own: only a desk worker is shared (or not).
+      ...(sharedWith?.length && !seat.station && !meeting ? { sharedWith: [...sharedWith] } : {}),
       ...(via ? { via } : {}),
       prompt: kind === 'shell' ? undefined : prompt?.trim() || undefined,
       worktree: wt,

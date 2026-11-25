@@ -1702,3 +1702,161 @@ test("a worker whose worktree was deleted outside the office waits, marked lost,
   assert.equal(after.get(gone.id)?.lost, undefined);
   assert.deepEqual(toasts, []);
 });
+
+// ---- Sharing: private by default, opt-in coworkers (WorkerInfo.sharedWith) ----------------------
+
+test('a worker is private by default; its share list persists across a restart and share() rewrites it', async (t) => {
+  const f = fixture();
+  isolateProviderEnvironment(f, t);
+  const previousLog = process.env.FAKE_AGENT_LOG;
+  process.env.FAKE_AGENT_LOG = f.log;
+  t.after(() => {
+    if (previousLog === undefined) delete process.env.FAKE_AGENT_LOG;
+    else process.env.FAKE_AGENT_LOG = previousLog;
+    f.close();
+  });
+
+  const workers = manager(f, f.claude, []);
+  t.after(() => workers.shutdown());
+  const priv = workers.spawn('desk-1', 'test', 'private task');
+  const shared = workers.spawn('desk-2', 'test', 'shared task', false, 'agent', 'claude', undefined, undefined, undefined, undefined, ['acct-bob', 'acct-ada']);
+  assert.equal(typeof priv, 'object');
+  assert.equal(typeof shared, 'object');
+  if (typeof priv === 'string' || typeof shared === 'string') return;
+  // Nobody picked: private. Picked: exactly those coworkers.
+  assert.equal(priv.sharedWith, undefined);
+  assert.deepEqual(shared.sharedWith, ['acct-bob', 'acct-ada']);
+
+  // Saved with the worker state, so a restart keeps who can see it.
+  const saved = JSON.parse(readFileSync(path.join(f.data, 'workers.json'), 'utf8')) as { id: string; sharedWith?: string[] }[];
+  assert.equal(saved.find((w) => w.id === priv.id)?.sharedWith, undefined);
+  assert.deepEqual(saved.find((w) => w.id === shared.id)?.sharedWith, ['acct-bob', 'acct-ada']);
+
+  workers.shutdown();
+  const restored = manager(f, f.claude, []);
+  t.after(() => restored.shutdown());
+  await restored.start();
+  assert.equal(restored.get(priv.id)?.sharedWith, undefined);
+  assert.deepEqual(restored.get(shared.id)?.sharedWith, ['acct-bob', 'acct-ada']);
+
+  // Re-shared while it runs, and made private again: both stick, on disk too.
+  restored.share(shared.id, ['acct-ada']);
+  assert.deepEqual(restored.get(shared.id)?.sharedWith, ['acct-ada']);
+  restored.share(shared.id, []);
+  assert.equal(restored.get(shared.id)?.sharedWith, undefined);
+  const resaved = JSON.parse(readFileSync(path.join(f.data, 'workers.json'), 'utf8')) as { id: string; sharedWith?: string[] }[];
+  assert.equal(resaved.find((w) => w.id === shared.id)?.sharedWith, undefined);
+});
+
+test('the ACL: shared coworkers can use a worker, only owner or admin may manage it, meeting and board workers stay floor-wide', async (t) => {
+  const { canManageWorker, canSeeWorker, canUseWorker, sanitizeSharedWith } = await import('../src/server/worker-ownership.js');
+  const { DESK_BY_ID } = await import('../src/shared/layout.js');
+  const roles: Record<string, { name: string; role: string }> = {
+    alice: { name: 'Alice', role: 'member' },
+    bob: { name: 'Bob', role: 'member' },
+    root: { name: 'Root', role: 'admin' },
+  };
+  const ctx = { accounts: { get: (id?: string) => (id ? roles[id] : undefined) } } as never;
+  const desk = [...DESK_BY_ID.values()].find((d) => !d.station && !d.room && !d.beanbag)!;
+  const station = [...DESK_BY_ID.values()].find((d) => d.station)!;
+  const worker = (extra: Partial<WorkerInfo> = {}): WorkerInfo => ({
+    id: 'w1', kind: 'agent', deskId: desk.id, name: 'Pixel', color: '#fff', status: 'idle', acked: true,
+    createdBy: 'Alice', createdAt: 0, cols: 80, rows: 24, viewers: [], viewerIds: [], ...extra,
+  });
+
+  // Use (open the terminal, type into it): the owner, the coworkers it's shared with, the admins —
+  // and anyone at all on the shared password (no accounts), as before.
+  assert.equal(canUseWorker(ctx, 'alice', 'alice'), true);
+  assert.equal(canUseWorker(ctx, 'bob', 'alice'), false);
+  assert.equal(canUseWorker(ctx, 'bob', 'alice', undefined, ['bob']), true);
+  assert.equal(canUseWorker(ctx, 'root', 'alice', undefined, undefined), true);
+  assert.equal(canUseWorker(ctx, undefined, 'alice'), true);
+  assert.equal(canUseWorker(ctx, undefined, undefined), true);
+
+  // Manage (send home, resume, change the sharing): taking over is typing, not ownership.
+  assert.equal(canManageWorker(ctx, 'alice', 'alice'), true);
+  assert.equal(canManageWorker(ctx, 'bob', 'alice'), false);
+  assert.equal(canManageWorker(ctx, 'root', 'alice'), true);
+
+  // Visibility: a desk worker is private to those who may use it; the meeting table and the board
+  // agents are the floor's own and stay visible to everyone.
+  assert.equal(canSeeWorker(ctx, 'bob', worker(), 'alice'), false);
+  assert.equal(canSeeWorker(ctx, 'bob', worker({ sharedWith: ['bob'] }), 'alice'), true);
+  assert.equal(canSeeWorker(ctx, 'root', worker(), 'alice'), true);
+  assert.equal(canSeeWorker(ctx, 'bob', worker({ meeting: 'm1' }), 'alice'), true);
+  assert.equal(canSeeWorker(ctx, 'bob', worker({ deskId: station.id }), 'alice'), true);
+
+  // What a browser sends is cleaned up: known accounts only, never the owner, no duplicates.
+  assert.deepEqual(sanitizeSharedWith(ctx, 'alice', ['bob', 'alice', 'bob', 'ghost', 7, 'root']), ['bob', 'root']);
+  assert.equal(sanitizeSharedWith(ctx, 'alice', []), undefined);
+  assert.equal(sanitizeSharedWith(ctx, 'alice', 'bob'), undefined);
+  assert.equal(sanitizeSharedWith(ctx, undefined, ['bob']), undefined);
+});
+
+test('worker.share is refused for a shared coworker and works for the owner, who can also lock them out', async (t) => {
+  const { workerHandlers } = await import('../src/server/ws/handlers/workers.js');
+  const f = fixture();
+  t.after(() => f.close());
+  const roles: Record<string, { name: string; role: string }> = {
+    alice: { name: 'Alice', role: 'member' },
+    bob: { name: 'Bob', role: 'member' },
+  };
+  const info: WorkerInfo = {
+    id: 'w1', kind: 'agent', provider: 'claude', deskId: 'desk-1', name: 'Pixel', color: '#fff', status: 'idle', acked: true,
+    createdBy: 'Alice', createdAt: 0, cols: 80, rows: 24, viewers: [], viewerIds: [], sharedWith: ['bob'],
+  };
+  const calls: string[] = [];
+  const warnings: string[] = [];
+  const sent = new Map<string, string[]>();
+  const workers = {
+    get: (id: string) => (id === info.id ? info : undefined),
+    ownerOf: () => 'alice',
+    list: () => [info],
+    attach: () => { calls.push('attach'); return { data: '', cols: 80, rows: 24 }; },
+    detach: () => { calls.push('detach'); },
+    write: () => { calls.push('write'); },
+    share: (_id: string, sharedWith?: string[]) => {
+      calls.push(`share:${(sharedWith ?? []).join(',')}`);
+      info.sharedWith = sharedWith?.length ? sharedWith : undefined;
+    },
+    fullScreens: () => [],
+  };
+  const floor = { id: 'floor', workers };
+  const client = (accountId: string | undefined, id: string, attached: string[] = []) =>
+    ({ id, accountId, peer: { name: accountId ?? 'guest', floor: 'floor' }, attached: new Set(attached), typingAt: new Map(), ws: { readyState: 1, bufferedAmount: 0, send: () => {} } });
+  const alice = client('alice', 'c-alice');
+  const bob = client('bob', 'c-bob', ['w1']);
+  const ctx = {
+    workerFloor: () => floor,
+    floorOf: () => floor,
+    clients: new Map([
+      ['c-alice', alice],
+      ['c-bob', bob],
+    ]),
+    accounts: { get: (id?: string) => (id ? roles[id] : undefined) },
+    warn: (_c: unknown, error?: string) => { if (error) warnings.push(error); },
+    sendTo: (c: { id: string }, msg: { t: string }) => sent.set(c.id, [...(sent.get(c.id) ?? []), msg.t]),
+    toastWorker: () => {},
+    toastFloor: () => {},
+  } as never;
+
+  // Bob may type (he's shared in), but he may not change the sharing.
+  workerHandlers['term.input'](ctx, bob as never, { t: 'term.input', workerId: 'w1', data: 'ls\r' });
+  assert.deepEqual(calls, ['write']);
+  workerHandlers['worker.share'](ctx, bob as never, { t: 'worker.share', workerId: 'w1', with: [] });
+  assert.equal(calls.includes('share:'), false);
+  assert.ok(warnings.length);
+
+  // The owner makes it private again: the share list clears, and Bob is let go of the terminal and told.
+  workerHandlers['worker.share'](ctx, alice as never, { t: 'worker.share', workerId: 'w1', with: [] });
+  assert.equal(info.sharedWith, undefined);
+  assert.ok(calls.includes('share:'));
+  assert.ok(calls.includes('detach'));
+  assert.deepEqual(sent.get('c-bob'), ['worker.remove', 'toast']);
+  assert.equal(bob.attached.size, 0);
+
+  // And now Bob can't type any more.
+  calls.length = 0;
+  workerHandlers['term.input'](ctx, bob as never, { t: 'term.input', workerId: 'w1', data: 'ls\r' });
+  assert.deepEqual(calls, []);
+});
