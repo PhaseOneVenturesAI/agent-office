@@ -144,7 +144,7 @@ export function installCubbies(ctx: Ctx, deps: CubbiesDeps = { aimed: () => null
     const p = ctx.player.pos;
     quietOutside(shown && inCubbyHall(p.x, p.z));
     if (!shown) return;
-    const focus = { x: p.x, z: p.z, aimed: deps.aimed() };
+    const focus = { x: p.x, z: p.z, aimed: deps.aimed(), yaw: ctx.player.camYaw };
 
     for (const r of rooms.values()) r.update(f.dt, f.t, Date.now(), focus);
   });

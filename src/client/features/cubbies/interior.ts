@@ -301,7 +301,7 @@ export class Interior {
 
   /**
    * The one helper whose name tag and card show: the one you're aiming at, else the nearest one you're
-   * standing right by. Never more than one, so their labels can't pile up in a small room.
+   * standing right by that's in front of you. Never more than one, so their labels can't pile up in a small room.
    */
   private focused(focus?: Focus) {
     if (!focus) return undefined;
@@ -311,8 +311,12 @@ export class Interior {
       if (!v.model) continue;
       if (focus.aimed && focus.aimed === v.model.root.userData.interact) return v;
       const at = toFloor(this.place, v.spot.x, v.spot.z);
-      const d = Math.hypot(focus.x - at.x, focus.z - at.z);
-      if (d < bestD) { best = v; bestD = d; }
+      const dx = at.x - focus.x;
+      const dz = at.z - focus.z;
+      const d = Math.hypot(dx, dz);
+      // Only one roughly in front of you: one off to the side would put its tag half off the screen.
+      const ahead = d > 0 && (-Math.sin(focus.yaw) * dx - Math.cos(focus.yaw) * dz) / d > IN_FRONT;
+      if (ahead && d < bestD) { best = v; bestD = d; }
     }
     return best;
   }
@@ -379,7 +383,9 @@ function shrinkTags(root: THREE.Object3D) {
 }
 
 /** Where you are, and what you're aiming at, for deciding whose name tag shows. */
-export interface Focus { x: number; z: number; aimed: unknown }
+export interface Focus { x: number; z: number; aimed: unknown; /** Which way you're looking (0 is -z, π/2 is -x). */ yaw: number }
+/** How far round from straight ahead a helper can be for its tag to show without aiming (cos 30°). */
+const IN_FRONT = Math.cos(Math.PI / 6);
 /** How close you stand to a helper for its tag to show without aiming at it. */
 const NEAR = 1.1;
 /** The layer a hidden tag is drawn on: no camera looks at it. */

@@ -227,7 +227,10 @@ try {
   const mineAt = await page.evaluate(() => { const p = window.__audit.cubbies.rooms().get(0).place; return { x: p.x, z: p.z, depth: p.depth, width: p.width }; });
   // At eye height, the way a player stands.
   // In the doorway, looking in: the whole room in view at eye height.
-  await stand(mineAt.x + mineAt.depth / 2 + 0.45, mineAt.z, Math.PI / 2, -0.2);
+  const leadAt = await page.evaluate(() => { const l = window.__audit.ctx.usables.lists().flat().find((it) => it.kind === 'cubbylead'); return { x: l.x, z: l.z }; });
+  const fromX = mineAt.x + mineAt.depth / 2 + 0.45, fromZ = mineAt.z + 0.6;
+  // Turned toward the lead's desk, so the phone's narrow view still shows the lead and the plan board.
+  await stand(fromX, fromZ, Math.atan2(-(leadAt.x - fromX), -(leadAt.z - fromZ)), -0.2);
   await page.waitForTimeout(300);
   await shot('inside');
   // Never more than one helper's name tag and card at a time.
