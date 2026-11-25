@@ -58,6 +58,14 @@ interface Watch {
 
 class GitError extends Error {}
 
+/**
+ * What a worker's agent is asked when someone presses Commit without typing a message: it reviews
+ * its uncommitted changes and commits them, writing the message itself — it knows what it did.
+ */
+export function agentCommitPrompt(where: string): string {
+  return `Someone at the office pressed Commit at your desk. Look over your uncommitted changes in ${where} (git status, git diff), then commit all of them with git add -A && git commit. Write the commit message yourself: a concise subject line saying what the change is, and a short body if the why needs saying. Commit only — don't push, and don't change any files.`;
+}
+
 interface Result {
   out: string;
   err: string;
@@ -273,6 +281,12 @@ export class Changes {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { status: 404, error: 'That file is gone' };
       return { status: 500, error: (err as Error).message };
     }
+  }
+
+  /** How the commit-it-yourself prompt (see agentCommitPrompt) names the checkout: the worker's own is where it already works; another repository's is named by path. */
+  commitWhere(workerId: string, repo?: string): string | undefined {
+    const t = this.target(workerId, repo);
+    return t && (repo ? `the checkout at ${t.cwd}` : 'your working directory');
   }
 
   /** Stages everything in the checkout and commits it; with `env`, as whoever pressed the button (their git name and email). */
