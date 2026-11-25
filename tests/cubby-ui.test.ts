@@ -23,6 +23,7 @@ function cleanCubbies(st: CubbiesState | undefined) {
 }
 const { SLICES } = await import('../src/client/state/slices/index.js');
 const model = await import('../src/client/features/cubbies/model.js');
+const hall = await import('../src/shared/cubbyhall.js');
 
 const look = { skin: 1, hair: 2, style: 3 };
 const agent = (id: string, role: CubbyAgent['role'], extra: Partial<CubbyAgent> = {}): CubbyAgent => ({ id, tool: 'Codex', role, task: `task ${id}`, branch: `b/${id}`, status: 'working', ...extra });
@@ -62,7 +63,8 @@ test('the store takes cubbies from their message and from each floor, and ignore
 
 test('agents go where their role goes, two builders at the desk, the rest on overflow bean bags', () => {
   const agents = [agent('l', 'lead'), agent('b1', 'builder'), agent('b2', 'builder'), agent('b3', 'builder'), agent('r', 'reviewer'), agent('f', 'factory'), agent('p', 'paradev'), agent('d', 'direct')];
-  const { spots, listed } = model.layoutAgents(agents, 4.3, 4);
+  const { CUBBY_WIDTH: W, CUBBY_DEPTH: D } = hall;
+  const { spots, listed } = model.layoutAgents(agents, W, D);
   assert.equal(spots.has('l'), false, 'the lead is the room’s own character');
   assert.deepEqual([spots.get('b1')?.kind, spots.get('b2')?.kind, spots.get('b3')?.kind], ['seat', 'seat', 'bag']);
   assert.equal(spots.get('r')?.kind, 'reviewer');
@@ -71,12 +73,39 @@ test('agents go where their role goes, two builders at the desk, the rest on ove
   assert.equal(spots.get('d')?.kind, 'stand');
   assert.deepEqual(listed, []);
   // Every spot is inside the room.
-  for (const s of spots.values()) assert.ok(Math.abs(s.x) < 2.15 && Math.abs(s.z) < 2, `${s.kind} ${s.x},${s.z}`);
-  // Past the overflow bags, agents are still counted and listed (inspectable from the lead's window).
+  for (const s of spots.values()) assert.ok(Math.abs(s.x) < W / 2 && Math.abs(s.z) < D / 2, `${s.kind} ${s.x},${s.z}`);
+  // Past the overflow bags (two, in a hall cubby), agents are still counted and listed (inspectable from the lead's window).
   const many = Array.from({ length: 9 }, (_, i) => agent(`x${i}`, 'builder'));
-  const crowd = model.layoutAgents(many, 4.3, 4);
-  assert.equal(crowd.spots.size, 5);
-  assert.deepEqual(crowd.listed, ['x5', 'x6', 'x7', 'x8']);
+  const crowd = model.layoutAgents(many, W, D);
+  assert.equal(crowd.spots.size, 4);
+  assert.deepEqual(crowd.listed, ['x4', 'x5', 'x6', 'x7', 'x8']);
+});
+
+test('in a hall cubby (~3 m by 2.5 m) the furniture, the lead and every spot stay apart and inside', () => {
+  const W = hall.CUBBY_WIDTH, D = hall.CUBBY_DEPTH;
+  const f = model.furniture(W, D);
+  type R = { name: string; minX: number; maxX: number; minZ: number; maxZ: number };
+  const rect = (name: string, x: number, z: number, hw: number, hd: number): R => ({ name, minX: x - hw, maxX: x + hw, minZ: z - hd, maxZ: z + hd });
+  // Footprints on the floor: the two desks (the builders' with its chairs in front), the machine and
+  // the reviewer's bag (both turned side on), and a circle's box for everyone standing or sitting.
+  const solid: R[] = [
+    rect('computer desk', f.computer.x, f.computer.z, f.computerDesk.width / 2, f.computerDesk.depth / 2),
+    rect('builders’ desk + chairs', f.builderDesk.x, f.builderDesk.z + 0.285, 0.9, 0.685),
+    rect('machine', f.machine.x, f.machine.z, 0.3, 0.35),
+    rect('reviewer bag', f.reviewer.x, f.reviewer.z, 0.5, 0.5),
+  ];
+  const people: R[] = [
+    rect('lead', f.lead.x, f.lead.z, 0.22, 0.22),
+    ...f.stands.map((s) => rect(`stand ${s.index}`, s.x, s.z, 0.22, 0.22)),
+    ...f.bags.map((s) => rect(`bag ${s.index}`, s.x, s.z, 0.5 * model.OVERFLOW_BAG_SCALE, 0.5 * model.OVERFLOW_BAG_SCALE)),
+  ];
+  const overlap = (a: R, b: R) => a.minX < b.maxX && b.minX < a.maxX && a.minZ < b.maxZ && b.minZ < a.maxZ;
+  const all = [...solid, ...people];
+  for (const r of all) assert.ok(r.minX >= -W / 2 - 0.03 && r.maxX <= W / 2 + 0.03 && r.minZ >= -D / 2 && r.maxZ <= D / 2, `${r.name} is inside`);
+  for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) assert.equal(overlap(all[i], all[j]), false, `${all[i].name} / ${all[j].name}`);
+  // The boards on the back wall don't overlap, and the screens on the side wall stay in the room.
+  assert.ok(f.plan.x + f.plan.width / 2 < f.needs.x - f.needs.width / 2);
+  for (const s of f.screens) assert.ok(Math.abs(s.z) + 0.5 <= D / 2);
 });
 
 test('signs say only a name, the lamp and the count for anyone else', () => {

@@ -1,5 +1,6 @@
 /**
- * Cubbies: a private room per person, computer and floor, in the cubby hall the root builds. Each of
+ * Cubbies: a private room per person, computer and floor, in the cubby hall west of the office's west
+ * wall (hall.ts, which the office floor builds shut and this opens while the floor has cubbies). Each of
  * the six slots shows its owner's name, lamp and how many are working; yours has your computer, your
  * lead and every agent in the project's folder on it, and E talks to the lead or checks on a helper.
  * A free one sets up with E. Nothing here shows, collides or answers E while the floor has no hall
@@ -11,6 +12,7 @@ import type { Ctx } from '../../core/context';
 import { aside, hintTitle, key } from '../../core/hint';
 import { store } from '../../state';
 import type { Collider, Interactable } from '../../world/types';
+import { CUBBY_HALL, HALL_WAY_OUT, inCubbyHall } from '../../../shared/cubbyhall';
 import { STATUS_TEXT, agentCard, clip, type CubbyIt, type CubbyPlacement } from './model';
 import { CubbyRoom } from './room';
 import { openAgentCard, openLeadChat, type CubbyWindows } from './ui-chat';
@@ -30,8 +32,8 @@ declare module '../../world/types' {
 
 export interface Cubbies {
   /**
-   * Where the hall puts its cubbies (up to six, by slot), or null when this floor has no hall. The
-   * cubbies are drawn, bumped into and used only once they're placed and the floor has them enabled.
+   * Puts the cubbies somewhere other than the hall's six places (up to six, by slot), or back in the
+   * hall (null). They're drawn, bumped into and used only while the floor has them enabled.
    */
   setPlacements(places: readonly CubbyPlacement[] | null): void;
   /** Everything the cubbies draw, in the scene. */
@@ -48,7 +50,8 @@ export function installCubbies(ctx: Ctx): Cubbies {
   group.name = 'cubbies';
   group.visible = false;
   ctx.scene.add(group);
-  let places: readonly CubbyPlacement[] | null = null;
+  const hall = ctx.office.cubbyHall;
+  let places: readonly CubbyPlacement[] = hall.places;
   const rooms = new Map<number, CubbyRoom>();
   let usables: Interactable[] = [];
   let added: { into: Collider[]; list: Collider[] } | null = null;
@@ -63,7 +66,7 @@ export function installCubbies(ctx: Ctx): Cubbies {
   };
 
   /** Whether the cubbies are there to see and use right now. */
-  const active = () => store.cubbies.enabled && !!places && rooms.size > 0 && ctx.inOffice() && !ctx.upTop();
+  const active = () => store.cubbies.enabled && rooms.size > 0 && ctx.inOffice() && !ctx.upTop();
 
   function dropRooms() {
     for (const r of rooms.values()) {
@@ -75,7 +78,8 @@ export function installCubbies(ctx: Ctx): Cubbies {
 
   /** Builds the rooms for the placements while the floor has cubbies, and takes them down when it doesn't. */
   function rebuild() {
-    const want = store.cubbies.enabled && places ? places : null;
+    openHall(store.cubbies.enabled);
+    const want = store.cubbies.enabled ? places : null;
     if (!want) dropRooms();
     else if (rooms.size !== want.length || want.some((p) => rooms.get(p.slot)?.place !== p)) {
       dropRooms();
@@ -97,6 +101,14 @@ export function installCubbies(ctx: Ctx): Cubbies {
     usables = [...rooms.values()].flatMap((r) => r.usables());
     refresh(true);
     ctx.hint.invalidate();
+  }
+
+  /** Opens the hall, or walls it up again, sending anyone still in it out onto the open floor first. */
+  function openHall(on: boolean) {
+    if (on === hall.on) return;
+    const p = ctx.player.pos;
+    if (!on && ctx.inOffice() && !ctx.upTop() && p.y > -1 && inCubbyHall(p.x, p.z)) p.set(HALL_WAY_OUT.x, 0, HALL_WAY_OUT.z);
+    hall.set(on);
   }
 
   /** Shows or hides the cubbies, and puts what you bump into in the world you're in (or takes it out). */
@@ -123,6 +135,8 @@ export function installCubbies(ctx: Ctx): Cubbies {
   store.on('cubbies', rebuild);
   ctx.usables.add({ usable: () => (shown ? usables : []), pickable: () => group });
   ctx.ticks.add('others', (f) => {
+    // The camera keeps inside the hall while you're in it (see Room.annex); the room's remade on each floor.
+    ctx.player.room.annex = hall.on && ctx.inOffice() && !ctx.upTop() ? CUBBY_HALL : null;
     refresh();
     if (!shown) return;
     for (const r of rooms.values()) r.update(f.dt, f.t, Date.now());
@@ -219,7 +233,7 @@ export function installCubbies(ctx: Ctx): Cubbies {
 
   return {
     setPlacements(p) {
-      places = p && p.length ? p.slice(0, 6) : null;
+      places = p && p.length ? p.slice(0, 6) : hall.places;
       rebuild();
     },
     group,

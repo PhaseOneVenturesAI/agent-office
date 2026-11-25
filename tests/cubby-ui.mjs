@@ -1,7 +1,7 @@
 // The cubby hall in a real browser: the actual main.ts, office, renderer and PlayerController, with the
-// cubbies feature installed by main.ts. Test placements exercise the room components only;
-// they are not the pending hall geometry. Two synthetic accounts' cubbies and synthetic agents only: no providers,
-// no live office, no real tokens. Screenshots at desktop and 390 px go to OFFICE_CUBBY_OUTPUT.
+// cubbies feature installed by main.ts and the hall the office floor builds west of its west wall
+// (features/cubbies/hall.ts). Synthetic accounts' cubbies and synthetic agents only: no providers, no
+// live office, no real tokens. Screenshots at desktop and 390 px go to OFFICE_CUBBY_OUTPUT.
 //
 //   node tests/cubby-ui.mjs
 import { createServer } from 'vite';
@@ -49,7 +49,6 @@ const cubbies = (lamp = 'working', extra = {}) => ({
     // Another account's: the server never sends its inside; this one smuggles one in to prove the page drops it.
     { id: 'cub-alex', slot: 1, ownerName: 'Alex Fixture', mine: false, lamp: 'working', working: 2, interior: { ...interior('working'), leadName: SECRET, computerName: SECRET, plan: [SECRET] } },
     { id: 'cub-sam', slot: 2, ownerName: 'Sam Fixture', mine: false, lamp: 'asleep', working: 0 },
-    { id: 'cub-priya', slot: 3, ownerName: 'Priya Fixture', mine: false, lamp: 'online', working: 1 },
   ],
   ...extra,
 });
@@ -92,9 +91,24 @@ try {
     for (const e of ['project', 'floor']) s.emit(e);
     document.getElementById('loading')?.remove(); document.getElementById('loading-screen')?.remove();
     a.core.upTop = false; a.core.trip = null; o.player.enabled = true; o.player.view = 'first';
-    // Six cubbies along the west side, fronts facing east (where the root's hall will put them).
-    a.cubbies.setPlacements(Array.from({ length: 6 }, (_, slot) => ({ slot, x: -15.9, z: -10.75 + slot * 4.3, width: 4.3, depth: 4, rotY: Math.PI / 2 })));
     return o.world().colliders.length;
+  });
+  /** You at (x, z), looking `yaw` (0 is north, π/2 west, π south) and `pitch` up, in first person. */
+  const stand = (x, z, yaw, pitch = -0.05, view = 'first') =>
+    page.evaluate(([x, z, yaw, pitch, view]) => {
+      const o = window.__office;
+      o.player.view = view; o.player.pos.set(x, 0, z); o.player.vy = 0; o.player.camYaw = yaw; o.player.facing = yaw + Math.PI; o.player.lookPitch = pitch; o.player.updateCamera(true);
+    }, [x, z, yaw, pitch, view]);
+  /** Walks you `ms` with `key` held, and says where you got to. */
+  const walk = async (key, ms) => {
+    await page.keyboard.down(key);
+    await page.waitForTimeout(ms);
+    await page.keyboard.up(key);
+    return page.evaluate(() => ({ x: window.__office.player.pos.x, z: window.__office.player.pos.z }));
+  };
+  const hallState = () => page.evaluate(() => {
+    const h = window.__audit.ctx.office.cubbyHall, cols = window.__office.world().colliders;
+    return { on: h.on, visible: h.group.visible, inWorld: h.colliders.filter((c) => cols.includes(c)).length };
   });
 
   // ---- Disabled: nothing drawn, nothing to bump into or use. ----
@@ -106,6 +120,11 @@ try {
     return { visible: a.cubbies.group.visible, rooms: a.cubbies.rooms().size, kinds, colliders: o.world().colliders.length - base };
   }, baseColliders);
   assert.deepEqual(off, { visible: false, rooms: 0, kinds: [], colliders: 0 });
+  assert.deepEqual(await hallState(), { on: false, visible: false, inWorld: 0 });
+  // The doorway is wall: walking at it from the open floor gets you nowhere.
+  await stand(-16.6, -11.6, Math.PI / 2);
+  const blocked = await walk('KeyW', 900);
+  assert.ok(blocked.x > -18 + 0.2, `the wall stops you (${JSON.stringify(blocked)})`);
 
   // ---- Enabled: six slots, only your own inside. ----
   push({ t: 'cubbies', state: cubbies() });
@@ -139,13 +158,29 @@ try {
   assert.equal(on.machine, true);
   assert.equal(on.screen, true);
   assert.deepEqual(on.kinds, ['cubbyagent', 'cubbycomputer', 'cubbydoor', 'cubbylead']);
+  const open = await hallState();
+  assert.equal(open.on && open.visible, true);
+  assert.ok(open.inWorld >= 10, `the hall's walls, floor and partitions are in the way (${open.inWorld})`);
 
-  // The hall from outside: signs, lamps, frosted glass.
-  await page.evaluate(() => {
-    const o = window.__office;
-    o.player.pos.set(-10.8, 0, 9.5); o.player.camYaw = 0.32; o.player.lookPitch = 0.02; o.player.updateCamera(true);
-  });
-  await shot('hall');
+  // Walking in: through the doorway from the open floor, then down the corridor.
+  await stand(-16.6, -11.6, Math.PI / 2);
+  const through = await walk('KeyW', 1100);
+  assert.ok(through.x < -18.6, `through the doorway into the corridor (${JSON.stringify(through)})`);
+  await stand(-18.9, through.z, Math.PI);
+  const down = await walk('KeyW', 1500);
+  assert.ok(down.z > -8 && down.x > -19.5 && down.x < -18.3, `down the corridor (${JSON.stringify(down)})`);
+  const indoors = await page.evaluate(() => window.__audit.parts.place.indoors());
+  assert.equal(indoors, true, 'the hall counts as indoors');
+
+  // The doorway from the open floor, its sign over it.
+  await stand(-13.2, -9.4, Math.PI / 2 - 0.55, 0.08);
+  await shot('hall-entrance');
+  // Down the corridor from the entrance: your cubby by the door, then the others' frosted, then free ones.
+  await stand(-18.75, -12.6, Math.PI - 0.22, 0.02);
+  await shot('hall-corridor-entrance');
+  // And the whole corridor from its far end: free cubbies nearest, the others' frosted, yours by the doorway.
+  await stand(-18.6, 4.7, 0.16, 0.06);
+  await shot('hall-corridor');
 
   // ---- Inside: hint bar names the lead; E talks to it. ----
   const hints = await page.evaluate(() => {
@@ -163,11 +198,15 @@ try {
   assert.match(hints.sam, /asleep/);
   assert.match(hints.free, /Free cubby.*E.*Set up/);
   assert.match(hints.direct, /Tool and branch/);
-  await page.evaluate(() => {
-    const o = window.__office;
-    o.player.pos.set(-12.9, 0, -10.75); o.player.camYaw = Math.PI / 2; o.player.lookPitch = -0.1; o.player.view = 'third'; o.player.updateCamera(true);
-  });
+  // Inside your own cubby, from just in its door.
+  const mineAt = await page.evaluate(() => { const p = window.__audit.cubbies.rooms().get(0).place; return { x: p.x, z: p.z, depth: p.depth }; });
+  await stand(mineAt.x + mineAt.depth / 2 - 0.4, mineAt.z + 0.2, Math.PI / 2, -0.25, 'third');
   await shot('inside');
+  await stand(mineAt.x + mineAt.depth / 2 + 1.0, mineAt.z + 0.1, Math.PI / 2, -0.12);
+  await shot('inside-doorway');
+  const cam = await page.evaluate(() => ({ x: window.__office.camera?.position.x ?? window.__audit.ctx.camera.position.x }));
+  assert.ok(cam.x > -22 && cam.x < -18.3, `the camera keeps inside the hall (${JSON.stringify(cam)})`);
+  await stand(mineAt.x + mineAt.depth / 2 - 0.25, mineAt.z + 0.1, Math.PI / 2, -0.22);
 
   // ---- The lead's window: chat only, text only. ----
   await page.evaluate(() => {
@@ -253,6 +292,9 @@ try {
   await page.waitForTimeout(200);
   const gone = await page.evaluate((base) => ({ visible: window.__audit.cubbies.group.visible, colliders: window.__office.world().colliders.length - base }), baseColliders);
   assert.deepEqual(gone, { visible: false, colliders: 0 });
+  assert.deepEqual(await hallState(), { on: false, visible: false, inWorld: 0 });
+  const back = await page.evaluate(() => ({ x: window.__office.player.pos.x, z: window.__office.player.pos.z }));
+  assert.ok(back.x > -18, `anyone left in the hall is put back on the open floor (${JSON.stringify(back)})`);
 
   assert.deepEqual(errors, []);
   assert.deepEqual(sent.filter((m) => /spawn|hire|resume|worker/.test(m.t)), []);

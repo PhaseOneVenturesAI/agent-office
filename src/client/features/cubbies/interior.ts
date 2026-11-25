@@ -14,7 +14,7 @@ import { Person, Worker } from '../../world/character';
 import { textSprite } from '../../world/toon';
 import type { Collider } from '../../world/types';
 import { Laptop } from '../workers/laptop';
-import { agentCard, clip, colliderOf, deadlineText, furniture, layoutAgents, layoutKey, usableAt, workerStatus, type CubbyIt, type CubbyPlacement, type Spot } from './model';
+import { OVERFLOW_BAG_SCALE, agentCard, clip, colliderOf, deadlineText, furniture, layoutAgents, layoutKey, usableAt, workerStatus, type CubbyIt, type CubbyPlacement, type Spot } from './model';
 import { CREAM, FONT, Face, INK, beanbag, builderDesk, disposeTree, factoryMachine, fitText, lamp, simpleDesk, wallScreen } from './props';
 
 /** A helper's color, by the tool it runs in. */
@@ -66,16 +66,16 @@ export class Interior {
     const box = (cx: number, cz: number, hw: number, hd: number, top: number) => this.colliders.push(colliderOf(place, cx, cz, hw, hd, top));
 
     // Your computer on its desk, its lamp beside it.
-    const desk = simpleDesk(1.4, 0.7);
+    const desk = simpleDesk(f.computerDesk.width, f.computerDesk.depth);
     desk.position.set(f.computer.x, 0, f.computer.z);
     this.group.add(desk);
     this.laptop.root.position.set(f.computer.x - 0.1, 0.78, f.computer.z + 0.02);
     this.laptop.root.scale.setScalar(1.1);
     this.laptop.setPlaceholder('▌ lead chat');
     this.group.add(this.laptop.root);
-    this.lamp.group.position.set(f.computer.x + 0.5, 0.78, f.computer.z - 0.1);
+    this.lamp.group.position.set(f.computer.x + f.computerDesk.width / 2 - 0.14, 0.78, f.computer.z - 0.1);
     this.group.add(this.lamp.group);
-    box(f.computer.x, f.computer.z, 0.72, 0.38, 0.8);
+    box(f.computer.x, f.computer.z, f.computerDesk.width / 2 + 0.02, f.computerDesk.depth / 2 + 0.03, 0.8);
 
     // The lead, standing in front of it, facing the door.
     this.lead = new Person('Lead', AVATAR_COLORS[0], { skin: 0, hair: 0, style: 0 });
@@ -111,6 +111,9 @@ export class Interior {
     for (const spot of f.bags) {
       const b = beanbag(spot.index + 1);
       b.group.position.set(spot.x, 0, spot.z);
+      // Small bags, the cubby being small; whoever sits in one stays their usual size.
+      b.group.scale.setScalar(OVERFLOW_BAG_SCALE);
+      b.seat.scale.setScalar(b.seat.scale.x / OVERFLOW_BAG_SCALE);
       b.group.visible = false;
       this.group.add(b.group);
       this.bagSeats.push(b.seat);
