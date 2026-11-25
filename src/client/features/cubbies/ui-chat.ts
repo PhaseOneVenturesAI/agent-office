@@ -3,7 +3,7 @@ import type { CubbyAgent, CubbyInfo, CubbyOwnerMessage } from '../../../shared/p
 import { store } from '../../state';
 import { ownerDeviceKey, signOwnerChat, displayFingerprint, type OwnerDeviceKey } from './keys';
 import { h, openModal } from '../../ui/dom';
-import { STATUS_TEXT, ROLE_LABEL, clip, deadlineText, agentCard } from './model';
+import { STATUS_TEXT, ROLE_LABEL, clip, deadlineText, agentCard, helperName } from './model';
 
 // Your cubby's windows: talking to its lead, and one helper's card. Both are the office's cream dialog
 // with its ✕ and Esc; everything shown is put in as text, never as HTML.
@@ -77,14 +77,16 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string) {
       );
       if (atEnd) log.scrollTop = log.scrollHeight;
     }
+    // The lead is who you're talking to, not one of its own helpers.
+    const helpers = it.agents.filter((a) => a.role !== 'lead');
     side.replaceChildren(
       h('h3', {}, 'Plan'),
       it.plan.length ? h('ol', {}, ...it.plan.map((p) => h('li', {}, p))) : h('p.cb-empty', {}, 'No plan yet'),
       h('h3', {}, 'Needs you'),
       it.needsYou.length ? h('ul.cb-needs', {}, ...it.needsYou.map((p) => h('li', {}, p))) : h('p.cb-empty', {}, 'Nothing right now'),
-      h('h3', {}, `Helpers · ${it.agents.length}`),
-      it.agents.length
-        ? h('ul.cb-roster', {}, ...it.agents.map((a) => h('li', {}, h('button.btn.small', { type: 'button', onclick: () => openAgentCard(w, cubbyId, a.id) }, `${clip(a.tool, 14)} · ${ROLE_LABEL[a.role]}`), h('span', {}, STATUS_TEXT[a.status]))))
+      h('h3', {}, `Helpers · ${helpers.length}`),
+      helpers.length
+        ? h('ul.cb-roster', {}, ...helpers.map((a) => h('li', {}, h('button.btn.small', { type: 'button', onclick: () => openAgentCard(w, cubbyId, a.id) }, helperName(a)), h('span', {}, STATUS_TEXT[a.status]))))
         : h('p.cb-empty', {}, 'Nobody else working'),
     );
   };

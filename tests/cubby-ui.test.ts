@@ -27,7 +27,7 @@ const hall = await import('../src/shared/cubbyhall.js');
 
 const look = { skin: 1, hair: 2, style: 3 };
 const agent = (id: string, role: CubbyAgent['role'], extra: Partial<CubbyAgent> = {}): CubbyAgent => ({ id, tool: 'Codex', role, task: `task ${id}`, branch: `b/${id}`, status: 'working', ...extra });
-const interior = { computerName: 'MacBook Pro', leadName: 'Nova', look, agents: [], plan: [], needsYou: [], chat: [] };
+const interior = { computerName: 'Mac mini', leadName: 'Nova', look, agents: [], plan: [], needsYou: [], chat: [] };
 const state = (cs: CubbyInfo[], floorId = 'f1'): CubbiesState => ({ enabled: true, floorId, cubbies: cs, setupAllowed: true });
 
 test('the slice is registered last, and keeps nobody else’s interior even if one arrives', () => {
@@ -113,7 +113,7 @@ test('signs say only a name, the lamp and the count for anyone else', () => {
   assert.equal(model.signText(other), '🔒 Alex · 2 working');
   assert.equal(model.signText({ ...other, lamp: 'asleep' }), '🔒 Alex · 💤 asleep');
   assert.equal(model.signText(undefined), '✨ Free cubby');
-  assert.equal(model.signText({ ...other, mine: true, interior }), 'Alex · MacBook Pro');
+  assert.equal(model.signText({ ...other, mine: true, interior }), 'Alex · Mac mini');
   assert.equal(model.faceOf(other), 'other');
 });
 
@@ -141,4 +141,14 @@ test('placements turn a cubby’s own frame onto the floor', () => {
   assert.ok(Math.abs(door.x - -20) < 1e-9 && Math.abs(door.z - 5) < 1e-9, 'a west-side cubby facing east has its door on its east side');
   const c = model.colliderOf(p, 0, 2, 2.15, 0.08, 2.7);
   assert.ok(c.maxX - c.minX < 0.2 && c.maxZ - c.minZ > 4.2);
+});
+
+test('helper names say the tool and the role once, short enough not to be cut off', () => {
+  const name = (tool: string, role: Parameters<typeof model.helperName>[0]['role']) => model.helperName({ tool, role });
+  assert.equal(name('codex', 'builder'), 'Codex · Builder');
+  assert.equal(name('claude-phase-one', 'reviewer'), 'Claude · Reviewer');
+  assert.equal(name('factory', 'factory'), 'Factory');
+  assert.equal(name('paradev', 'paradev'), 'Paradev');
+  assert.equal(name('kimi', 'factory'), 'Kimi · Factory');
+  assert.equal(name('codex', 'direct'), 'Codex session');
 });

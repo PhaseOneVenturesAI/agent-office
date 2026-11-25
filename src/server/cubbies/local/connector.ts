@@ -7,6 +7,7 @@ import { clean } from './io.js';
 import { projectLock } from './lock.js';
 import { LeadError, NativeLead, type Lead } from './lead.js';
 import { roster } from './roster.js';
+import { execFileSync } from 'node:child_process';
 import { BridgeLead } from './bridge.js';
 import { commitsSince, headOf, loadSeen, saveSeen, wakeSummary } from './wake.js';
 import { run } from './io.js';
@@ -49,7 +50,7 @@ export class CubbyConnector {
     this.lead = deps.lead ?? (config.bridge ? new BridgeLead(config.state) : new NativeLead(config));
   }
   get notice() { return this.lead.blocker; }
-  connected(send: Send, computerName = os.hostname()): void {
+  connected(send: Send, computerName = friendlyName()): void {
     if (this.closed) return;
     this.disconnected();
     this.send = send;
@@ -137,4 +138,19 @@ export class CubbyConnector {
     this.closed = true; this.disconnected();
     await this.lead.stop(); this.release();
   }
+}
+
+/**
+ * What the owner calls this computer: on a Mac its Sharing name without the owner's name in front
+ * ("Jonathan’s Mac mini" is "Mac mini", so the cubby says "Runs on your Mac mini"), else its hostname.
+ */
+export function friendlyName(): string {
+  if (process.platform === 'darwin') {
+    try {
+      const name = execFileSync('scutil', ['--get', 'ComputerName'], { encoding: 'utf8', timeout: 2000 }).trim();
+      const plain = name.replace(/^.{1,40}?['’]s\s+/u, '').trim();
+      if (plain) return plain;
+    } catch { /* fall back to the hostname */ }
+  }
+  return os.hostname().replace(/\.(local|localdomain)$/i, '');
 }

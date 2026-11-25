@@ -4,6 +4,7 @@ import { sanitizeLook, lookFromSeed } from '../../shared/avatar.js';
 import type { CubbyBinding, CubbyChatLine, CubbyInterior, CubbiesState, CubbyRelayFrame, CubbyOwnerMessage } from '../../shared/protocol/cubbies.js';
 import type { Nodes, NodeExtension } from '../nodes.js';
 import { CubbyRecords, type CubbyRecord } from './records.js';
+import { HALL_SLOTS } from '../../shared/cubbyhall.js';
 import { relaySignature } from './wire.js';
 import { short, snapshot } from './snapshot.js';
 interface Live { admitted: boolean; binding: CubbyBinding; interior: CubbyInterior; pending?: { id: string; at: number }; }
@@ -37,7 +38,7 @@ export class Cubbies {
   }
   setup(floorId: string, owner: string, slot: number, name: string, look: Look) {
     if (!this.enabled || !this.floorExists(floorId) || !this.accountName(owner)) throw Error('Cubbies require your own account on an open project floor');
-    if (!Number.isInteger(slot) || slot < 0 || slot >= 6) throw Error('Choose one of the six cubbies');
+    if (!Number.isInteger(slot) || slot < 0 || slot >= HALL_SLOTS) throw Error(`Choose one of the ${HALL_SLOTS} cubbies`);
     const previous = [...this.records.rows.values()].find(r => r.floorId === floorId && r.slot === slot);
     if (previous && previous.owner !== owner) throw Error('That cubby is already set up');
     if (previous && this.nodes.isOnline(previous.nodeId)) throw Error('Stop your local connection before setting this cubby up again');

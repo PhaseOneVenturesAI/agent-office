@@ -42,7 +42,7 @@ const chat = [
   { id: 'c1', role: 'user', text: 'What is next?', at: 1 },
   { id: 'c2', role: 'assistant', text: 'Checkout fix lands first, then the cart polish. <img src=x onerror="window.__xss=1">', at: 2 },
 ];
-const interior = (lamp) => ({ computerId: 'fixture-computer', ownerFingerprint, computerName: 'MacBook Pro', leadName: 'Nova', look, agents, plan: ['Fix checkout bug', 'Cart screen polish', 'Review PR #512', 'Invoices, tasks 1-4'], needsYou: ['Approve the new cart screen?', 'Merge PR #512 after review?'], chat, observedAt: 1 });
+const interior = (lamp) => ({ computerId: 'fixture-computer', ownerFingerprint, computerName: 'Mac mini', leadName: 'Nova', look, agents, plan: ['Fix checkout bug', 'Cart screen polish', 'Review PR #512', 'Invoices, tasks 1-4'], needsYou: ['Approve the new cart screen?', 'Merge PR #512 after review?'], chat, observedAt: 1 });
 const cubbies = (lamp = 'working', extra = {}) => ({
   enabled: true,
   floorId: 'fixture',
@@ -151,7 +151,7 @@ try {
   const blocked = await walk('KeyW', 900);
   assert.ok(blocked.x > -18 + 0.2, `the wall stops you (${JSON.stringify(blocked)})`);
 
-  // ---- Enabled: six slots, only your own inside. ----
+  // ---- Enabled: four slots, only your own inside. ----
   push({ t: 'cubbies', state: cubbies() });
   await page.waitForTimeout(400);
   const on = await page.evaluate((secret) => {
@@ -175,8 +175,8 @@ try {
     };
   }, SECRET);
   assert.equal(on.visible, true);
-  assert.equal(on.rooms, 6);
-  assert.deepEqual(on.interiors, [true, false, false, false, false, false]);
+  assert.equal(on.rooms, 4);
+  assert.deepEqual(on.interiors, [true, false, false, false]);
   assert.equal(on.storeDropped, true);
   assert.equal(on.leaked, false);
   assert.deepEqual(on.workers, ['b1:seat', 'b2:seat', 'b3:bag', 'dr:stand', 'rv:reviewer']);
@@ -185,7 +185,7 @@ try {
   assert.deepEqual(on.kinds, ['cubbyagent', 'cubbycomputer', 'cubbydoor', 'cubbylead']);
   const open = await hallState();
   assert.equal(open.on && open.visible, true);
-  assert.ok(open.inWorld >= 10, `the hall's walls, floor and partitions are in the way (${open.inWorld})`);
+  assert.ok(open.inWorld >= 8, `the hall's walls, floor and partitions are in the way (${open.inWorld})`);
 
   // Walking in: through the doorway from the open floor, then down the corridor.
   await stand(-16.6, -11.6, Math.PI / 2);
@@ -215,9 +215,9 @@ try {
     const lead = its.find((it) => it.kind === 'cubbylead');
     const doorOf = (slot) => its.find((it) => it.kind === 'cubbydoor' && it.slot === slot);
     o.player.pos.set(lead.x + 1.6, 0, lead.z); o.player.camYaw = Math.PI / 2; o.player.lookPitch = -0.12; o.player.updateCamera(true);
-    return { lead: text(lead), mine: text(doorOf(0)), alex: text(doorOf(1)), sam: text(doorOf(2)), free: text(doorOf(4)), direct: text(its.find((it) => it.agentId === 'dr')) };
+    return { lead: text(lead), mine: text(doorOf(0)), alex: text(doorOf(1)), sam: text(doorOf(2)), free: text(doorOf(3)), direct: text(its.find((it) => it.agentId === 'dr')) };
   });
-  assert.match(hints.lead, /Nova.*Runs on your MacBook Pro.*E.*Talk to Nova/);
+  assert.match(hints.lead, /Nova.*Runs on your Mac mini.*E.*Talk to Nova/);
   assert.match(hints.alex, /Alex Fixture.*2 working · private/);
   assert.doesNotMatch(hints.alex, /E/);
   assert.match(hints.sam, /asleep/);
@@ -277,7 +277,7 @@ try {
   await page.evaluate((fp) => { const s = window.__office.store; s.cubbies.cubbies[0].interior.ownerFingerprint = fp; s.emit('cubbies'); }, ownerFingerprint);
 
   // A helper's card from the roster; a direct session shows tool, branch and state only.
-  await page.locator('.cb-roster button', { hasText: 'Local session' }).click();
+  await page.locator('.cb-roster button', { hasText: 'Codex session' }).click();
   await page.waitForSelector('.cubby-agent');
   const direct = await page.locator('.cubby-agent').innerText();
   assert.match(direct, /spike\/search/);
@@ -316,7 +316,7 @@ try {
   // ---- Setting up a free cubby, then the join command. ----
   await page.evaluate(() => {
     const a = window.__audit;
-    a.ctx.interactions.use(a.ctx.usables.lists().flat().find((it) => it.kind === 'cubbydoor' && it.slot === 4), 'E', null);
+    a.ctx.interactions.use(a.ctx.usables.lists().flat().find((it) => it.kind === 'cubbydoor' && it.slot === 3), 'E', null);
   });
   await page.waitForSelector('.cubby-setup');
   await page.fill('.cubby-setup input[aria-label="Lead name"]', 'Atlas');
@@ -326,7 +326,7 @@ try {
   await page.waitForTimeout(100);
   const setup = sent.filter((m) => m.t === 'cubbies.setup');
   assert.equal(setup.length, 1);
-  assert.equal(setup[0].slot, 4);
+  assert.equal(setup[0].slot, 3);
   assert.equal(setup[0].leadName, 'Atlas');
   assert.equal(setup[0].look.style, 2);
   push({ t: 'cubbies.token', id: 'cub-new', floorId: 'fixture', token: FAKE_TOKEN });

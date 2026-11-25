@@ -1,7 +1,7 @@
 /**
  * Cubbies: a private room per person, computer and floor, in the cubby hall west of the office's west
  * wall (hall.ts, which the office floor builds shut and this opens while the floor has cubbies). Each of
- * the six slots shows its owner's name, lamp and how many are working; yours has your computer, your
+ * the hall's slots shows its owner's name, lamp and how many are working; yours has your computer, your
  * lead and every agent in the project's folder on it, and E talks to the lead or checks on a helper.
  * A free one sets up with E. Nothing here shows, collides or answers E while the floor has no hall
  * (store.cubbies.enabled) or the hall hasn't placed the cubbies (setPlacements).
@@ -12,7 +12,7 @@ import type { Ctx } from '../../core/context';
 import { aside, hintTitle, key } from '../../core/hint';
 import { store } from '../../state';
 import type { Collider, Interactable } from '../../world/types';
-import { CUBBY_HALL, HALL_WAY_OUT, inCubbyHall } from '../../../shared/cubbyhall';
+import { CUBBY_HALL, HALL_SLOTS, HALL_WAY_OUT, inCubbyHall } from '../../../shared/cubbyhall';
 import { STATUS_TEXT, agentCard, clip, type CubbyIt, type CubbyPlacement } from './model';
 import { CubbyRoom } from './room';
 import { openAgentCard, openLeadChat, type CubbyWindows } from './ui-chat';
@@ -32,7 +32,7 @@ declare module '../../world/types' {
 
 export interface Cubbies {
   /**
-   * Puts the cubbies somewhere other than the hall's six places (up to six, by slot), or back in the
+   * Puts the cubbies somewhere other than the hall's places (up to HALL_SLOTS, by slot), or back in the
    * hall (null). They're drawn, bumped into and used only while the floor has them enabled.
    */
   setPlacements(places: readonly CubbyPlacement[] | null): void;
@@ -45,7 +45,10 @@ export interface Cubbies {
 /** How long after asking to set a cubby up its token is still welcome without the setup window. */
 const TOKEN_WAIT = 5 * 60_000;
 
-export function installCubbies(ctx: Ctx): Cubbies {
+/** What the cubbies need from the rest of the page: what you're aiming at, for whose name tag shows. */
+export interface CubbiesDeps { aimed: () => unknown }
+
+export function installCubbies(ctx: Ctx, deps: CubbiesDeps = { aimed: () => null }): Cubbies {
   const group = new THREE.Group();
   group.name = 'cubbies';
   group.visible = false;
@@ -138,9 +141,36 @@ export function installCubbies(ctx: Ctx): Cubbies {
     // The camera keeps inside the hall while you're in it (see Room.annex); the room's remade on each floor.
     ctx.player.room.annex = hall.on && ctx.inOffice() && !ctx.upTop() ? CUBBY_HALL : null;
     refresh();
+    const p = ctx.player.pos;
+    quietOutside(shown && inCubbyHall(p.x, p.z));
     if (!shown) return;
-    for (const r of rooms.values()) r.update(f.dt, f.t, Date.now());
+    const focus = { x: p.x, z: p.z, aimed: deps.aimed() };
+
+    for (const r of rooms.values()) r.update(f.dt, f.t, Date.now(), focus);
   });
+
+  // From inside the hall the office's floating labels (the board agents' speech cards above all) show
+  // through the doorway and the windows and cover the cubbies, so while you're in it they're drawn on a
+  // layer no camera looks at. Only on the way in and out, never every frame.
+  let quieted: THREE.Object3D[] | null = null;
+  function quietOutside(inHall: boolean) {
+    if (inHall === !!quieted) return;
+    if (quieted) {
+      for (const o of quieted) o.layers.set(0);
+      quieted = null;
+      return;
+    }
+    quieted = [];
+    const at = new THREE.Vector3();
+    ctx.scene.traverse((o) => {
+      if (!(o as THREE.Sprite).isSprite || !o.layers.isEnabled(0) || group === o || isInside(group, o)) return;
+      o.getWorldPosition(at);
+      if (at.x > CUBBY_HALL.maxX) {
+        o.layers.set(OUTSIDE_LAYER);
+        quieted!.push(o);
+      }
+    });
+  }
 
   // ---- Setting up -----------------------------------------------------------------------------------
   let setup: SetupDialog | null = null;
@@ -233,10 +263,17 @@ export function installCubbies(ctx: Ctx): Cubbies {
 
   return {
     setPlacements(p) {
-      places = p && p.length ? p.slice(0, 6) : hall.places;
+      places = p && p.length ? p.slice(0, HALL_SLOTS) : hall.places;
       rebuild();
     },
     group,
     rooms: () => rooms,
   };
+}
+
+/** The layer the office's labels are moved to while you're in the hall: no camera looks at it. */
+const OUTSIDE_LAYER = 30;
+function isInside(root: THREE.Object3D, o: THREE.Object3D): boolean {
+  for (let p = o.parent; p; p = p.parent) if (p === root) return true;
+  return false;
 }

@@ -62,16 +62,30 @@ export const ROLE_LABEL: Record<CubbyRole, string> = {
 
 export const STATUS_TEXT: Record<CubbyStatus, string> = { idle: 'ready', working: 'working', 'needs-you': 'needs you', unknown: 'unknown' };
 
+/** A tool as people say it: "codex" is Codex, "claude-phase-one" is Claude. */
+export function toolName(tool: string): string {
+  const t = clip(tool || 'Agent', 20).replace(/^claude-(personal|phase-one)$/, 'claude');
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+/** A helper's short name: its tool and role ("Codex · Builder"), the role alone when they're the same word ("Factory"). */
+export function helperName(a: Pick<CubbyAgent, 'tool' | 'role'>): string {
+  const tool = toolName(a.tool);
+  if (a.role === 'direct') return `${tool} session`;
+  const role = ROLE_LABEL[a.role];
+  return tool.toLowerCase() === role.toLowerCase() ? role : `${tool} · ${role}`;
+}
+
 /**
  * A helper's name tag and the card over its head. A session opened directly in its own app shows its
  * tool, branch and whether it's busy, never what it was asked: its conversation stays in that app.
  */
 export function agentCard(a: CubbyAgent): { name: string; title: string; body: string } {
-  const tool = clip(a.tool || 'Agent', 20);
-  if (a.role === 'direct') return { name: `${tool} · local session`, title: a.status === 'working' ? 'Busy' : STATUS_TEXT[a.status], body: a.branch ? `🌿 ${clip(a.branch, 40)}` : '' };
+  const tool = toolName(a.tool);
+  if (a.role === 'direct') return { name: `${tool} session`, title: a.status === 'working' ? 'Busy' : STATUS_TEXT[a.status], body: a.branch ? `🌿 ${clip(a.branch, 40)}` : '' };
   const title = clip(a.task || ROLE_LABEL[a.role], 60);
   const body = [a.progress ? clip(a.progress, 60) : '', a.branch ? `🌿 ${clip(a.branch, 40)}` : ''].filter(Boolean).join(' · ');
-  return { name: `${tool} · ${ROLE_LABEL[a.role]}`, title, body };
+  return { name: helperName(a), title, body };
 }
 
 /** "12 min left" on the factory's clock, or "overdue". */
@@ -96,7 +110,7 @@ export interface Spot {
 }
 
 /**
- * The furniture's places, for a cubby `w` wide and `d` deep (the hall's are about 3 by 2.5): the
+ * The furniture's places, for a cubby `w` wide and `d` deep (the hall's are about 4.4 by 2.5): the
  * computer's desk and the builders' desk side by side against the back wall with the lead in front of
  * the computer, the factory machine and the reviewer's bean bag in the front corners either side of
  * the door, the Paradev screens on the left wall, and the standing spots and the overflow bean bags

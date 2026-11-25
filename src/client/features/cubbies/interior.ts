@@ -14,7 +14,7 @@ import { Person, Worker } from '../../world/character';
 import { textSprite } from '../../world/toon';
 import type { Collider } from '../../world/types';
 import { Laptop } from '../workers/laptop';
-import { OVERFLOW_BAG_SCALE, agentCard, clip, colliderOf, deadlineText, furniture, layoutAgents, layoutKey, usableAt, workerStatus, type CubbyIt, type CubbyPlacement, type Spot } from './model';
+import { OVERFLOW_BAG_SCALE, agentCard, clip, colliderOf, deadlineText, furniture, toFloor, layoutAgents, layoutKey, usableAt, workerStatus, type CubbyIt, type CubbyPlacement, type Spot } from './model';
 import { CREAM, FONT, Face, INK, beanbag, builderDesk, disposeTree, factoryMachine, fitText, lamp, simpleDesk, wallScreen } from './props';
 
 /** A helper's color, by the tool it runs in. */
@@ -299,13 +299,19 @@ export class Interior {
     });
   }
 
-  update(dt: number, t: number, now: number) {
+  update(dt: number, t: number, now: number, focus?: Focus) {
     if (this.asleep) this.laptop.shut(dt);
     else this.laptop.update(dt, undefined, 0);
     this.lead.update(dt, t, false, false);
     for (const v of this.views.values()) {
       v.model?.update(dt, t);
-      if (v.model) shrinkTags(v.model.root);
+      if (v.model) {
+        shrinkTags(v.model.root);
+        // Only the helper you're looking at, or standing right by, shows its name tag and card.
+        const at = toFloor(this.place, v.spot.x, v.spot.z);
+        const near = !!focus && (focus.aimed === v.model.root.userData.interact || Math.hypot(focus.x - at.x, focus.z - at.z) < NEAR);
+        showTags(v.model.root, near);
+      }
       if (v.spot.kind === 'machine') {
         const a = v.agent;
         const left = this.asleep ? '💤 paused' : deadlineText(a.deadlineAt, now);
@@ -353,5 +359,17 @@ function shrinkTags(root: THREE.Object3D) {
     if (!(o as THREE.Sprite).isSprite || o.userData.cubbyTag === o.scale.x) return;
     o.scale.multiplyScalar(TAG_SCALE);
     o.userData.cubbyTag = o.scale.x;
+  });
+}
+
+/** Where you are, and what you're aiming at, for deciding whose name tag shows. */
+export interface Focus { x: number; z: number; aimed: unknown }
+/** How close you stand to a helper for its tag to show without aiming at it. */
+const NEAR = 1.1;
+/** The layer a hidden tag is drawn on: no camera looks at it. */
+const HIDDEN_LAYER = 31;
+function showTags(root: THREE.Object3D, show: boolean) {
+  root.traverse((o) => {
+    if ((o as THREE.Sprite).isSprite) o.layers.set(show ? 0 : HIDDEN_LAYER);
   });
 }

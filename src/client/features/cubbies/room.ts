@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import type { CubbyInfo } from '../../../shared/protocol/cubbies';
 import { textPlane } from '../../world/toon';
 import type { Collider, Interactable } from '../../world/types';
-import { Interior } from './interior';
+import { Interior, type Focus } from './interior';
 import { DOOR_WIDTH, FRONT_HEIGHT, colliderOf, faceOf, signText, usableAt, type CubbyFace, type CubbyIt, type CubbyPlacement } from './model';
 import { CREAM, INK, disposeTree, front, lampDot, silhouette } from './props';
 
@@ -131,12 +131,12 @@ export class CubbyRoom {
     return this.interior ? [this.door, ...this.interior.usables] : [this.door];
   }
 
-  update(dt: number, t: number, now: number) {
+  update(dt: number, t: number, now: number, focus?: Focus) {
     for (const [i, s] of this.shapes.entries()) {
       s.position.x = -0.9 + i * 0.9 + Math.sin(t * 0.35 + i * 2.1) * 0.35;
       s.position.z = -0.3 + Math.cos(t * 0.27 + i) * 0.25;
     }
-    this.interior?.update(dt, t, now);
+    this.interior?.update(dt, t, now, focus);
   }
 
   dispose() {

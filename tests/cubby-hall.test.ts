@@ -1,4 +1,4 @@
-// The cubby hall's geometry (shared/cubbyhall.ts): where it stands west of the office, its six cubbies
+// The cubby hall's geometry (shared/cubbyhall.ts): where it stands west of the office, its four cubbies
 // and the doorway in, clear of the street, the exit stairs, the ladder and the machine monitor.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -28,20 +28,20 @@ test('it keeps clear of the exit landing and stairs, the street and the road', (
   assert.ok(hall.HALL_OUTER.maxZ < ROAD.minZ);
 });
 
-test('six cubbies, about 3 m by 2.5 m, inside the hall, side by side, fronts east onto the corridor', () => {
-  assert.equal(hall.HALL_PLACES.length, 6);
-  assert.deepEqual(hall.HALL_PLACES.map((p) => p.slot), [0, 1, 2, 3, 4, 5]);
+test('four cubbies, about 4.4 m by 2.5 m, inside the hall, side by side, fronts east onto the corridor', () => {
+  assert.equal(hall.HALL_PLACES.length, 4);
+  assert.deepEqual(hall.HALL_PLACES.map((p) => p.slot), [0, 1, 2, 3]);
   for (const p of hall.HALL_PLACES) {
     assert.ok(inside(footprint(p), hall.CUBBY_HALL), `slot ${p.slot} is in the hall`);
-    assert.ok(p.width > 2.8 && p.width < 3.2, `slot ${p.slot} is ~3 m along the hall`);
+    assert.ok(p.width > 4.2 && p.width < 4.6, `slot ${p.slot} is ~4.4 m along the hall`);
     assert.ok(p.depth >= 2.4 && p.depth <= 2.7, `slot ${p.slot} is ~2.5 m deep`);
     assert.equal(p.rotY, Math.PI / 2, 'its front (+z in its own frame) faces east');
     assert.ok(Math.abs(p.x + p.depth / 2 - hall.HALL_FRONT_X) < 1e-9, 'its front is on the corridor');
     assert.equal(overlaps(footprint(p), hall.exitStairsBox()), false);
   }
-  for (let i = 1; i < 6; i++) assert.equal(overlaps(footprint(hall.HALL_PLACES[i - 1]), footprint(hall.HALL_PLACES[i])), false);
+  for (let i = 1; i < 4; i++) assert.equal(overlaps(footprint(hall.HALL_PLACES[i - 1]), footprint(hall.HALL_PLACES[i])), false);
   assert.ok(hall.HALL_CORRIDOR >= 1.2 && hall.HALL_CORRIDOR <= 1.4);
-  assert.equal(hall.hallPartitions().length, 5);
+  assert.equal(hall.hallPartitions().length, 3);
   for (const w of hall.hallPartitions()) for (const p of hall.HALL_PLACES) assert.equal(overlaps(w, footprint(p)), false);
 });
 

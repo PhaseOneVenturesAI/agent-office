@@ -1,6 +1,6 @@
 // The cubby hall as the office floor builds it (see shared/cubbyhall.ts): a strip of building west of
 // the west wall, with its own floor, slab, ceiling and walls painted like the office's inside and out,
-// lamps over its corridor, the partitions and the header between the six cubbies, and a doorway through
+// lamps over its corridor, the partitions and the header between the cubbies, and a doorway through
 // the old west wall with a dark "🚪 Cubby hall" sign over it. The cubbies themselves (their glass
 // fronts, signs and insides) are CubbyRoom's, placed by the cubbies feature at HALL_PLACES.
 //
@@ -24,7 +24,7 @@ export interface CubbyHall {
   readonly on: boolean;
   /** Opens it (true) or walls it up again (false). */
   set(on: boolean): void;
-  /** Where its six cubbies go, slot 0 by the doorway. */
+  /** Where its cubbies go, slot 0 by the doorway. */
   readonly places: readonly HallPlace[];
   /** Everything it draws (the doorway's plug, which stands while it's shut, isn't in here). */
   readonly group: THREE.Group;

@@ -1,5 +1,5 @@
 // The cubby hall: a strip of building added west of the office's west wall on a floor that has cubbies
-// (see features/cubbies), with six glass-fronted cubbies down its west side facing east onto a corridor
+// (see features/cubbies), with four glass-fronted cubbies down its west side facing east onto a corridor
 // along the old wall, and a doorway through that wall near its north end. Pure geometry, no three.js:
 // the client builds it from this, and the tests check it stays clear of the street, the exit stairs,
 // the ladder and the machine monitor.
@@ -22,8 +22,8 @@ export const HALL_CORRIDOR = 1.2;
 export const HALL_PARTITION = 0.1;
 /** How tall the partitions between cubbies are (the glass fronts are FRONT_HEIGHT, 2.7). */
 export const PARTITION_HEIGHT = 3.2;
-/** How many cubbies the hall has. */
-export const HALL_SLOTS = 6;
+/** How many cubbies the hall has: four roomy ones rather than six cramped ones (Jonathan, 2026-11-25). */
+export const HALL_SLOTS = 4;
 /** Where the cubbies' glass fronts stand, facing east onto the corridor. */
 export const HALL_FRONT_X = CUBBY_HALL.maxX - HALL_CORRIDOR;
 
@@ -57,7 +57,7 @@ export const CUBBY_WIDTH = (CUBBY_HALL.maxZ - CUBBY_HALL.minZ - (HALL_SLOTS - 1)
 export const CUBBY_DEPTH = HALL_FRONT_X - CUBBY_HALL.minX;
 
 /**
- * The six cubbies, slot 0 at the north end by the doorway: each one's middle, its size inside, and
+ * The four cubbies, slot 0 at the north end by the doorway: each one's middle, its size inside, and
  * which way it faces (rotY π/2: its front, +z in its own frame, faces +x, east, onto the corridor).
  */
 export const HALL_PLACES: readonly HallPlace[] = Array.from({ length: HALL_SLOTS }, (_, slot) => ({
