@@ -1,4 +1,5 @@
 import { cubbiesHandlers, cubbiesView } from './cubbies.js';
+import { draftsHandlers, draftsView } from './drafts.js';
 // Every message a browser can send, by type, and the features that keep something per person on a
 // floor. A new feature adds its handler file and a line here.
 import type { ClientMsg } from '../../../shared/protocol.js';
@@ -37,6 +38,7 @@ import type { FeatureHooks, HandlerMap, ViewPieces } from './types.js';
 /** Each domain's handlers put together, in alphabetical order. */
 export const handlers: HandlerMap<ClientMsg> = {
   ...cubbiesHandlers,
+  ...draftsHandlers,
   ...conversationHandlers,
   ...handoffHandlers,
   ...readinessHandlers,
@@ -78,6 +80,7 @@ export const features: readonly FeatureHooks[] = [deliveryHooks, conversationHoo
 /** What someone arriving on a floor is sent (see office/views.ts): a piece from each feature, in the order it has always gone out. */
 export const views: ViewPieces = {
   cubbies: cubbiesView,
+  drafts: draftsView,
   project: projectView,
   workers: workersView,
   issues: issuesView,

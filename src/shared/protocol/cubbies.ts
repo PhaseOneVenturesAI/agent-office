@@ -12,6 +12,8 @@ export interface CubbyAgent {
   status: CubbyStatus;
   progress?: string;
   deadlineAt?: number;
+  /** A screen-drawing helper (harness role designer): on a draft floor each one uncovers a pod. */
+  designer?: boolean;
 }
 export interface CubbyChatLine { id: string; role: 'user' | 'assistant' | 'notice'; text: string; at: number }
 export interface CubbyInterior {
@@ -50,7 +52,9 @@ export type CubbiesServerMsg =
 export type CubbyNodeFrame =
   | { t: 'cubby.hello'; floorId: string; computerId: string; computerName: string }
   | { t: 'cubby.owner-key'; floorId: string; fingerprint: string }
-  | { t: 'cubby.snapshot'; floorId: string; agents: CubbyAgent[]; plan: string[]; needsYou: string[]; observedAt: number; error?: string; wake?: string }
+  | { t: 'cubby.snapshot'; floorId: string; agents: CubbyAgent[]; plan: string[]; needsYou: string[]; observedAt: number; error?: string; wake?: string;
+      /** On a draft floor: what the local `.agent-office/draft.json` says (see protocol/drafts.ts). */
+      draft?: import('./drafts.js').DraftBoards }
   | { t: 'cubby.reply'; floorId: string; requestId: string; text: string; error?: boolean };
 export interface CubbyBinding { cubbyId: string; floorId: string; ownerId: string; connectionId: string; computerId: string }
 export type CubbyRelayFrame =
