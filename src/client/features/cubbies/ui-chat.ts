@@ -1,5 +1,7 @@
 import './ui.css';
-import type { CubbyAgent, CubbyInfo } from '../../../shared/protocol/cubbies';
+import type { CubbyAgent, CubbyInfo, CubbyOwnerMessage } from '../../../shared/protocol/cubbies';
+import { store } from '../../state';
+import { ownerDeviceKey, signOwnerChat, displayFingerprint, type OwnerDeviceKey } from './keys';
 import { h, openModal } from '../../ui/dom';
 import { STATUS_TEXT, ROLE_LABEL, clip, deadlineText, agentCard } from './model';
 
@@ -12,7 +14,7 @@ export interface CubbyWindows {
   /** Hears the store's cubbies change; returns how to stop. */
   onChange(fn: () => void): () => void;
   /** Sends one chat line to the lead. */
-  sendChat(id: string, text: string): void;
+  sendChat(id: string, message: CubbyOwnerMessage): void;
 }
 
 const MAX_CHAT = 4000;
@@ -33,6 +35,13 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string) {
   const form = h('form.cb-send', {}, text, send) as HTMLFormElement;
   const el = h('div.modal.cubby-chat', { role: 'dialog', 'aria-label': 'Talk to your lead' }, h('header', {}, title, sub), h('div.cb-body', {}, h('div.cb-main', {}, log, note, form), side));
 
+  const account = store.me.account?.name;
+  let deviceKey: OwnerDeviceKey | undefined;
+  let keyError = '';
+  let signing = false;
+  let closed = false;
+  const keyNote = h('p.cb-note', { 'aria-live': 'polite' });
+  note.after(keyNote);
   let lines = '';
   const paint = () => {
     const c = w.cubby(cubbyId);
@@ -48,7 +57,13 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string) {
     title.textContent = `💬 ${lead}`;
     sub.textContent = `Runs on ${clip(it.computerName, 32)}`;
     const asleep = c.lamp === 'asleep';
-    text.disabled = send.disabled = asleep;
+    const keyMatches = !!deviceKey && deviceKey.fingerprint === it.ownerFingerprint;
+    const sameAccount = store.me.account?.name === account;
+    text.disabled = send.disabled = asleep || !keyMatches || !sameAccount || signing || !it.computerId;
+    form.style.display = note.style.display = keyMatches && sameAccount ? '' : 'none';
+    keyNote.textContent = !sameAccount ? 'Account changed. Close and reopen this chat.' : keyError || (!deviceKey ? 'Preparing this device’s owner key…' :
+      keyMatches ? `Owner key: ${displayFingerprint(deviceKey.fingerprint)}` :
+      `This cubby only accepts messages from the device whose key was pinned. ${it.ownerFingerprint ? 'This browser has a different key.' : 'Waiting for the computer’s pinned key.'} To re-pin: stop join locally, open Set up at your offline cubby in this browser, compare fingerprints, then run its command on your computer with --replace-owner-key.`);
     text.placeholder = asleep ? '' : `Message ${lead}…`;
     note.textContent = asleep ? `💤 ${clip(it.computerName, 32)} is asleep. ${lead} can't hear you until it wakes.` : 'Chat only: tools, commands and approvals stay on your computer.';
     note.classList.toggle('asleep', asleep);
@@ -74,13 +89,25 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string) {
     );
   };
 
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const body = text.value.trim();
     const c = w.cubby(cubbyId);
-    if (!body || !c?.interior || c.lamp === 'asleep') return;
-    w.sendChat(cubbyId, body.slice(0, MAX_CHAT));
-    text.value = '';
+    const floorId = store.floor;
+    const computerId = c?.interior?.computerId;
+    if (!body || !floorId || !computerId || !c?.mine || c.lamp === 'asleep' || signing ||
+      !deviceKey || deviceKey.fingerprint !== c.interior?.ownerFingerprint || store.me.account?.name !== account) return;
+    signing = true; paint();
+    try {
+      const message = { text: body.slice(0, MAX_CHAT), requestId: crypto.randomUUID(), at: Date.now() };
+      const ownerSig = await signOwnerChat(deviceKey, { ...message, cubbyId, floorId, computerId });
+      const current = w.cubby(cubbyId);
+      if (closed || store.floor !== floorId || store.me.account?.name !== account || !current?.mine ||
+        current.lamp === 'asleep' || current.interior?.computerId !== computerId || current.interior.ownerFingerprint !== deviceKey.fingerprint) return;
+      w.sendChat(cubbyId, { ...message, ownerSig });
+      text.value = '';
+    } catch { keyError = 'Could not sign this message. Reopen chat and check browser storage.'; }
+    finally { signing = false; if (!closed) paint(); }
   });
   // Enter sends, Shift+Enter is a new line; the game doesn't get the keys while you type.
   text.addEventListener('keydown', (e) => {
@@ -94,7 +121,9 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string) {
   const off = w.onChange(paint);
   paint();
   const c = w.cubby(cubbyId);
-  openModal(el, { doing: '💬 talking to their lead', onClose: off });
+  openModal(el, { doing: '💬 talking to their lead', onClose: () => { closed = true; off(); } });
+  void ownerDeviceKey(account).then((key) => { deviceKey = key; if (!closed) paint(); })
+    .catch((error: Error) => { keyError = error.message; if (!closed) paint(); });
   log.scrollTop = log.scrollHeight;
   if (c?.lamp !== 'asleep') setTimeout(() => text.focus(), 30);
 }

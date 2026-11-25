@@ -1,3 +1,4 @@
+import { owner } from './support/cubby-keys.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync, symlinkSync } from 'node:fs';
@@ -12,7 +13,7 @@ function fixture(t: any) {
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const project = path.join(home, 'repo'), tree = path.join(home, 'tree'), outside = path.join(home, 'repo-other');
   for (const dir of [project, tree, outside]) mkdirSync(dir);
-  const config: LocalConfig = { floor: 'f', project, roots: [project, tree], branches: new Map([[project, 'main'], [tree, 'work']]),
+  const config: LocalConfig = { ownerKey: owner.ownerKey, floor: 'f', project, roots: [project, tree], branches: new Map([[project, 'main'], [tree, 'work']]),
     state: home, computerId: 'computer', provider: 'claude', session: 'session', executable: 'unused', claudeHome: home, fresh: false };
   return { home, config, project, tree, outside };
 }

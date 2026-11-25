@@ -1,3 +1,4 @@
+import { owner } from './support/cubby-keys.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, realpathSync } from 'node:fs';
@@ -30,7 +31,7 @@ const frame=JSON.parse(input); if(frame.type!=='user'||frame.message.content!=='
 fs.writeFileSync(${JSON.stringify(native)},'native session exists');
 ${code}
 });`, { mode: 0o700 });
-  const config: LocalConfig = { floor: 'f', project, roots: [project], branches: new Map([[project, 'main']]), state,
+  const config: LocalConfig = { ownerKey: owner.ownerKey, floor: 'f', project, roots: [project], branches: new Map([[project, 'main']]), state,
     computerId: session, provider: 'claude', session, executable, claudeHome, fresh };
   persistSelection(config);
   const lead = new NativeLead(config, async () => ({ complete: true, processes: [] }));

@@ -59,7 +59,7 @@ export function installCubbies(ctx: Ctx): Cubbies {
   const windows: CubbyWindows = {
     cubby: cubbyById,
     onChange: (fn) => store.on('cubbies', fn),
-    sendChat: (id, text) => send({ t: 'cubbies.chat', id, text }),
+    sendChat: (id, message) => send({ t: 'cubbies.chat', id, ...message }),
   };
 
   /** Whether the cubbies are there to see and use right now. */
