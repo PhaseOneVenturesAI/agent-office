@@ -89,6 +89,7 @@ async function layoutCheck(page, name) {
 try {
   const { page, context, sent, send } = await open(true, 390, 844);
   check('controls appear on touch', await page.locator('.touch-controls').isVisible());
+  check('chat box says tap on touch', await page.locator('#chat-input').getAttribute('placeholder') === 'Tap to chat');
   check('Q absent without hint', !await page.locator('.touch-secondary').isVisible());
   const cdp = await context.newCDPSession(page);
   const touches = new Map();
@@ -207,6 +208,7 @@ try {
   }
   const desktop = await open(false, 1440, 1000);
   check('desktop has no touch UI or styles', await desktop.page.locator('.touch-controls, body.touch-enabled').count() === 0);
+  check('desktop chat box still says Press T', await desktop.page.locator('#chat-input').getAttribute('placeholder') === 'Press T to chat');
   await desktop.page.screenshot({ path: `${out}/desktop.png` });
   check('no browser errors', errors.length === 0);
   check('no workers started', !sent.some(m => /spawn|hire|resume/.test(m.t)));

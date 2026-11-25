@@ -41,6 +41,8 @@ export function installTouch(ctx: Ctx) {
     const available = touchOnly();
     player.onScreenControls = available;
     document.body.classList.toggle('touch-enabled', available);
+    const chat = document.getElementById('chat-input') as HTMLInputElement | null;
+    if (chat) chat.placeholder = available ? 'Tap to chat' : 'Press T to chat';
     const typing = available && isTyping();
     if (document.body.classList.contains('touch-typing') !== typing) {
       document.body.classList.toggle('touch-typing', typing);
