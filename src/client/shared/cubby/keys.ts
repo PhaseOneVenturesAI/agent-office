@@ -1,4 +1,5 @@
 import { deviceCode, ownerChatEncoding, ownerDeviceEncoding, type CubbyDevicePayload, type CubbyOwnerPayload } from '../../../shared/protocol/cubbies';
+import { ownerFeedbackEncoding, type DraftFeedbackPayload } from '../../../shared/protocol/drafts';
 
 export interface OwnerDeviceKey {
   privateKey: CryptoKey;
@@ -75,6 +76,11 @@ export async function signOwnerChat(key: OwnerDeviceKey, payload: CubbyOwnerPayl
 export async function signOwnerDevice(key: OwnerDeviceKey, payload: CubbyDevicePayload): Promise<string> {
   return base64url(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key.privateKey,
     new TextEncoder().encode(ownerDeviceEncoding(payload))));
+}
+/** A note on a draft's card (cubbies step 5), signed the same way as chat. */
+export async function signOwnerFeedback(key: OwnerDeviceKey, payload: DraftFeedbackPayload): Promise<string> {
+  return base64url(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key.privateKey,
+    new TextEncoder().encode(ownerFeedbackEncoding(payload))));
 }
 /** A short name for this device as the owner will see it in the list ("iPhone", "Mac", …). */
 export function deviceLabel(ua = navigator.userAgent): string {

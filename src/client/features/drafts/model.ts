@@ -2,7 +2,10 @@
 // uncovered, where the studio table and the lead stand, what each board is called and says when it's
 // empty, and the screens' status chips. tests/drafts-ui.test.ts checks these.
 
-import type { DraftBoards, DraftScreen, DraftView } from '../../../shared/protocol/drafts';
+import type { DraftBoards, DraftView } from '../../../shared/protocol/drafts';
+import { CARD_BOARD_EMPTY, CARD_BOARD_TITLE, SCREEN_CHIP } from '../../shared/drafts/board';
+
+export { SCREEN_CHIP };
 import { DESKS, ELEVATOR, ELEVATOR_FRONT, WHITEBOARD, type DeskDef } from '../../../shared/layout';
 
 /** One pod of desks: four desks back to back, and the floor they cover with their chairs. */
@@ -79,17 +82,12 @@ export type BoardKey = 'decisions' | 'plan' | 'screens';
 export const DRAFT_BOARDS: readonly { key: BoardKey; at: 'issues' | 'queue' | 'pulls'; title: string; empty: string }[] = [
   { key: 'decisions', at: 'issues', title: '📝 Decisions', empty: 'Your lead’s decisions will appear here' },
   { key: 'plan', at: 'queue', title: '🗺️ Plan', empty: 'The plan appears here once the decisions are in' },
-  { key: 'screens', at: 'pulls', title: '🖼️ Screens', empty: 'Screens your helpers draw hang here for your ✓' },
+  { key: 'screens', at: 'pulls', title: CARD_BOARD_TITLE.screens, empty: CARD_BOARD_EMPTY.screens },
 ];
+/** The Ideas board (step 5): over the Services board on the east wall, beside the Brand wall, so the north boards keep their room. */
+export const IDEAS_BOARD = { key: 'ideas', at: 'services', title: CARD_BOARD_TITLE.ideas, empty: CARD_BOARD_EMPTY.ideas } as const;
 export const BRAND_TITLE = '🎨 Brand wall';
 export const BRAND_EMPTY = 'Your brand’s name, tagline and colors will appear here';
-
-/** A screen's status chip. */
-export const SCREEN_CHIP: Record<DraftScreen['status'], { text: string; bg: string; color: string }> = {
-  sketch: { text: '✏️ sketch', bg: '#e9ecef', color: '#2b2d42' },
-  review: { text: '👀 review', bg: '#ffd166', color: '#2b2d42' },
-  approved: { text: '✓ approved', bg: '#06d6a0', color: '#2b2d42' },
-};
 
 /** At most `max` of `items`, the last one saying how many more there are when they don't all fit. */
 export function shown<T>(items: readonly T[], max: number): { items: T[]; more: number } {
@@ -100,6 +98,15 @@ export function shown<T>(items: readonly T[], max: number): { items: T[]; more: 
 /** What a board shows: its lines (each screen's title for the screens), and whether it's still empty. */
 export function boardLines(b: DraftBoards, key: BoardKey): string[] {
   return key === 'screens' ? b.screens.map((s) => s.title) : b[key];
+}
+
+/** Where each card goes on a card board's canvas (`w` by `h` px, cards from `top` down): three across, two down. */
+export const CARD_GRID = { cols: 3, rows: 2, gap: 36, side: 40, bottom: 50 } as const;
+export function cardRects(w: number, h: number, top: number): { x: number; y: number; w: number; h: number }[] {
+  const { cols, rows, gap, side, bottom } = CARD_GRID;
+  const cw = (w - side * 2 - gap * (cols - 1)) / cols;
+  const ch = (h - top - bottom - gap * (rows - 1)) / rows;
+  return Array.from({ length: cols * rows }, (_, i) => ({ x: side + (i % cols) * (cw + gap), y: top + Math.floor(i / cols) * (ch + gap), w: cw, h: ch }));
 }
 
 /** Whether the brand wall has anything on it yet. */

@@ -81,6 +81,16 @@ Press **E** at the studio table to use the existing cubby setup flow, slot `0`. 
 
 The connector reads only this explicit JSON file, at most 64 KiB, without following symlinks. Decisions and plan have at most 16 lines of 300 characters each; screens have at most 24 titles of 120 characters and status `sketch`, `review` or `approved`. Brand name and tagline are optional (80 and 200 characters); colors are at most six `#rrggbb` values. Text is cleaned to single lines and unknown fields are discarded. The server validates the same limits and keeps the last boards only in memory, visible only to the owner, including while the computer sleeps. Restarting the Office clears them until the connector republishes. Harness agents with role `designer` keep their builder seat and publish the designer marker used by the draft view.
 
+### Design board (cubbies step 5)
+
+On the owner's draft the north wall keeps **📝 Decisions**, **🗺️ Plan** and **🖼️ Screens**, and a **💡 Ideas** board covers the Services board on the east wall, beside the **🎨 Brand wall**. Ideas and Screens show cards three across and two down: each card's design image as a thumbnail (or its words when it has none, or its image won't load), its title, a screen's status chip and a 💬 count once it has feedback. With more than six, the last place says “+N more” and opens the first card that didn't fit; ‹ › in the card window step through the whole board.
+
+Aim at a card and the hint says **[E] Open <title>**. The card window shows the image large, the title, status and note, and every feedback note, newest last, with its time. Type in the box and press **Send feedback** or Enter (Shift+Enter is a new line). The note is signed with this browser's owner key over `["agent-office/cubby-owner-feedback/v1", cubbyId, floorId, computerId, requestId, at, cardId, text]`, the same way as chat. It shows as “Sending…” until the computer reports it back in the boards, and says so if the computer doesn't within 20 seconds. With the computer asleep, the box is shut. On a device the computer doesn't trust yet, the window says so and offers **💬 Open lead chat**, where **📱 Add this device** is. ✕ or Esc goes straight back to mouse-look.
+
+On `/lite`, **🧩 Draft board** appears on your own draft floor. It lists the ideas and screens with their thumbnails, and tapping one opens the same card window, feedback included.
+
+The page loads each image from `/api/drafts/<floorId>/images/<hash>` with its own session cookie, decodes it once and keeps it by hash. Images exist only on the owner's page and are never sent over the socket. `tests/design-board-ui.mjs` covers the wall, the card window, signing and the phone, using generated PNGs and no server.
+
 ### Kickoff
 
 The draft's owner confirms its name again (trimmed, case-insensitive). Configure one of these server environment variables before starting the Office:

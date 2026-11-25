@@ -1,50 +1,24 @@
-// What the north boards and the TV wall show on a draft: cream panels with the office's dark sign pill
-// for a title, over the Issues, Task queue and PR boards (Decisions, Plan and Screens), and the Brand
-// wall over the TV. Each is a canvas, redrawn only when what it shows changes; everything on it is text
-// the page was sent, drawn as text.
+// What the boards show on a draft: cream panels with the office's dark sign pill for a title, over the
+// Issues, Task queue and PR boards (Decisions, Plan and Screens), the Ideas board over the Services
+// board on the east wall (step 5), and the Brand wall over the TV beside it. Each is a canvas, redrawn
+// only when what it shows changes; everything on it is text the page was sent, drawn as text, and the
+// design images the owner's own page loaded (shared/drafts/images.ts). Each card on the Ideas and
+// Screens boards has a see-through patch in front of it that the aim lands on, for E to open it.
 
 import * as THREE from 'three';
 import type { DraftBoards } from '../../../shared/protocol/drafts';
 import { BOARDS, TV } from '../../../shared/layout';
+import type { Interactable } from '../../world/types';
+import { boardCards, type CardBoard } from '../../shared/drafts/board';
+import { draftImage } from '../../shared/drafts/images';
 import { CREAM, FONT, Face, INK } from '../cubbies/props';
-import { BRAND_EMPTY, BRAND_TITLE, DRAFT_BOARDS, SCREEN_CHIP, boardLines, brandEmpty, shown, type BoardKey } from './model';
+import { cardSlots, paintCards, roundRect, wrap, type CardSlot } from './cards';
+import { BRAND_EMPTY, BRAND_TITLE, CARD_GRID, DRAFT_BOARDS, IDEAS_BOARD, boardLines, brandEmpty, shown, type BoardKey } from './model';
+
+export { wrap };
 
 const NOTE_COLORS = ['#fde7a1', '#cfeadc', '#ffd6e0', '#d7e3fc'];
 const MUTED = '#6c7086';
-
-function roundRect(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
-  c.beginPath();
-  c.moveTo(x + r, y);
-  c.arcTo(x + w, y, x + w, y + h, r);
-  c.arcTo(x + w, y + h, x, y + h, r);
-  c.arcTo(x, y + h, x, y, r);
-  c.arcTo(x, y, x + w, y, r);
-  c.closePath();
-}
-
-/** Words wrapped to `maxW`, at most `lines` lines, the last cut with an ellipsis. */
-export function wrap(c: CanvasRenderingContext2D, text: string, maxW: number, lines: number): string[] {
-  const out: string[] = [];
-  let line = '';
-  for (const word of text.split(/\s+/).filter(Boolean)) {
-    const next = line ? `${line} ${word}` : word;
-    if (c.measureText(next).width <= maxW) line = next;
-    else {
-      if (line) out.push(line);
-      line = word;
-    }
-  }
-  if (line) out.push(line);
-  if (out.length > lines) {
-    out.length = lines;
-    out[lines - 1] += '…';
-  }
-  return out.map((l) => {
-    let t = l;
-    while (t.length > 1 && c.measureText(t).width > maxW) t = t.slice(0, -2) + '…';
-    return t;
-  });
-}
 
 /** The panel: cream with a thick ink edge, and the dark sign pill with the title across its top. */
 function panel(c: CanvasRenderingContext2D, w: number, h: number, title: string): number {
@@ -132,51 +106,6 @@ function paintPlan(c: CanvasRenderingContext2D, w: number, h: number, top: numbe
   }
 }
 
-/** Screens as cards, each with its status chip. */
-function paintScreens(c: CanvasRenderingContext2D, w: number, h: number, top: number, b: DraftBoards) {
-  const cols = 3;
-  const rows = 2;
-  const gap = 36;
-  const cw = (w - 80 - gap * (cols - 1)) / cols;
-  const ch = (h - top - 50 - gap * (rows - 1)) / rows;
-  const { items, more } = shown(b.screens, cols * rows);
-  items.forEach((s, i) => {
-    const x = 40 + (i % cols) * (cw + gap);
-    const y = top + Math.floor(i / cols) * (ch + gap);
-    c.fillStyle = '#ffffff';
-    roundRect(c, x, y, cw, ch, 18);
-    c.fill();
-    c.strokeStyle = INK;
-    c.lineWidth = 5;
-    c.stroke();
-    // A little window frame: the screen it stands for.
-    c.fillStyle = '#e9ecef';
-    c.fillRect(x + 20, y + 20, cw - 40, ch * 0.34);
-    c.fillStyle = INK;
-    c.font = FONT(40);
-    c.textBaseline = 'top';
-    c.fillText(wrap(c, s.title, cw - 40, 1)[0] ?? '', x + 20, y + 30 + ch * 0.34);
-    const chip = SCREEN_CHIP[s.status];
-    c.font = FONT(32);
-    const tw = c.measureText(chip.text).width + 36;
-    roundRect(c, x + 20, y + ch - 66, tw, 48, 24);
-    c.fillStyle = chip.bg;
-    c.fill();
-    c.strokeStyle = INK;
-    c.lineWidth = 3;
-    c.stroke();
-    c.fillStyle = chip.color;
-    c.textBaseline = 'middle';
-    c.fillText(chip.text, x + 38, y + ch - 41);
-  });
-  if (more) {
-    c.fillStyle = MUTED;
-    c.font = FONT(44);
-    c.textBaseline = 'middle';
-    c.fillText(`+${more} more`, 40 + (items.length % cols) * (cw + gap) + 20, top + Math.floor(items.length / cols) * (ch + gap) + ch / 2);
-  }
-}
-
 /** The Brand wall: the name, the tagline and the colors. */
 function paintBrand(c: CanvasRenderingContext2D, w: number, h: number, b: DraftBoards['brand']) {
   const top = panel(c, w, h, BRAND_TITLE);
@@ -211,53 +140,166 @@ function paintBrand(c: CanvasRenderingContext2D, w: number, h: number, b: DraftB
   });
 }
 
-/** The four panels, put up over the boards and the TV. */
+/** How wide each panel's canvas is, and where its cards start below the title. */
+const PANEL_PX = 1536;
+const TOP = 160;
+
+/** How tall a panel's canvas is (as Face makes it). */
+const pxHeight = (f: Face) => Math.round((PANEL_PX * f.mesh.geometry.parameters.height) / f.mesh.geometry.parameters.width);
+
+/** One card's patch in front of a panel: what the aim lands on, and the card it opens. */
+interface Hit {
+  mesh: THREE.Mesh;
+  it: Interactable;
+  slot?: CardSlot;
+}
+
+/** The panels, put up over the boards and the TV. */
 export class DraftBoardsView {
   readonly group = new THREE.Group();
-  private faces = new Map<BoardKey | 'brand', Face>();
+  private faces = new Map<BoardKey | 'ideas' | 'brand', Face>();
+  private hits = new Map<CardBoard, Hit[]>();
+  private hitMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false });
+  private shownK = 1;
+  private last: { b: DraftBoards; floorId: string } | undefined;
 
   constructor() {
     for (const d of DRAFT_BOARDS) {
       const b = BOARDS[d.at];
       // Over the board, its cards and its label above it, and out in front of all of them.
-      const f = new Face(b.width + 0.4, b.height + 1.4, 1536);
+      const f = new Face(b.width + 0.4, b.height + 1.4, PANEL_PX);
       f.mesh.position.set(b.x, b.y + 0.55, b.z + 0.4);
       this.group.add(f.mesh);
       this.faces.set(d.key, f);
     }
-    const tv = new Face(TV.width + 0.1, TV.height + 0.1, 1536);
+    // The Ideas board on the east wall, facing into the room the way the Services board does.
+    const s = BOARDS[IDEAS_BOARD.at];
+    const ideas = new Face(s.width + 0.4, s.height + 1.4, PANEL_PX);
+    ideas.mesh.position.set(s.x - 0.4, s.y + 0.55, s.z);
+    ideas.mesh.rotation.y = s.rotY;
+    this.group.add(ideas.mesh);
+    this.faces.set('ideas', ideas);
+    const tv = new Face(TV.width + 0.1, TV.height + 0.1, PANEL_PX);
     tv.mesh.position.set(TV.x - 0.3, TV.y, TV.z);
     tv.mesh.rotation.y = -Math.PI / 2;
     this.group.add(tv.mesh);
     this.faces.set('brand', tv);
     for (const f of this.faces.values()) f.mesh.name = 'draft-board';
+    this.group.updateMatrixWorld(true);
+    for (const board of ['ideas', 'screens'] as const) this.hits.set(board, this.makeHits(board));
   }
 
-  sync(b: DraftBoards) {
+  /** Six patches in front of a card board, one per place on its grid. */
+  private makeHits(board: CardBoard): Hit[] {
+    const face = this.faces.get(board)!;
+    const out: Hit[] = [];
+    const at = new THREE.Vector3();
+    const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(face.mesh.quaternion);
+    for (let i = 0; i < CARD_GRID.cols * CARD_GRID.rows; i++) {
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), this.hitMat);
+      mesh.name = `draft-card-${board}-${i}`;
+      mesh.visible = false;
+      face.mesh.add(mesh);
+      mesh.position.z = 0.02;
+      mesh.getWorldPosition(at);
+      const it: Interactable = { kind: 'draftcard', x: at.x + normal.x * 0.3, z: at.z + normal.z * 0.3, radius: 1.3, off: true };
+      mesh.userData.interact = it;
+      out.push({ mesh, it });
+    }
+    return out;
+  }
+
+  /** Puts each patch over its card (or away, with no card there). */
+  private placeHits(board: CardBoard, slots: CardSlot[]) {
+    const face = this.faces.get(board)!;
+    const g = face.mesh.geometry.parameters;
+    const pxH = pxHeight(face);
+    const at = new THREE.Vector3();
+    const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(face.mesh.quaternion);
+    this.hits.get(board)!.forEach((hit, i) => {
+      const s = slots[i];
+      hit.slot = s;
+      hit.mesh.visible = !!s;
+      hit.it.off = !s || this.shownK < 1;
+      if (!s) return;
+      hit.mesh.scale.set((s.w / PANEL_PX) * g.width, (s.h / pxH) * g.height, 1);
+      hit.mesh.position.x = ((s.x + s.w / 2) / PANEL_PX - 0.5) * g.width;
+      hit.mesh.position.y = (0.5 - (s.y + s.h / 2) / pxH) * g.height;
+      hit.mesh.updateMatrixWorld(true);
+      hit.mesh.getWorldPosition(at);
+      hit.it.x = at.x + normal.x * 0.3;
+      hit.it.z = at.z + normal.z * 0.3;
+    });
+  }
+
+  /** The cards' patches you can use right now. */
+  interactables(): Interactable[] {
+    return [...this.hits.values()].flat().filter((h) => !h.it.off).map((h) => h.it);
+  }
+
+  /** The card a patch opens. */
+  cardAt(it: Interactable): { board: CardBoard; cardId: string; title: string; more: number } | undefined {
+    for (const [board, list] of this.hits) {
+      const s = list.find((h) => h.it === it)?.slot;
+      if (s) return { board, cardId: s.cardId, title: s.title, more: s.more };
+    }
+    return undefined;
+  }
+
+  sync(b: DraftBoards, floorId: string) {
+    this.last = { b, floorId };
     for (const d of DRAFT_BOARDS) {
+      if (d.key === 'screens') continue;
       const lines = boardLines(b, d.key);
-      const key = d.key === 'screens' ? JSON.stringify(b.screens) : JSON.stringify(lines);
-      this.faces.get(d.key)!.draw(key, (c, w, h) => {
+      this.faces.get(d.key)!.draw(JSON.stringify(lines), (c, w, h) => {
         const top = panel(c, w, h, d.title);
         if (!lines.length) return emptyNote(c, w, h, top, d.empty);
         if (d.key === 'decisions') paintDecisions(c, w, h, top, lines);
-        else if (d.key === 'plan') paintPlan(c, w, h, top, lines);
-        else paintScreens(c, w, h, top, b);
+        else paintPlan(c, w, h, top, lines);
       });
+    }
+    for (const board of ['screens', 'ideas'] as const) {
+      const cards = boardCards(b, board);
+      const def = board === 'ideas' ? IDEAS_BOARD : DRAFT_BOARDS.find((d) => d.key === 'screens')!;
+      const face = this.faces.get(board)!;
+      const slots = cardSlots(PANEL_PX, pxHeight(face), TOP, cards);
+      // Each image as it stands (loading, in, or not coming), so the panel redraws once it's in.
+      const img = (card: (typeof cards)[number]) => (card.image ? draftImage(floorId, card.image) : null);
+      const state = slots.map((s) => {
+        const card = s.more ? undefined : cards.find((x) => x.id === s.cardId);
+        const i = card ? img(card) : null;
+        return i === undefined ? 'l' : i ? 'i' : 't';
+      });
+      const key = JSON.stringify([floorId, slots.map((s) => [s.cardId, s.more]), cards.slice(0, slots.length).map((c) => [c.title, c.note, c.status, c.image?.hash, c.feedback.length]), state]);
+      face.draw(key, (c, w, h) => {
+        const top = panel(c, w, h, def.title);
+        if (!cards.length) return emptyNote(c, w, h, top, def.empty);
+        paintCards(c, w, h, top, cards, img);
+      });
+      this.placeHits(board, slots);
     }
     this.faces.get('brand')!.draw(JSON.stringify(b.brand), (c, w, h) => paintBrand(c, w, h, b.brand));
   }
 
+  /** Draws again with what's loaded now (an image came in). */
+  refresh() {
+    if (this.last) this.sync(this.last.b, this.last.floorId);
+  }
+
   /** How much of the panels is left (1 all there, 0 gone): they fade as a draft's kicked off. */
   fade(k: number) {
+    this.shownK = k;
     for (const f of this.faces.values()) {
       f.mesh.material.transparent = k < 1;
       f.mesh.material.opacity = k;
       f.mesh.visible = k > 0;
     }
+    for (const list of this.hits.values()) for (const h of list) h.it.off = !h.slot || k < 1;
   }
 
   dispose() {
     for (const f of this.faces.values()) f.dispose();
+    for (const list of this.hits.values()) for (const h of list) h.mesh.geometry.dispose();
+    this.hitMat.dispose();
   }
 }
