@@ -32,6 +32,10 @@ export abstract class PlayerInput {
    */
   onClick: ((ndc: THREE.Vector2) => void) | null = null;
   protected keys = new Set<string>();
+  /** Optional camera-relative analog input, shared by walking and movement-key consumers. */
+  readonly walkInput = { x: 0, z: 0 };
+  /** A separate input surface owns touch gestures and never needs pointer lock. */
+  onScreenControls = false;
   private drag: { x: number; y: number; moved: number } | null = null;
   /** Set when this browser won't lock the pointer; first person falls back to drag-to-look. */
   private lockFailed = false;
@@ -69,7 +73,7 @@ export abstract class PlayerInput {
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('blur', () => {
-      this.keys.clear();
+      this.clearKeys();
       this.escDownAt = 0;
       this.lockOnEscUp = false;
     });
@@ -92,7 +96,7 @@ export abstract class PlayerInput {
     );
 
     dom.addEventListener('pointerdown', (e) => {
-      if (!this.enabled) return;
+      if (!this.enabled || (this.onScreenControls && e.pointerType !== 'mouse')) return;
       if (this.view === 'first' && e.pointerType === 'mouse' && !this.lockFailed) {
         if (this.locked) {
           if (e.button === 0) this.onClick?.(CENTER);
@@ -185,7 +189,7 @@ export abstract class PlayerInput {
 
   /** Whether clicking the scene will capture the mouse for looking around. */
   get canLock(): boolean {
-    return this.view === 'first' && !this.lockFailed && typeof this.dom.requestPointerLock === 'function';
+    return !this.onScreenControls && this.view === 'first' && !this.lockFailed && typeof this.dom.requestPointerLock === 'function';
   }
 
   unlock() {
@@ -210,11 +214,16 @@ export abstract class PlayerInput {
 
   clearKeys() {
     this.keys.clear();
+    this.walkInput.x = this.walkInput.z = 0;
   }
 
   /** Whether any of these keys is held down (and you have the controls). */
   holding(...codes: string[]): boolean {
-    return this.enabled && codes.some((c) => this.keys.has(c));
+    return this.enabled && codes.some((c) => this.keys.has(c) ||
+      ((c === 'KeyW' || c === 'ArrowUp') && this.walkInput.z < 0) ||
+      ((c === 'KeyS' || c === 'ArrowDown') && this.walkInput.z > 0) ||
+      ((c === 'KeyA' || c === 'ArrowLeft') && this.walkInput.x < 0) ||
+      ((c === 'KeyD' || c === 'ArrowRight') && this.walkInput.x > 0));
   }
 
   /**

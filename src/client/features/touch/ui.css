@@ -1,0 +1,19 @@
+.touch-controls { position: fixed; z-index: 4; pointer-events: none; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+.touch-controls[hidden], .touch-controls [hidden] { display: none !important; }
+.touch-controls .touch-surface { pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.touch-stick, .touch-action, .touch-secondary { position: absolute; border: 3px solid var(--ink); color: var(--ink); background: rgba(255,250,243,.9); box-shadow: var(--shadow); font: 900 14px/1.15 var(--font); }
+.touch-stick { width: var(--stick); height: var(--stick); left: calc(12px + env(safe-area-inset-left)); bottom: calc(12px + env(safe-area-inset-bottom)); border-radius: 50%; display: grid; place-items: center; }
+.touch-stick span { width: 44%; height: 44%; border-radius: 50%; background: var(--accent); border: 3px solid var(--ink); display: grid; place-items: center; font-size: 11px; pointer-events: none; }
+.touch-action { width: var(--action); height: var(--action); right: calc(12px + env(safe-area-inset-right)); bottom: calc(12px + env(safe-area-inset-bottom)); border-radius: 50%; padding: 6px; overflow-wrap: anywhere; }
+.touch-secondary { width: var(--action); min-height: 44px; right: calc(12px + env(safe-area-inset-right)); bottom: calc(var(--action) + 20px + env(safe-area-inset-bottom)); border-radius: 14px; padding: 6px; }
+.touch-action:active, .touch-secondary:active { background: var(--accent); }
+.touch-look { position: absolute; background: transparent; }
+body.touch-enabled .topbar { top: calc(12px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left)); right: calc(12px + env(safe-area-inset-right)); }
+body.touch-enabled .chat { bottom: calc(var(--touch-row) + 24px + env(safe-area-inset-bottom)); left: calc(12px + env(safe-area-inset-left)); width: calc(100% - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)); }
+body.touch-enabled #chat-input { font-size: 16px; }
+body.touch-enabled .hint { bottom: calc(var(--touch-row) + var(--touch-chat, 40px) + 36px + env(safe-area-inset-bottom)); max-width: calc(100% - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)); width: max-content; font-size: 13px; padding: 8px 10px; gap: 8px; }
+/* When the keyboard is up, let the chat stay at the visible viewport's lower edge. */
+body.touch-typing .chat { bottom: calc(var(--touch-keyboard, 0px) + 12px + env(safe-area-inset-bottom)); }
+@media (max-height: 420px) and (min-width: 600px) {
+  body.touch-enabled .hint { bottom: calc(12px + env(safe-area-inset-bottom)); max-width: calc(100% - 340px - env(safe-area-inset-left) - env(safe-area-inset-right)); }
+}

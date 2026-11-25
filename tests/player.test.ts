@@ -248,3 +248,27 @@ test('a buzz on you walks you further and jumps you higher', (t) => {
   }
   assert.ok(highest[1] > highest[0] * 1.4, `jumped ${highest[1]} against ${highest[0]}`);
 });
+
+test('analog input shares keyboard collision, speed, seat and release behavior', (t) => {
+  const { player, frames } = controller(t, [desk]);
+  player.pos.set(3, 0, 5);
+  player.walkInput.z = -0.5;
+  frames(60);
+  assert.ok(Math.abs(player.pos.z - 2.7) < 1e-8, 'half stick walks at half speed');
+  player.clearKeys();
+  frames(10);
+  assert.ok(Math.abs(player.pos.z - 2.7) < 1e-8, 'clear input stops walking');
+  player.pos.set(0, 0, 1);
+  player.walkInput.z = -1;
+  frames(60);
+  assert.ok(player.pos.z >= 0.85 - 1e-6, 'analog cannot walk through desks');
+  player.enabled = false;
+  player.walkInput.z = 1;
+  const z = player.pos.z;
+  frames(10);
+  assert.equal(player.pos.z, z, 'disabled input never moves');
+  player.enabled = true;
+  player.sit(seatPlace(SEATING_BY_ID.get('couch')!, 0));
+  frames(1);
+  assert.equal(player.seat, null, 'stick gets you out of a seat');
+});

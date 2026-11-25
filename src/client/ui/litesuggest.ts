@@ -1,13 +1,12 @@
 import './litesuggest.css';
-// Offering the 2D view (/lite) where the 3D office is hard going: on a phone, with no keys to walk
-// with, or on a computer where frames come slowly (see framerate.ts).
+// Offering a choice of views on phones, or 2D where frames come slowly (see framerate.ts).
 
 import { h } from './dom';
 
 /** Said to stay in 3D: this browser isn't offered the 2D view again (it's in the ☰ menu). */
 const DECLINED_KEY = 'agent-office.lite-declined';
 
-/** A touch screen and no mouse: a phone or a tablet, which can't walk around the office anyway. */
+/** A touch screen and no mouse: a phone or a tablet that needs on-screen controls. */
 export function touchOnly(): boolean {
   return matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches;
 }
@@ -28,22 +27,28 @@ export function offerLite(why: 'touch' | 'slow') {
   offered = true;
   const say =
     why === 'touch'
-      ? '📱 On a phone? The 2D view is made for it: every worker and how it’s doing, its terminal, and the boards.'
+      ? '📱 Walk around in 3D with on-screen controls, or open the 2D view for workers, terminals and boards.'
       : '🐢 The 3D office is running slowly on this computer. The 2D view has the workers, their terminals and the boards, without the 3D.';
   const stay = h('button.btn', { type: 'button' }, 'Stay in 3D');
+  const close = h('button.btn.close.corner', { type: 'button', 'aria-label': 'Close' }, '✕');
   const el = h(
     'div.lite-offer.panel',
     { role: 'dialog', 'aria-label': 'Try the 2D view' },
+    close,
     h('p', {}, say),
     h('div.lite-offer-btns', {}, h('a.btn.primary', { href: '/lite' }, 'Open the 2D view'), stay),
   );
+  const dismiss = () => { el.remove(); document.removeEventListener('keydown', escape); };
+  const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') dismiss(); };
+  close.addEventListener('click', dismiss);
+  document.addEventListener('keydown', escape);
   stay.addEventListener('click', () => {
     try {
       localStorage.setItem(DECLINED_KEY, '1');
     } catch {
       // storage blocked: it's only this page then
     }
-    el.remove();
+    dismiss();
   });
   document.body.append(el);
 }

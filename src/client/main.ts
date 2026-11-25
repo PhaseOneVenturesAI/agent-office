@@ -57,6 +57,7 @@ import { installSeating } from './features/seating';
 import { installSmoke } from './features/smoke';
 import { installLamplight } from './features/lamplight';
 import { installTelescope } from './features/telescope';
+import { installTouch } from './features/touch';
 import { installTv } from './features/tv';
 import { installVoice } from './features/voice';
 import { installWaiting } from './features/waiting';
@@ -179,6 +180,7 @@ installChat(ctx);
 parts.talk = installVoice(ctx, { tv: parts.tv });
 installDictation(ctx);
 parts.hud = installHud(ctx, core, parts);
+installTouch(ctx);
 
 // ---- Main loop ---------------------------------------------------------------------------------------
 fitWindow(ctx);
