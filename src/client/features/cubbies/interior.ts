@@ -305,6 +305,7 @@ export class Interior {
     this.lead.update(dt, t, false, false);
     for (const v of this.views.values()) {
       v.model?.update(dt, t);
+      if (v.model) shrinkTags(v.model.root);
       if (v.spot.kind === 'machine') {
         const a = v.agent;
         const left = this.asleep ? '💤 paused' : deadlineText(a.deadlineAt, now);
@@ -339,4 +340,18 @@ export class Interior {
     disposeTree(this.group);
     this.group.clear();
   }
+}
+
+/**
+ * A cubby is about 3 by 2.5 m, so the office's full-size name tags and task cards would fill the view
+ * from its doorway. Each label a helper draws (a sprite, redrawn whenever it changes) is shown at half
+ * size here, once.
+ */
+const TAG_SCALE = 0.5;
+function shrinkTags(root: THREE.Object3D) {
+  root.traverse((o) => {
+    if (!(o as THREE.Sprite).isSprite || o.userData.cubbyTag === o.scale.x) return;
+    o.scale.multiplyScalar(TAG_SCALE);
+    o.userData.cubbyTag = o.scale.x;
+  });
 }
