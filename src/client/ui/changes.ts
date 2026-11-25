@@ -344,8 +344,8 @@ export function openChanges(net: Net, workerId: string, onTerminal?: () => void,
     );
   });
   commitBtn.addEventListener('click', () => {
-    // The worker's agent writes the commit message; when it can't (a shell, asleep, gone), the
-    // office answers changes.commitManual and the person who pressed the button types one instead.
+    // The worker's agent writes the commit message; when it can't (a shell, asleep, gone) or doesn't
+    // commit, the office answers changes.commitManual and the person who pressed the button types one instead.
     net.send({ t: 'changes.commit', workerId, repo });
   });
   terminalBtn.addEventListener('click', () => {

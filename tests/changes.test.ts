@@ -11,7 +11,7 @@ import type { Client } from '../src/server/office/client.js';
 import { changedImageType, type ChangesClientMsg, type ServerMsg, type WorkerInfo, type WorkerKind } from '../src/shared/protocol.js';
 
 /** A git repo with one committed picture, and a Changes that diffs it against HEAD. */
-function fixture(t: { after(fn: () => void): void }) {
+function fixture(t: { after(fn: () => void): void }, pollMs?: number) {
   const root = mkdtempSync(path.join(tmpdir(), 'office-changes-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const dir = path.join(root, 'repo');
@@ -28,9 +28,9 @@ function fixture(t: { after(fn: () => void): void }) {
     state() {},
     toast() {},
     refreshGitHub() {},
-  });
+  }, pollMs);
   t.after(() => changes.stop());
-  return { root, dir, changes };
+  return { root, dir, changes, git };
 }
 
 test('only pictures have a preview type, picked by extension', () => {
@@ -117,6 +117,12 @@ function commitDesk(opts: { kind?: WorkerKind; promptError?: string } = {}) {
   const warnings: string[] = [];
   const prompts: { text: string; by?: string }[] = [];
   const commits: { message: string; who: string; repo?: string }[] = [];
+  /** Resolves the office's wait for the agent's commit, as the checkout landing (or not landing) one would. */
+  const settleCommit = (subject: string | undefined) => {
+    assert.equal(waits.length, 1, 'the office is waiting for the agent’s commit');
+    waits.shift()?.(subject);
+  };
+  const waits: ((subject: string | undefined) => void)[] = [];
   const info = { id: 'w1', kind: opts.kind ?? 'agent', provider: 'claude', name: 'Pixel', status: 'done' } as WorkerInfo;
   const changes = {
     commitWhere: (_id: string, repo?: string) => (repo ? 'the checkout at /workspace/api' : 'your working directory'),
@@ -124,6 +130,7 @@ function commitDesk(opts: { kind?: WorkerKind; promptError?: string } = {}) {
       commits.push({ message, who, repo });
       return Promise.resolve(undefined);
     },
+    confirmCommit: () => new Promise<string | undefined>((resolve) => waits.push(resolve)),
   };
   const workers = {
     get: (id: string) => (id === info.id ? info : undefined),
@@ -144,7 +151,7 @@ function commitDesk(opts: { kind?: WorkerKind; promptError?: string } = {}) {
   } as unknown as Ctx;
   const client = { id: 'browser', accountId: undefined, peer: { name: 'Cody', floor: 'floor' } } as unknown as Client;
   const commit = (msg: Extract<ChangesClientMsg, { t: 'changes.commit' }>) => changesHandlers['changes.commit'](ctx, client, msg);
-  return { sent, warnings, prompts, commits, commit };
+  return { sent, warnings, prompts, commits, commit, settleCommit };
 }
 
 test('Commit with no message asks the worker’s agent to commit, writing the message itself', () => {
@@ -184,4 +191,41 @@ test('Commit with a typed message still commits as the person who pressed it, ag
   assert.deepEqual(d.prompts, []);
   assert.deepEqual(d.sent, []);
   assert.deepEqual(d.warnings, []);
+});
+
+
+test('Commit with no message toasts the outcome once the agent’s commit lands', async () => {
+  const d = commitDesk();
+  d.commit({ t: 'changes.commit', workerId: 'w1' });
+  d.settleCommit('Add the flux capacitor');
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(d.sent.map((m) => m.t), ['toast', 'toast']);
+  const done = d.sent[1];
+  assert.ok(done.t === 'toast' && done.level === 'info' && done.text === '✅ Pixel committed “Add the flux capacitor”', JSON.stringify(done));
+  assert.deepEqual(d.commits, []);
+});
+
+test('Commit with no message warns and offers the manual fallback when no commit lands', async () => {
+  const d = commitDesk();
+  d.commit({ t: 'changes.commit', workerId: 'w1', repo: 'floor-api' });
+  d.settleCommit(undefined);
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(d.sent.map((m) => m.t), ['toast', 'toast', 'changes.commitManual']);
+  const warn = d.sent[1];
+  assert.ok(warn.t === 'toast' && warn.level === 'warn' && warn.text.includes('Pixel'), JSON.stringify(warn));
+  assert.deepEqual(d.sent[2], { t: 'changes.commitManual', workerId: 'w1', repo: 'floor-api' });
+  assert.deepEqual(d.commits, []);
+});
+
+test('confirmCommit resolves with the subject once a new commit lands, and times out when none does', async (t) => {
+  const { dir, changes, git } = fixture(t, 25);
+  // The commit the fixture already has isn't the agent's: nothing new lands, so the wait times out.
+  assert.equal(await changes.confirmCommit('w1', undefined, 150), undefined);
+  const landed = changes.confirmCommit('w1', undefined, 10_000);
+  // The agent commits while the office waits; give it a moment to note the HEAD it started from.
+  await new Promise((r) => setTimeout(r, 150));
+  writeFileSync(path.join(dir, 'flux.ts'), 'export const flux = 1;\n');
+  git('add', '.');
+  git('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'Add the flux capacitor');
+  assert.equal(await landed, 'Add the flux capacitor');
 });

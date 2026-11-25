@@ -79,7 +79,8 @@ export type ChangesClientMsg =
   /**
    * With a `message`, commits with it (the office runs git add -A && git commit as whoever asked).
    * Without one, the worker's own agent is asked to review its changes and commit them, writing the
-   * message itself; when it can't be asked, the office answers `changes.commitManual`.
+   * message itself; when it can't be asked, or no commit of its lands within a few minutes, the
+   * office answers `changes.commitManual`.
    */
   | { t: 'changes.commit'; workerId: string; message?: string; repo?: string }
   /** Without a path, throws away every uncommitted change in that checkout. */
@@ -90,5 +91,5 @@ export type ChangesServerMsg =
   /** Sent to whoever watches that worker's changes, whenever they change. */
   | { t: 'changes'; state: ChangesState }
   | { t: 'changes.diff'; workerId: string; repo?: string; path: string; diff: string; truncated: boolean; error?: string }
-  /** A message-less `changes.commit` the worker's agent couldn't take (a shell, asleep, gone): the person types the message instead. */
+  /** A message-less `changes.commit` the worker's agent couldn't take (a shell, asleep, gone) or didn't see through: the person types the message instead. */
   | { t: 'changes.commitManual'; workerId: string; repo?: string };
