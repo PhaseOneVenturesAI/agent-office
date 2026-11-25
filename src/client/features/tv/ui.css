@@ -1,0 +1,5 @@
+/* The office TV's window */
+.modal.tv { width: min(560px, 100%); }
+.tv-now { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 3px solid var(--ink); border-radius: 14px; background: var(--paper-2); }
+.tv-now .btn { flex: none; padding: 4px 10px; font-size: 13px; }
+.tv-icon { flex: none; font-size: 30px; line-height: 1; }
