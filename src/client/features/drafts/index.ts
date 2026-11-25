@@ -13,7 +13,7 @@ import { store } from '../../state';
 import { officeFill } from '../../world/sky';
 import type { Collider, Interactable } from '../../world/types';
 import type { Cubbies } from '../cubbies';
-import { toolName } from '../cubbies/model';
+import { leadColorIndex, toolName } from '../cubbies/model';
 import { wireDesignBook } from './design';
 import { wireKickoff } from './kickoff';
 import { KICKOFF_KEY, kickoffOffer } from './kickoff-model';
@@ -168,9 +168,10 @@ export function installDrafts(ctx: Ctx, deps: DraftsDeps) {
   function sync() {
     const draft = here();
     if (!draft) return;
-    const look = cubbyOf()?.interior?.look;
+    // The cubby's lead is the one character: its look and its color (from its name) here as in there.
+    const it = cubbyOf()?.interior;
     const name = lead();
-    scene.setLead(name, look, [...name].reduce((n, ch) => n + ch.charCodeAt(0), 0));
+    scene.setLead(name, it?.look, leadColorIndex(it?.leadName ?? name));
     scene.boards.sync(draft.boards);
     syncPods();
     ctx.hint.invalidate();

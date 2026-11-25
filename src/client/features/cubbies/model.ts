@@ -5,6 +5,10 @@
 import type { CubbyAgent, CubbyInfo, CubbyRole, CubbyStatus } from '../../../shared/protocol/cubbies';
 import type { WorkerStatus } from '../../../shared/protocol';
 import type { Collider, Interactable } from '../../world/types';
+import { clip } from '../../shared/cubby/text';
+
+// The words the hall, the cubby and the phone's My cubby share (no three.js there, for /lite).
+export { ROLE_LABEL, STATUS_TEXT, agentCard, clip, deadlineText, helperName, leadColorIndex, toolName } from '../../shared/cubby/text';
 
 /**
  * Where the hall puts one cubby: its slot (0–5), the middle of its floor, how wide (along its front) and
@@ -28,11 +32,11 @@ export const DOOR_WIDTH = 1.1;
 /** How tall the glass front is. */
 export const FRONT_HEIGHT = 2.7;
 
-export type CubbyFace = 'free' | 'mine' | 'other';
+export type CubbyFace = 'free' | 'mine' | 'watch' | 'other';
 
-/** Whose cubby it is, as the hall sees it. A free slot has no cubby. */
+/** Whose cubby it is, as the hall sees it. A free slot has no cubby; one you're watching opens for you. */
 export function faceOf(c: CubbyInfo | undefined): CubbyFace {
-  return !c ? 'free' : c.mine ? 'mine' : 'other';
+  return !c ? 'free' : c.mine ? 'mine' : c.watching && c.interior ? 'watch' : 'other';
 }
 
 export const LAMP_COLOR: Record<CubbyInfo['lamp'], string> = { online: '#06d6a0', working: '#ffd166', asleep: '#adb5bd' };
@@ -42,6 +46,7 @@ export function signText(c: CubbyInfo | undefined): string {
   if (!c) return '✨ Free cubby';
   const name = clip(c.ownerName || 'Someone', 22);
   if (c.mine) return c.interior ? `${name} · ${clip(c.interior.computerName, 22)}` : `${name} · waiting for your computer`;
+  if (c.watching && c.interior) return `👀 ${name} · ${clip(c.interior.computerName, 22)}`;
   return c.lamp === 'asleep' ? `🔒 ${name} · 💤 asleep` : `🔒 ${name} · ${Math.max(0, c.working | 0)} working`;
 }
 
@@ -49,51 +54,6 @@ export function signText(c: CubbyInfo | undefined): string {
 export function workerStatus(s: CubbyStatus, asleep: boolean): WorkerStatus {
   if (asleep) return 'offline';
   return s === 'working' ? 'working' : s === 'needs-you' ? 'needs_input' : s === 'idle' ? 'idle' : 'starting';
-}
-
-export const ROLE_LABEL: Record<CubbyRole, string> = {
-  lead: 'Lead',
-  builder: 'Builder',
-  reviewer: 'Reviewer',
-  factory: 'Factory',
-  paradev: 'Paradev',
-  direct: 'Local session',
-};
-
-export const STATUS_TEXT: Record<CubbyStatus, string> = { idle: 'ready', working: 'working', 'needs-you': 'needs you', unknown: 'unknown' };
-
-/** A tool as people say it: "codex" is Codex, "claude-phase-one" is Claude. */
-export function toolName(tool: string): string {
-  const t = clip(tool || 'Agent', 20).replace(/^claude-(personal|phase-one)$/, 'claude');
-  return t.charAt(0).toUpperCase() + t.slice(1);
-}
-
-/** A helper's short name: its tool and role ("Codex · Builder"), the role alone when they're the same word ("Factory"). */
-export function helperName(a: Pick<CubbyAgent, 'tool' | 'role'>): string {
-  const tool = toolName(a.tool);
-  if (a.role === 'direct') return `${tool} session`;
-  const role = ROLE_LABEL[a.role];
-  return tool.toLowerCase() === role.toLowerCase() ? role : `${tool} · ${role}`;
-}
-
-/**
- * A helper's name tag and the card over its head. A session opened directly in its own app shows its
- * tool, branch and whether it's busy, never what it was asked: its conversation stays in that app.
- */
-export function agentCard(a: CubbyAgent): { name: string; title: string; body: string } {
-  const tool = toolName(a.tool);
-  if (a.role === 'direct') return { name: `${tool} session`, title: a.status === 'working' ? 'Busy' : STATUS_TEXT[a.status], body: a.branch ? `🌿 ${clip(a.branch, 40)}` : '' };
-  const title = clip(a.task || ROLE_LABEL[a.role], 60);
-  const body = [a.progress ? clip(a.progress, 60) : '', a.branch ? `🌿 ${clip(a.branch, 40)}` : ''].filter(Boolean).join(' · ');
-  return { name: helperName(a), title, body };
-}
-
-/** "12 min left" on the factory's clock, or "overdue". */
-export function deadlineText(at: number | undefined, now: number): string {
-  if (!at) return 'no deadline';
-  const min = Math.ceil((at - now) / 60_000);
-  if (min <= 0) return 'overdue';
-  return min >= 120 ? `${Math.round(min / 60)} h left` : `${min} min left`;
 }
 
 // ---- Where everyone goes inside -----------------------------------------------------------------------
@@ -243,10 +203,4 @@ export function joinCommand(o: { origin: string; token: string; floorId: string;
 /** A lead's name as setup sends it: trimmed, one line, at most 24 characters. */
 export function cleanLeadName(s: string): string {
   return s.replace(/\s+/g, ' ').trim().slice(0, 24);
-}
-
-/** `text` cut to at most `max` characters, with an ellipsis when it was longer. */
-export function clip(text: string, max: number): string {
-  const t = String(text ?? '').replace(/\s+/g, ' ').trim();
-  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
 }

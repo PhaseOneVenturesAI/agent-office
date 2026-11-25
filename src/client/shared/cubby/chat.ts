@@ -1,12 +1,14 @@
-import './ui.css';
+import './chat.css';
 import type { CubbyAgent, CubbyInfo, CubbyOwnerMessage } from '../../../shared/protocol/cubbies';
 import { store } from '../../state';
 import { ownerDeviceKey, signOwnerChat, displayFingerprint, type OwnerDeviceKey } from './keys';
 import { h, openModal } from '../../ui/dom';
-import { STATUS_TEXT, ROLE_LABEL, clip, deadlineText, agentCard, helperName } from './model';
+import { STATUS_TEXT, ROLE_LABEL, clip, deadlineText, agentCard, helperName } from './text';
 
-// Your cubby's windows: talking to its lead, and one helper's card. Both are the office's cream dialog
-// with its ✕ and Esc; everything shown is put in as text, never as HTML.
+// A cubby's windows: talking to its lead, and one helper's card. Both are the office's cream dialog
+// with its ✕ and Esc; everything shown is put in as text, never as HTML. The 3D office opens them from
+// inside the cubby, the phone (/lite) from My cubby. Someone the owner let in to watch gets the same
+// windows read-only: the lines, never a box to type in.
 
 export interface CubbyWindows {
   /** Your cubby with this id, as the store has it now (only yours has an inside). */
@@ -15,6 +17,26 @@ export interface CubbyWindows {
   onChange(fn: () => void): () => void;
   /** Sends one chat line to the lead. */
   sendChat(id: string, message: CubbyOwnerMessage): void;
+  /** The owner sends a watcher out (cubbies.admit allow false). */
+  sendOut?(id: string, accountId: string): void;
+}
+
+/** What a cubby's chat shows you: yours to talk in, someone else's you're watching, or nothing (gone). */
+export function chatMode(c: CubbyInfo | undefined): 'owner' | 'watching' | null {
+  if (!c?.interior) return null;
+  return c.mine ? 'owner' : c.watching ? 'watching' : null;
+}
+
+/** The note a watcher reads where the message box would be. */
+export function watchingNote(ownerName: string, leadName: string): string {
+  return `Watching: only ${clip(ownerName, 24) || 'the owner'} can talk to ${clip(leadName, 24) || 'their lead'}`;
+}
+
+/** A helper's line on the phone and in the chat's roster: tool · role · task · status. */
+export function helperLine(a: CubbyAgent, asleep: boolean): string {
+  const state = asleep ? '💤 asleep' : a.role === 'direct' && a.status === 'working' ? 'busy' : STATUS_TEXT[a.status];
+  const task = a.role === 'direct' ? (a.branch ? `🌿 ${clip(a.branch, 32)}` : '') : clip(a.task, 48);
+  return [helperName(a), task, state].filter(Boolean).join(' · ');
 }
 
 const MAX_CHAT = 4000;
@@ -24,7 +46,7 @@ const MAX_CHAT = 4000;
  * to it, as chat; nothing here runs a tool or answers an approval. With the computer asleep there's
  * nobody to hear it, so the box is shut until it wakes.
  */
-export function openLeadChat(w: CubbyWindows, cubbyId: string) {
+export function openLeadChat(w: CubbyWindows, cubbyId: string): { close(): void } {
   const log = h('div.cb-log', { role: 'log', 'aria-live': 'polite' });
   const side = h('aside.cb-side');
   const sub = h('span.cb-sub');
@@ -43,13 +65,18 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string) {
   const keyNote = h('p.cb-note', { 'aria-live': 'polite' });
   note.after(keyNote);
   let lines = '';
+  let wasWatching = false;
   const paint = () => {
     const c = w.cubby(cubbyId);
-    const it = c?.mine ? c.interior : undefined;
+    const mode = chatMode(c);
+    const it = mode ? c!.interior : undefined;
     if (!c || !it) {
       title.textContent = '💬 Your lead';
       sub.textContent = '';
-      note.textContent = 'This cubby is gone from the floor.';
+      note.textContent = wasWatching ? 'You’re not watching this cubby any more.' : 'This cubby is gone from the floor.';
+      note.style.display = '';
+      form.style.display = 'none';
+      keyNote.textContent = '';
       text.disabled = send.disabled = true;
       return;
     }
@@ -57,36 +84,60 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string) {
     title.textContent = `💬 ${lead}`;
     sub.textContent = `Runs on ${clip(it.computerName, 32)}`;
     const asleep = c.lamp === 'asleep';
-    const keyMatches = !!deviceKey && deviceKey.fingerprint === it.ownerFingerprint;
-    const sameAccount = store.me.account?.name === account;
-    text.disabled = send.disabled = asleep || !keyMatches || !sameAccount || signing || !it.computerId;
-    form.style.display = note.style.display = keyMatches && sameAccount ? '' : 'none';
-    keyNote.textContent = !sameAccount ? 'Account changed. Close and reopen this chat.' : keyError || (!deviceKey ? 'Preparing this device’s owner key…' :
-      keyMatches ? `Owner key: ${displayFingerprint(deviceKey.fingerprint)}` :
-      `This cubby only accepts messages from the device whose key was pinned. ${it.ownerFingerprint ? 'This browser has a different key.' : 'Waiting for the computer’s pinned key.'} To re-pin: stop join locally, open Set up at your offline cubby in this browser, compare fingerprints, then run its command on your computer with --replace-owner-key.`);
-    text.placeholder = asleep ? '' : `Message ${lead}…`;
-    note.textContent = asleep ? `💤 ${clip(it.computerName, 32)} is asleep. ${lead} can't hear you until it wakes.` : 'Chat only: tools, commands and approvals stay on your computer.';
-    note.classList.toggle('asleep', asleep);
+    el.classList.toggle('watching', mode === 'watching');
+    wasWatching = mode === 'watching';
+    if (mode === 'watching') {
+      // Watch and listen only: no box, no send, no key.
+      title.textContent = `👀 ${lead}`;
+      sub.textContent = `${clip(c.ownerName, 24)}'s cubby`;
+      text.disabled = send.disabled = true;
+      form.style.display = 'none';
+      keyNote.textContent = '';
+      note.style.display = '';
+      note.textContent = watchingNote(c.ownerName, it.leadName);
+      note.classList.remove('asleep');
+      note.classList.add('watch');
+    } else {
+      note.classList.remove('watch');
+      const keyMatches = !!deviceKey && deviceKey.fingerprint === it.ownerFingerprint;
+      const sameAccount = store.me.account?.name === account;
+      text.disabled = send.disabled = asleep || !keyMatches || !sameAccount || signing || !it.computerId;
+      form.style.display = note.style.display = keyMatches && sameAccount ? '' : 'none';
+      keyNote.textContent = !sameAccount ? 'Account changed. Close and reopen this chat.' : keyError || (!deviceKey ? 'Preparing this device’s owner key…' :
+        keyMatches ? `Owner key: ${displayFingerprint(deviceKey.fingerprint)}` :
+        `This cubby only accepts messages from the device whose key was pinned. ${it.ownerFingerprint ? 'This browser has a different key.' : 'Waiting for the computer’s pinned key.'} To re-pin: stop join locally, open Set up at your offline cubby in this browser, compare fingerprints, then run its command on your computer with --replace-owner-key.`);
+      text.placeholder = asleep ? '' : `Message ${lead}…`;
+      note.textContent = asleep ? `💤 ${clip(it.computerName, 32)} is asleep. ${lead} can't hear you until it wakes.` : 'Chat only: tools, commands and approvals stay on your computer.';
+      note.classList.toggle('asleep', asleep);
+    }
     const key = it.chat.map((l) => `${l.id}:${l.text.length}`).join('|');
     if (key !== lines) {
       lines = key;
       const atEnd = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
       log.replaceChildren(
-        ...(it.chat.length ? [] : [h('p.cb-empty', {}, `Say hello to ${lead}.`)]),
-        ...it.chat.map((l) => h(`div.cb-line.${l.role}`, {}, h('b', {}, l.role === 'user' ? 'You' : l.role === 'assistant' ? lead : 'Note'), h('span', {}, l.text))),
+        ...(it.chat.length ? [] : [h('p.cb-empty', {}, mode === 'owner' ? `Say hello to ${lead}.` : `Nothing said yet.`)]),
+        ...it.chat.map((l) => h(`div.cb-line.${l.role}`, {}, h('b', {}, l.role === 'user' ? (mode === 'owner' ? 'You' : clip(c.ownerName, 24)) : l.role === 'assistant' ? lead : 'Note'), h('span', {}, l.text))),
       );
       if (atEnd) log.scrollTop = log.scrollHeight;
     }
     // The lead is who you're talking to, not one of its own helpers.
     const helpers = it.agents.filter((a) => a.role !== 'lead');
+    const watchers = mode === 'owner' ? c.watchers ?? [] : [];
     side.replaceChildren(
+      ...(watchers.length
+        ? [
+            h('h3', {}, `Watching · ${watchers.length}`),
+            h('ul.cb-watchers', {}, ...watchers.map((p) => h('li', {}, h('span', {}, `👀 ${clip(p.name, 24)}`),
+              w.sendOut ? h('button.btn.small.cb-out', { type: 'button', title: `Send ${clip(p.name, 24)} out`, 'aria-label': `Send ${clip(p.name, 24)} out`, onclick: () => w.sendOut!(cubbyId, p.accountId) }, '✕') : null))),
+          ]
+        : []),
       h('h3', {}, 'Plan'),
       it.plan.length ? h('ol', {}, ...it.plan.map((p) => h('li', {}, p))) : h('p.cb-empty', {}, 'No plan yet'),
       h('h3', {}, 'Needs you'),
       it.needsYou.length ? h('ul.cb-needs', {}, ...it.needsYou.map((p) => h('li', {}, p))) : h('p.cb-empty', {}, 'Nothing right now'),
       h('h3', {}, `Helpers · ${helpers.length}`),
       helpers.length
-        ? h('ul.cb-roster', {}, ...helpers.map((a) => h('li', {}, h('button.btn.small', { type: 'button', onclick: () => openAgentCard(w, cubbyId, a.id) }, helperName(a)), h('span', {}, STATUS_TEXT[a.status]))))
+        ? h('ul.cb-roster', {}, ...helpers.map((a) => h('li', {}, h('button.btn.small', { type: 'button', title: helperLine(a, asleep), onclick: () => openAgentCard(w, cubbyId, a.id) }, helperName(a)), h('span', {}, asleep ? '💤' : STATUS_TEXT[a.status]), a.role === 'direct' || !a.task ? null : h('small', {}, clip(a.task, 60)))))
         : h('p.cb-empty', {}, 'Nobody else working'),
     );
   };
@@ -97,7 +148,7 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string) {
     const c = w.cubby(cubbyId);
     const floorId = store.floor;
     const computerId = c?.interior?.computerId;
-    if (!body || !floorId || !computerId || !c?.mine || c.lamp === 'asleep' || signing ||
+    if (!body || !floorId || !computerId || chatMode(c) !== 'owner' || c.lamp === 'asleep' || signing ||
       !deviceKey || deviceKey.fingerprint !== c.interior?.ownerFingerprint || store.me.account?.name !== account) return;
     signing = true; paint();
     try {
@@ -123,11 +174,14 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string) {
   const off = w.onChange(paint);
   paint();
   const c = w.cubby(cubbyId);
-  openModal(el, { doing: '💬 talking to their lead', onClose: () => { closed = true; off(); } });
-  void ownerDeviceKey(account).then((key) => { deviceKey = key; if (!closed) paint(); })
+  const owner = chatMode(c) === 'owner';
+  const modal = openModal(el, { doing: owner ? '💬 talking to their lead' : '👀 watching a cubby', onClose: () => { closed = true; off(); } });
+  // Only the owner signs: a watcher's browser never makes or uses an owner key.
+  if (owner) void ownerDeviceKey(account).then((key) => { deviceKey = key; if (!closed) paint(); })
     .catch((error: Error) => { keyError = error.message; if (!closed) paint(); });
   log.scrollTop = log.scrollHeight;
-  if (c?.lamp !== 'asleep') setTimeout(() => text.focus(), 30);
+  if (owner && c?.lamp !== 'asleep') setTimeout(() => text.focus(), 30);
+  return modal;
 }
 
 /** A label and its value, as text; none for an empty value. */
@@ -140,7 +194,7 @@ export function openAgentCard(w: CubbyWindows, cubbyId: string, agentId: string)
   const title = h('h2');
   const body = h('div.body.cb-agent');
   const el = h('div.modal.cubby-agent', { role: 'dialog', 'aria-label': 'Helper' }, h('header', {}, title), body);
-  const find = (): CubbyAgent | undefined => w.cubby(cubbyId)?.interior?.agents.find((a) => a.id === agentId);
+  const find = (): CubbyAgent | undefined => (chatMode(w.cubby(cubbyId)) ? w.cubby(cubbyId)?.interior?.agents.find((a) => a.id === agentId) : undefined);
   const paint = () => {
     const a = find();
     const c = w.cubby(cubbyId);

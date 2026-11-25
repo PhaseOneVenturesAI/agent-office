@@ -1,4 +1,5 @@
 import './ui.css';
+import '../../shared/cubby/chat.css';
 import '../../ui/character.css';
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/examples/jsm/effects/OutlineEffect.js';
@@ -7,7 +8,7 @@ import { HAIR_COLOR_NAMES, HAIR_COLORS, HAIR_STYLES, SKIN_TONES, randomLook } fr
 import { AVATAR_COLORS } from '../../state/persist';
 import { h, openModal, type Modal } from '../../ui/dom';
 import { store } from '../../state';
-import { ownerDeviceKey, displayFingerprint, type OwnerDeviceKey } from './keys';
+import { ownerDeviceKey, displayFingerprint, type OwnerDeviceKey } from '../../shared/cubby/keys';
 import { Person } from '../../world/character';
 import { PROJECT_PLACEHOLDER, cleanLeadName, joinCommand } from './model';
 

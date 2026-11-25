@@ -142,7 +142,7 @@ export class DraftScene {
 
   /** The lead's name and look (the look from its cubby, when there is one). */
   setLead(name: string, look: Look | undefined, colorIndex: number) {
-    const key = `${name}|${look ? `${look.skin},${look.hair},${look.style}` : ''}`;
+    const key = `${name}|${look ? `${look.skin},${look.hair},${look.style}` : ''}|${colorIndex}`;
     if (key === this.leadKey) return;
     this.leadKey = key;
     if (look) this.lead.setLook(look);

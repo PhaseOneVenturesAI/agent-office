@@ -15,8 +15,10 @@ import type { Collider, Interactable } from '../../world/types';
 import { CUBBY_HALL, HALL_SLOTS, HALL_WAY_OUT, inCubbyHall } from '../../../shared/cubbyhall';
 import { STATUS_TEXT, agentCard, clip, type CubbyIt, type CubbyPlacement } from './model';
 import { CubbyRoom } from './room';
-import { openAgentCard, openLeadChat, type CubbyWindows } from './ui-chat';
+import { openAgentCard, openLeadChat, type CubbyWindows } from '../../shared/cubby/chat';
 import { openJoin, openSetup, type SetupDialog } from './ui-setup';
+import { knockAside, knockTitle, knockWaiting, watchingTitle } from './share-model';
+import { wireSharing } from './sharing';
 
 export type { CubbyPlacement } from './model';
 
@@ -70,6 +72,7 @@ export function installCubbies(ctx: Ctx, deps: CubbiesDeps = { aimed: () => null
     cubby: cubbyById,
     onChange: (fn) => store.on('cubbies', fn),
     sendChat: (id, message) => send({ t: 'cubbies.chat', id, ...message }),
+    sendOut: (id, accountId) => send({ t: 'cubbies.admit', id, accountId, allow: false }),
   };
 
   /** Whether the cubbies are there to see and use right now. */
@@ -100,6 +103,7 @@ export function installCubbies(ctx: Ctx, deps: CubbiesDeps = { aimed: () => null
   }
 
   function sync() {
+    share.beforeSync(store.cubbies.cubbies);
     const bySlot = new Map(store.cubbies.cubbies.map((c) => [c.slot, c]));
     for (const r of rooms.values()) {
       const info = bySlot.get(r.place.slot);
@@ -139,6 +143,7 @@ export function installCubbies(ctx: Ctx, deps: CubbiesDeps = { aimed: () => null
     }
   }
 
+  const share = wireSharing(ctx, { rooms: () => rooms, cubby: cubbyById, send, shown: () => shown });
   store.on('cubbies', rebuild);
   ctx.usables.add({ usable: () => (shown ? usables : []), pickable: () => group });
   ctx.ticks.add('others', (f) => {
@@ -200,10 +205,14 @@ export function installCubbies(ctx: Ctx, deps: CubbiesDeps = { aimed: () => null
 
   const at = (it: Interactable) => it as CubbyIt;
   const roomOf = (it: Interactable) => rooms.get(at(it).slot);
-  const mineOf = (it: Interactable) => {
+  /** Your own cubby's inside, or one you're watching. */
+  const seenOf = (it: Interactable) => {
     const c = at(it).cubbyId ? cubbyById(at(it).cubbyId!) : undefined;
-    return c?.mine && c.interior ? { c, it: c.interior } : null;
+    return c?.interior && (c.mine || c.watching) ? { c, it: c.interior } : null;
   };
+  /** In your own cubby, the hint adds Q. */
+  const sendKey = () => (share.inOwn() ? [key('Q', 'Send a task to the floor')] : []);
+  const qk = () => (share.inOwn() ? '-q' : '');
   const leadName = (x: { it: { leadName: string } } | null) => clip(x?.it.leadName ?? '', 20) || 'your lead';
 
   ctx.interactions.define('cubbydoor', {
@@ -216,14 +225,21 @@ export function installCubbies(ctx: Ctx, deps: CubbiesDeps = { aimed: () => null
       }
       if (info.mine) {
         const where = info.interior ? `Runs on your ${clip(info.interior.computerName, 24)}` : 'waiting for your computer to join';
-        return { k: `cubby-mine-${where}`, parts: [hintTitle('🚪 Your cubby'), aside(where), ...(info.lamp === 'asleep' ? [key('E', 'Set up')] : [])] };
+        return { k: `cubby-mine-${where}${qk()}`, parts: [hintTitle('🚪 Your cubby'), aside(where), ...(info.lamp === 'asleep' ? [key('E', 'Set up')] : []), ...sendKey()] };
       }
-      const what = info.lamp === 'asleep' ? '💤 asleep' : `${Math.max(0, info.working | 0)} working · private`;
-      return { k: `cubby-other-${info.ownerName}-${what}`, parts: [hintTitle(`🔒 ${clip(info.ownerName, 22)}`), aside(what)] };
+      if (info.watching) return { k: `cubby-watch-${info.ownerName}`, parts: [hintTitle(watchingTitle(info.ownerName)), key('E', 'Leave')] };
+      const what = knockAside(info);
+      const waiting = share.knocked(info.id);
+      return {
+        k: `cubby-other-${info.ownerName}-${what}-${waiting}`,
+        parts: [hintTitle(knockTitle(info)), aside(what), waiting ? aside(knockWaiting(info.ownerName)) : key('E', 'Knock')],
+      };
     },
     use: (it, k) => {
       const info = roomOf(it)?.info;
-      if (k !== 'E' || (info && (!info.mine || info.lamp !== 'asleep')) || !store.cubbies.setupAllowed) return;
+      if (k !== 'E') return;
+      if (info && !info.mine) return info.watching ? share.leave(info) : share.knock(info);
+      if ((info && info.lamp !== 'asleep') || !store.cubbies.setupAllowed) return;
       setUp(at(it).slot);
     },
   });
@@ -231,41 +247,43 @@ export function installCubbies(ctx: Ctx, deps: CubbiesDeps = { aimed: () => null
   ctx.interactions.define('cubbylead', {
     reach: 3.5,
     hint: (it) => {
-      const m = mineOf(it);
+      const m = seenOf(it);
       const lead = leadName(m);
+      if (m && !m.c.mine) return { k: `cubby-lead-watch-${lead}-${m.c.ownerName}`, parts: [hintTitle(`💬 ${lead}`), aside(watchingTitle(m.c.ownerName)), key('E', 'Listen in')] };
       const where = m?.c.lamp === 'asleep' ? `💤 ${clip(m.it.computerName, 24)} is asleep` : `Runs on your ${clip(m?.it.computerName ?? 'computer', 24)}`;
-      return { k: `cubby-lead-${lead}-${where}`, parts: [hintTitle(`💬 ${lead}`), aside(where), key('E', `Talk to ${lead}`)] };
+      return { k: `cubby-lead-${lead}-${where}${qk()}`, parts: [hintTitle(`💬 ${lead}`), aside(where), key('E', `Talk to ${lead}`), ...sendKey()] };
     },
     use: (it, k) => {
-      if (k === 'E' && mineOf(it)) openLeadChat(windows, at(it).cubbyId!);
+      if (k === 'E' && seenOf(it)) openLeadChat(windows, at(it).cubbyId!);
     },
   });
 
   ctx.interactions.define('cubbycomputer', {
     reach: 3,
     hint: (it) => {
-      const m = mineOf(it);
+      const m = seenOf(it);
       const state = m?.c.lamp === 'asleep' ? '💤 asleep' : m?.c.lamp === 'working' ? 'working' : 'online';
-      return { k: `cubby-pc-${m?.it.computerName}-${state}`, parts: [hintTitle(`💻 ${clip(m?.it.computerName ?? 'Computer', 24)}`), aside(state), key('E', `Talk to ${leadName(m)}`)] };
+      const act = m && !m.c.mine ? key('E', 'Listen in') : key('E', `Talk to ${leadName(m)}`);
+      return { k: `cubby-pc-${m?.it.computerName}-${state}-${!!m?.c.mine}${qk()}`, parts: [hintTitle(`💻 ${clip(m?.it.computerName ?? 'Computer', 24)}`), aside(state), act, ...sendKey()] };
     },
     use: (it, k) => {
-      if (k === 'E' && mineOf(it)) openLeadChat(windows, at(it).cubbyId!);
+      if (k === 'E' && seenOf(it)) openLeadChat(windows, at(it).cubbyId!);
     },
   });
 
   ctx.interactions.define('cubbyagent', {
     reach: 3.5,
     hint: (it) => {
-      const m = mineOf(it);
+      const m = seenOf(it);
       const a = m?.it.agents.find((x) => x.id === at(it).agentId);
       if (!a || !m) return { k: 'cubby-agent-gone', parts: [hintTitle('Helper'), aside('finished')] };
       const state = m.c.lamp === 'asleep' ? '💤 asleep' : a.role === 'direct' && a.status === 'working' ? 'busy' : STATUS_TEXT[a.status];
       const name = agentCard(a).name;
-      return { k: `cubby-agent-${a.id}-${name}-${state}`, parts: [hintTitle(name), aside(state), key('E', a.role === 'direct' ? 'Tool and branch' : 'Task and progress')] };
+      return { k: `cubby-agent-${a.id}-${name}-${state}${qk()}`, parts: [hintTitle(name), aside(state), key('E', a.role === 'direct' ? 'Tool and branch' : 'Task and progress'), ...sendKey()] };
     },
     use: (it, k) => {
       const id = at(it).agentId;
-      if (k === 'E' && id && mineOf(it)) openAgentCard(windows, at(it).cubbyId!, id);
+      if (k === 'E' && id && seenOf(it)) openAgentCard(windows, at(it).cubbyId!, id);
     },
   });
 

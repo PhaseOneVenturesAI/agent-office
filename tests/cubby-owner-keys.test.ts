@@ -8,7 +8,7 @@ import { CubbyConnector } from '../src/server/cubbies/local/connector.js';
 import { configure, persistSelection, type LocalConfig } from '../src/server/cubbies/local/config.js';
 import { cubbyKey, ownerFingerprint, ownerPublicKey, relaySignature, verifyOwner } from '../src/server/cubbies/wire.js';
 import { ownerChatEncoding, type CubbyNodeFrame } from '../src/shared/protocol/cubbies.js';
-import { signOwnerChat } from '../src/client/features/cubbies/keys.js';
+import { signOwnerChat } from '../src/client/shared/cubby/keys.js';
 import { owner, testOwnerKey } from './support/cubby-keys.js';
 
 const now = 1_800_000_000_000;

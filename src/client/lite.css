@@ -48,6 +48,8 @@ body.lite { min-height: 100dvh; background: var(--paper); -webkit-tap-highlight-
 .lite-nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; padding: 10px 12px; padding-bottom: max(10px, env(safe-area-inset-bottom)); background: var(--paper-2); border-top: 3px solid var(--ink); }
 .lite-nav .btn { min-height: 48px; padding: 6px; justify-content: center; flex-wrap: wrap; gap: 4px; white-space: normal; text-align: center; line-height: 1.15; font-size: 14px; }
 .lite-nav .n:empty { display: none; }
+#btn-cubby { background: #c3f0ca; }
+#btn-cubby .n { background: #c9184a; }
 .lite-nav .n { min-width: 20px; padding: 0 5px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 12px; line-height: 20px; font-variant-numeric: tabular-nums; }
 .lite-nav .btn.primary .n { background: #fff; color: var(--ink); }
 /* A wide window: the bars line up with the list. */
@@ -68,13 +70,15 @@ body.lite { min-height: 100dvh; background: var(--paper); -webkit-tap-highlight-
   .lite-bar { flex-wrap: wrap; }
   .lite-floor { flex-basis: 100%; }
   .backdrop { padding: 8px; }
-  .backdrop:has(> .modal.term, > .modal.board, > .modal.gh-window, > .modal.desk-changes, > .modal.meeting-window, > .modal[aria-label="Task queue"]) { padding: 0; }
+  .backdrop:has(> .modal.term, > .modal.board, > .modal.gh-window, > .modal.desk-changes, > .modal.meeting-window, > .modal.cubby-chat, > .modal[aria-label="Task queue"]) { padding: 0; }
   /* body.lite outranks the windows' own sizes and padding, whatever order the sheets load in. */
   body.lite .modal.term, body.lite .modal.board, body.lite .modal.gh-window, body.lite .modal.desk-changes, body.lite .modal.meeting-window,
-  body.lite .modal[aria-label="Task queue"] { width: 100%; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; box-shadow: none; }
+  body.lite .modal.cubby-chat, body.lite .modal[aria-label="Task queue"] { width: 100%; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; box-shadow: none; }
   .modal { max-height: calc(100dvh - 16px); }
   body.lite .modal.term .term-host { padding: 6px 2px 2px 6px; }
   body.lite .modal.board .body { padding: 10px; overflow-x: auto; }
   .modal.board .column { min-width: 78vw; }
   .modal.board header .board-status { display: none; }
+  /* My cubby: the chat on top, what needs you and the helpers below it, each half the screen at most. */
+  body.lite .modal.cubby-chat .cb-side { max-height: 42dvh; }
 }
