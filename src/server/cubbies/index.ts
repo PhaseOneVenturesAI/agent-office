@@ -34,12 +34,18 @@ export class Cubbies {
   setup(floorId: string, owner: string, slot: number, name: string, look: Look) {
     if (!this.enabled || !this.floorExists(floorId) || !this.accountName(owner)) throw Error('Cubbies require your own account on an open project floor');
     if (!Number.isInteger(slot) || slot < 0 || slot >= 6) throw Error('Choose one of the six cubbies');
-    if ([...this.records.rows.values()].some(r => r.floorId === floorId && r.slot === slot)) throw Error('That cubby is already set up');
+    const previous = [...this.records.rows.values()].find(r => r.floorId === floorId && r.slot === slot);
+    if (previous && previous.owner !== owner) throw Error('That cubby is already set up');
+    if (previous && this.nodes.isOnline(previous.nodeId)) throw Error('Stop your local connection before setting this cubby up again');
     const leadName = short(name, 32).trim(); if (!leadName) throw Error('Give your lead a name');
     const invite = this.nodes.invite('Cubby computer', 'private', owner);
-    const r: CubbyRecord = { id: id(), floorId, owner, nodeId: invite.id, slot, leadName, look: sanitizeLook(look, lookFromSeed(owner)) };
+    const r: CubbyRecord = { ...previous, id: previous?.id ?? id(), floorId, owner, nodeId: invite.id, slot, leadName, look: sanitizeLook(look, lookFromSeed(owner)) };
     this.records.rows.set(r.id, r);
-    try { this.records.save(); } catch (e) { this.records.rows.delete(r.id); this.nodes.revoke(invite.id); throw e; }
+    try { this.records.save(); } catch (e) {
+      if (previous) this.records.rows.set(previous.id, previous); else this.records.rows.delete(r.id);
+      this.nodes.revoke(invite.id); throw e;
+    }
+    if (previous) { this.live.delete(previous.id); this.nodes.revoke(previous.nodeId); }
     this.changed(); return { id: r.id, floorId, token: invite.token };
   }
   chat(floorId: string, owner: string, cubbyId: string, text: unknown) {

@@ -2,7 +2,7 @@
 
 ## Satellite presence
 
-`agent-office join <office-url>` reports a registered machine’s connectivity and installed agent CLIs. It does not inspect local workspaces, sessions or transcripts, or dispatch local agents. Installed CLIs do not prove sign-in or subscription readiness.
+`agent-office join <office-url>` reports a registered machine’s connectivity and installed agent CLIs. Without `--cubbies`, it does not inspect local workspaces, sessions or transcripts, or dispatch local agents. Installed CLIs do not prove sign-in or subscription readiness.
 
 ### Existing Cloudflare Access login
 
@@ -18,6 +18,29 @@ The foreground client reads the application-specific cache through `cloudflared 
 An Office restart, connection failure or temporary handshake failure retries with the same in-memory credentials after 1, 2, 4, 8, 16, then at most 30 seconds between attempts. A successful connection resets the delay. Retryable HTTP responses are 500, 502, 503 and 504, plus Cloudflare's origin failure/unavailable/timeout responses 520–524. These responses do not establish that authentication expired. HTTP 401/403 and all redirects stop with an authorization/redirect diagnostic; other HTTP failures stop for configuration review. Redirect destinations and response bodies are never logged or followed. Ctrl-C stops an open connection, pending handshake or reconnect wait. Credential expiry still stops retries and requires normal login; the client never reads a replacement token automatically.
 
 This is an interactive user CLI connection, not an unattended service authentication solution. Cloudflare validates the application's token at the edge; the client's expiry parsing is only a stop timer. See [Cloudflare's CLI authentication documentation](https://developers.cloudflare.com/cloudflare-one/tutorials/cli/). The bridge does not bypass or alter any Access policies.
+
+## Private cubbies (preview)
+
+This opt-in module is disabled unless the Office server starts with `AGENT_OFFICE_CUBBIES=1`. It adds a separate owner-chat and presence path to Satellites; ordinary `join` remains presence-only. Each cubby belongs to one Office account, one computer and one floor. Coworkers, including other admins, receive only its owner name, status lamp and working count. They do not receive the lead name, computer name, roster, plan, decisions or chat. Watchers, draft floors, kickoff, task transfer and lite-view cubby controls are not part of step one.
+
+The owner uses **Set up** at a free cubby, names and styles its lead, and runs the displayed connection command on their computer. The local project path stays on that computer. The computer opens the outbound connection; Office does not open a port or reach into it. Existing Cloudflare Access login applies unchanged.
+
+```sh
+agent-office join https://office.example --token '<private invitation>' \
+  --cubbies --floor '<floor id>' --project '/local/project'
+```
+
+The local registry in `~/Documents/AgentHarness/projects.json`, when present, selects the existing project lead. Archived entries and conflicting session selections are rejected. On another computer, select the existing native session locally with `--lead-provider claude --lead-session '<UUID>'`; use `--lead-profile personal` or `phase-one` for an existing Claude profile. A new lead requires the local `--new-lead` option and no conflicting registered lead. Office cannot select executable names, profiles, paths, models or permissions remotely. Provider API routing from the parent shell is stripped; native subscription configuration remains local.
+
+**Current integration limits:** the guarded Claude path resumes the exact existing session only when it is not open elsewhere, and reports native approval refusals for review locally. Codex desktop chat is currently blocked: the installed protocol can steer an active turn without an atomic idle-only guard. This preview must not be described as complete support for the registered Codex Office lead. Hall placement, the integrated UI, and provider acceptance remain under review before this step is ready to merge.
+
+Only signed owner text enters the connector. Messages are bound to the authenticated Satellite, owner, floor and connection, expire after 60 seconds, and are deduplicated across reconnects. No command, file, terminal-input or approval message is supported. The Office server retains at most 40 chat lines in memory and writes no conversation files; its cubby registry stores identity, placement and appearance only. Native CLI history remains on the owner's computer under its normal rules.
+
+Presence is limited to the selected Git project and actual worktrees. Direct sessions expose tool, branch and an explicitly unknown busy state when it cannot be verified, never their prompts or conversations. Factory and Paradev metadata is bounded and source failures are visible. Explicit local plan/Needs-you text may be published through `.agent-office/cubby.json`; arbitrary project documents are not collected. Installed CLIs do not establish that a subscription is ready.
+
+Ctrl-C stops the connector and closes the chat path. It cancels only a native turn the connector itself owns, never another open lead. A clean disconnect greys the lamp immediately; an abrupt network loss or sleep is detected by the normal Satellite heartbeat timeout. Reconnection does not replay old messages or move work to the Office server. Turning the server flag off disables the module without deleting account credentials or native histories.
+
+The relay is a narrow extension of existing Office protocols. Alternatives reviewed were [Happy](https://github.com/slopus/happy), a broader mobile/remote agent app, and the official [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript). Neither was installed; the implementation reuses the existing WebSocket transport and locally selected native CLI.
 
 ## Existing CI runs, one watcher
 

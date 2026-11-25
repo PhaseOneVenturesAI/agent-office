@@ -109,3 +109,16 @@ test('invalid or stale snapshots and direct-session details cannot leak into acc
   ws.frame({...roster(),agents:Array(129).fill(roster().agents[0])});
   assert.equal(f.cubbies.state('floor','alice').cubbies[0].interior!.agents.length,1);
 });
+
+
+test('owner can recover a lost setup token offline without freeing the room or changing its computer', t => {
+  const f = fixture(t), first = f.setup(), ws = f.connect(first.token);
+  assert.throws(() => f.setup(), /Stop your local connection/);
+  ws.close();
+  const next = f.setup(); assert.equal(next.id, first.id); assert.notEqual(next.token, first.token);
+  assert.equal(f.cubbies.records.rows.size, 1);
+  const old = f.connect(first.token); assert.equal(old.readyState, 3);
+  const wrongComputer = f.connect(next.token, 'floor', 'other-computer'); assert.deepEqual(wrongComputer.sent, []);
+  const correct = f.connect(next.token); assert.equal(correct.sent[0].t, 'cubby.ready');
+  assert.equal(f.cubbies.state('floor', 'alice').cubbies[0].lamp, 'online');
+});
