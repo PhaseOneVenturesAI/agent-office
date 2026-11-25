@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { ownerPublicKey } from '../wire.js';
-import { pinOf, readPins, writePins } from './devices.js';
+import { pinOf, readPins, updatePins } from './devices.js';
 import { canonical, jsonFile, run, uuid, type Run } from './io.js';
 
 export interface LocalOptions {
@@ -116,8 +116,9 @@ function checkOwnerPin(state: string, floor: string, ownerKey: string, replace =
  */
 function persistOwnerPin(config: LocalConfig): void {
   ownerPublicKey(config.ownerKey);
-  checkOwnerPin(config.state, config.floor, config.ownerKey, config.replaceOwnerKey);
-  const pins = readPins(config.state, config.floor);
-  if (pins && (!config.replaceOwnerKey || pins.some((p) => p.key === config.ownerKey))) return;
-  writePins(config.state, config.floor, [pinOf(config.ownerKey, 'First device', Date.now())]);
+  updatePins(config.state, config.floor, pins => {
+    if (pins?.some(p => p.key === config.ownerKey)) return pins;
+    if (pins && !config.replaceOwnerKey) throw new Error('Different --owner-key: use --replace-owner-key locally only to authorize this device');
+    return [pinOf(config.ownerKey, 'First device', Date.now())];
+  });
 }

@@ -17,6 +17,7 @@ export class Cubbies {
   readonly records: CubbyRecords;
   private live = new Map<string, Live>();
   private sharing: CubbySharing;
+  private deviceRequests = new Map<string, number[]>();
   constructor(dir: string, readonly enabled: boolean, private nodes: Nodes,
     private accountName: (id: string) => string | undefined, private floorExists: (id: string) => boolean,
     private changed: () => void, private now = Date.now, private draftOwner: (floor: string) => string | undefined = () => undefined) {
@@ -124,7 +125,16 @@ export class Cubbies {
   addDevice(floorId: string, owner: string, cubbyId: string, publicKey: unknown, label: unknown) {
     const { r, live } = this.ownerLink(floorId, owner, cubbyId);
     if (typeof publicKey !== 'string' || !/^[A-Za-z0-9_-]{100,160}$/.test(publicKey)) throw Error('This device’s key is not valid');
-    const frame: CubbyRelayFrame = { t: 'cubby.device-request', ...live.binding, requestId: id(), at: this.now(), publicKey, label: short(label, 40) || 'Device', signature: '' };
+    const now = this.now();
+    for (const [account, times] of this.deviceRequests) {
+      const recent = times.filter(at => now - at < 60_000);
+      if (recent.length && this.accountName(account)) this.deviceRequests.set(account, recent);
+      else this.deviceRequests.delete(account);
+    }
+    const recent = this.deviceRequests.get(owner) ?? [];
+    if (recent.length >= 4) throw Error('You can request at most 4 devices per minute. Wait a minute and try again.');
+    this.deviceRequests.set(owner, [...recent, now]);
+    const frame: CubbyRelayFrame = { t: 'cubby.device-request', ...live.binding, requestId: id(), at: now, publicKey, label: short(label, 40) || 'Device', signature: '' };
     if (!this.send(r, frame)) throw Error('Your computer disconnected; try again when it’s back');
   }
   /** A trusted device approves, denies or removes a device. Its signature is checked on the computer, not here. */
@@ -194,7 +204,9 @@ export class Cubbies {
       r.computerId = f.computerId; r.computerName = short(f.computerName, 60) || 'Your computer'; this.records.save();
       const binding = { cubbyId: r.id, floorId: r.floorId, ownerId: owner, connectionId: id(), computerId: r.computerId };
       const interior = this.live.get(r.id)?.interior ?? this.empty(r); interior.computerName = r.computerName; interior.computerId = r.computerId; interior.ownerDevices = interior.deviceRequests = undefined; interior.error = undefined;
-      this.live.set(r.id, { admitted: true, binding, interior, draft: this.live.get(r.id)?.draft }); this.send(r, { t: 'cubby.ready', ...binding, signature: '' });
+      const live = { admitted: false, binding, interior, draft: this.live.get(r.id)?.draft };
+      this.live.set(r.id, live);
+      live.admitted = this.send(r, { t: 'cubby.ready', ...binding, signature: '' });
     } else {
       const live = this.live.get(r.id); if (!live?.admitted) return true;
       if (f.t === 'cubby.devices') {

@@ -6,11 +6,12 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { Nodes } from '../src/server/nodes.js';
 import { Cubbies } from '../src/server/cubbies/index.js';
+import { cubbiesHandlers } from '../src/server/ws/handlers/cubbies.js';
 import { cubbyKey, verifyRelay } from '../src/server/cubbies/wire.js';
 const message = (text: string) => ({ text, requestId: randomUUID(), at: Date.now(), ownerSig: 'A'.repeat(86) });
 function socket() {
   const events = new Map<string, Function[]>();
-  return { readyState: 1, sent: [] as any[], close() { this.readyState = 3; this.emit('close'); },
+  return { readyState: 1, bufferedAmount: 0, sent: [] as any[], close() { this.readyState = 3; this.emit('close'); },
     on(e: string, f: Function) { events.set(e, [...events.get(e) ?? [], f]); },
     emit(e: string, ...args: any[]) { for (const f of events.get(e) ?? []) f(...args); },
     send(raw: string) { this.sent.push(JSON.parse(raw)); },
@@ -32,6 +33,68 @@ function fixture(t: { after(fn: () => void): void }, enabled = true, now = Date.
   return { cubbies, nodes, dir, setup, connect };
 }
 const roster = () => ({ t: 'cubby.snapshot', floorId: 'floor', observedAt: Date.now(), agents: [{id:'builder',tool:'Claude',role:'builder',task:'Private marketing draft',branch:'private-branch',status:'working',progress:'Private progress'}], plan:['Private plan'],needsYou:['Private decision'] });
+
+test('device requests are limited to four per rolling minute per account, with a sender notice', t => {
+  let now = Date.now();
+  const f = fixture(t, true, () => now), first = f.setup(), a = f.connect(first.token);
+  const second = f.setup('alice', 1, 'other'), b = f.connect(second.token, 'other');
+  const bob = f.setup('bob', 2), c = f.connect(bob.token, 'floor', 'computer-bob');
+  const notices: { client: unknown; text: string }[] = [];
+  const ctx = { cubbies: f.cubbies, floorOf: (client: any) => ({ id: client.floor }),
+    warn: (client: unknown, text: string) => notices.push({ client, text }) } as any;
+  const send = (accountId: string, floor: string, id: string) => {
+    const client = { accountId, floor } as any; // A fresh browser connection cannot reset the account limit.
+    cubbiesHandlers['cubbies.addDevice'](ctx, client, { t: 'cubbies.addDevice', id, publicKey: 'A'.repeat(124), label: 'Phone' });
+    return client;
+  };
+  for (let i = 0; i < 4; i++) { send('alice', 'floor', first.id); now += 100; }
+  const refused = send('alice', 'other', second.id);
+  assert.equal(a.sent.filter(m => m.t === 'cubby.device-request').length, 4);
+  assert.equal(b.sent.filter(m => m.t === 'cubby.device-request').length, 0);
+  assert.equal(notices.length, 1);
+  assert.equal(notices[0].client, refused);
+  assert.match(notices[0].text, /4.*minute/i);
+  send('bob', 'floor', bob.id);
+  assert.equal(c.sent.filter(m => m.t === 'cubby.device-request').length, 1);
+  now += 59_600; // Only the first request has aged out.
+  send('alice', 'other', second.id);
+  send('alice', 'other', second.id);
+  assert.equal(b.sent.filter(m => m.t === 'cubby.device-request').length, 1);
+  assert.equal(notices.length, 2);
+});
+
+test('a congested satellite refuses signed frames and chat can retry after it drains', t => {
+  const f = fixture(t), invite = f.setup(), ws = f.connect(invite.token);
+  const node = f.cubbies.records.rows.get(invite.id)!.nodeId;
+  ws.bufferedAmount = 4 * 1024 * 1024 + 1;
+  let signed = false;
+  assert.equal(f.nodes.sendSigned(node, () => { signed = true; return {}; }), false);
+  assert.equal(signed, false, 'backpressure is checked before signing/serializing');
+  const notices: string[] = [];
+  const ctx = { cubbies: f.cubbies, floorOf: () => ({ id: 'floor' }), warn: (_: unknown, text: string) => notices.push(text) } as any;
+  const client = { accountId: 'alice' } as any;
+  cubbiesHandlers['cubbies.chat'](ctx, client, { t: 'cubbies.chat', id: invite.id, ...message('blocked') });
+  assert.equal(notices.length, 1);
+  assert.equal(ws.sent.length, 1, 'nothing is queued');
+  ws.bufferedAmount = 0;
+  f.cubbies.chat('floor', 'alice', invite.id, message('explicit retry'));
+  assert.equal(ws.sent.at(-1).text, 'explicit retry');
+});
+
+test('a dropped ready frame does not admit the cubby; a later hello can retry', t => {
+  const f = fixture(t), invite = f.setup(), ws = socket();
+  f.nodes.attach(ws as any, invite.token);
+  ws.frame({ t: 'hello', host: 'computer', providers: [] });
+  const hello = { t: 'cubby.hello', floorId: 'floor', computerId: 'computer-alice' };
+  ws.bufferedAmount = 4 * 1024 * 1024 + 1;
+  assert.doesNotThrow(() => ws.frame(hello));
+  assert.equal(ws.sent.length, 0);
+  assert.equal(f.cubbies.state('floor', 'alice').cubbies[0].lamp, 'asleep');
+  ws.bufferedAmount = 0;
+  ws.frame(hello);
+  assert.equal(ws.sent[0].t, 'cubby.ready');
+  assert.equal(f.cubbies.state('floor', 'alice').cubbies[0].lamp, 'online');
+});
 
 test('cubbies are inert unless explicitly enabled, with no retired harness state', t => {
   const f = fixture(t, false);

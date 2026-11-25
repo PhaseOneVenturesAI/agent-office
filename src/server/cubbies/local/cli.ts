@@ -57,7 +57,10 @@ export async function cubbyCommand(argv: string[]): Promise<number> {
   }
   let state: string;
   try { state = await stateFor(opts.project); } catch (e) { console.error(`agent-office cubby: ${(e as Error).message}`); return 2; }
-  if (verb === 'devices') return devicesCommand(state, words, opts.floor);
+  if (verb === 'devices') {
+    try { return devicesCommand(state, words, opts.floor); }
+    catch (e) { console.error(`agent-office cubby devices: ${(e as Error).message}`); return 1; }
+  }
   if (verb === 'wait') {
     const minutes = Math.min(240, Math.max(1, Number(opts.minutes ?? 30) || 30));
     const stop = new AbortController();
