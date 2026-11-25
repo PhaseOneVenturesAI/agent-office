@@ -3,6 +3,7 @@ import { lstatSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { DRAFT_LIMITS, type DraftBoards, type DraftFeedback } from '../../../shared/protocol/drafts.js';
 import { cleanDraftBoards } from '../../drafts/boards.js';
+import { boardFeedbackBytes, feedbackBytes, FEEDBACK_FULL } from '../../drafts/feedback-budget.js';
 import { jsonFile } from './io.js';
 
 const fileLimit = 4 * 1024 * 1024;
@@ -32,6 +33,7 @@ export function appendFeedback(project: string, boards: DraftBoards, cardId: str
   if (!card) throw Error('Unknown board card');
   // Retain only current cards, and clean all rows before writing bounded private JSON.
   const merged = mergeFeedback(project, boards);
+  if (boardFeedbackBytes(merged) + feedbackBytes(note) > DRAFT_LIMITS.feedbackBytes) throw Error(FEEDBACK_FULL);
   const rows = Object.create(null) as Record<string, DraftFeedback[]>;
   for (const c of [...merged.ideas, ...merged.screens]) rows[c.id] = c.feedback;
   if (rows[cardId].some(f => f.id === note.id) || Object.values(saved).some(v => Array.isArray(v) && v.some(f => f?.id === note.id))) throw Error('Feedback already saved');

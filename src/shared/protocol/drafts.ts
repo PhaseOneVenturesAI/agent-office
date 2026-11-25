@@ -137,6 +137,8 @@ export function ownerFeedbackEncoding(f: DraftFeedbackPayload): string {
 /** Limits on what a board carries (enforced on the computer and again at the office). */
 export const DRAFT_LIMITS = {
   ideas: 16, screens: 24, feedbackPerCard: 20, feedbackText: 1000, note: 400,
+  /** Aggregate escaped UTF-8 text bytes plus 192 bytes per note (ID, timestamp and JSON). */
+  feedbackBytes: 16 * 1024, feedbackNoteOverhead: 192,
   /** Images on one draft, and the largest one after cleaning. */
   images: 16, imageBytes: 2 * 1024 * 1024, imagePixels: 16_000_000,
   /** Base64 characters per image chunk frame (the node socket's frames stay well under 64 KB). */

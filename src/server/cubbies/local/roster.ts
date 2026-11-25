@@ -103,6 +103,5 @@ export async function roster(config: LocalConfig, deps: RosterDeps = {}): Promis
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') errors.push('Draft board record unavailable'); }
   const snapshot: Snapshot = { t: 'cubby.snapshot', floorId: config.floor, agents, plan, needsYou, ...(draft ? { draft } : {}), observedAt: Date.now(),
     ...(errors.length ? { error: errors.join('; ') } : {}) };
-  while (Buffer.byteLength(JSON.stringify(snapshot)) > 64 * 1024 && agents.length) agents.pop();
   return snapshot;
 }

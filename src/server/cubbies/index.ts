@@ -1,4 +1,6 @@
 import { DraftImages } from './design-images.js';
+import { boardFeedbackBytes, FEEDBACK_FULL } from '../drafts/feedback-budget.js';
+import { BOARD_TOO_BIG } from './publication.js';
 import { DRAFT_LIMITS, EMPTY_BOARDS, type DraftFeedbackMessage, type DraftBoards } from '../../shared/protocol/drafts.js';
 import { randomBytes } from 'node:crypto';
 import type { Look } from '../../shared/avatar.js';
@@ -113,6 +115,11 @@ export class Cubbies {
       typeof text !== 'string' || !text.trim() || text.length > DRAFT_LIMITS.feedbackText ||
       typeof requestId !== 'string' || !/^[\w-]{1,128}$/.test(requestId) || !Number.isSafeInteger(at) ||
       typeof ownerSig !== 'string' || !/^[A-Za-z0-9_-]{86}$/.test(ownerSig)) throw Error('Sign feedback for a current board card on your device');
+    if (live.draft && boardFeedbackBytes(live.draft) >= DRAFT_LIMITS.feedbackBytes) {
+      this.line(live, { id: id(), role: 'notice', text: FEEDBACK_FULL, at: this.now() });
+      this.changed();
+      throw Error(FEEDBACK_FULL);
+    }
     const pending = live.feedback ??= new Map();
     for (const [id, time] of pending) if (this.now() - time > 12 * 60_000) pending.delete(id);
     if (pending.has(requestId) || pending.size >= 40) throw Error('Feedback already sent or too many notes awaiting replies');
@@ -249,7 +256,7 @@ export class Cubbies {
         const next = snapshot(f, this.now());
         if (!next || next.observedAt < (live.interior.observedAt ?? 0)) return true;
         if (this.draftOwner(r.floorId) === owner) {
-          live.draft = next.draft ?? EMPTY_BOARDS;
+          live.draft = next.draft ?? (next.error === BOARD_TOO_BIG ? live.draft : undefined) ?? EMPTY_BOARDS;
           let images = this.images.get(r.floorId);
           if (!images) this.images.set(r.floorId, images = new DraftImages());
           images.boards(live.draft);

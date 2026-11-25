@@ -1,6 +1,8 @@
 import { DRAFT_LIMITS } from '../../../shared/protocol/drafts.js';
 import { localDesign, sendDesignImages } from './design.js';
 import { appendFeedback } from './feedback.js';
+import { publication } from '../publication.js';
+import { FEEDBACK_FULL } from '../../drafts/feedback-budget.js';
 import os from 'node:os';
 import type { CubbyBinding, CubbyNodeFrame, CubbyRelayFrame } from '../../../shared/protocol/cubbies.js';
 import { cubbyKey, verifyOwner, verifyOwnerDevice, verifyOwnerFeedback, verifyRelay } from '../wire.js';
@@ -130,7 +132,10 @@ export class CubbyConnector {
       if (!card) throw Error('Unknown card');
       appendFeedback(this.config.project, boards, frame.cardId, { id: frame.requestId, text: frame.text, at: frame.at });
       title = card.title;
-    } catch { this.reply(frame.requestId, 'Could not save feedback on that card; nothing changed.', true); return; }
+    } catch (error) {
+      this.reply(frame.requestId, error instanceof Error && error.message === FEEDBACK_FULL
+        ? FEEDBACK_FULL : 'Could not save feedback on that card; nothing changed.', true); return;
+    }
     this.seen.set(frame.requestId, frame.at);
     const busy = !!this.abort || this.lead.busy;
     this.reply(frame.requestId, busy ? 'Feedback saved. Your lead is busy; it can read the note on the board.' : 'Feedback saved and sent to your lead.', true);
@@ -191,12 +196,13 @@ export class CubbyConnector {
         if (wake) frame.wake = wake;
       }
       if (!this.deps.snapshot) saveSeen(this.config.state, { at: this.now(), head, agents: frame.agents.map(({ id, tool, role, task, status }) => ({ id, tool, role, task, status })) });
-      if (generation === this.generation && this.binding && Buffer.byteLength(JSON.stringify(frame)) <= 64 * 1024) {
-        if (this.send?.(frame) === false) return;
-        if (!frame.draft) this.sentImages.clear();
-        if (frame.draft) {
+      if (generation === this.generation && this.binding) {
+        const outgoing = publication(frame);
+        if (this.send?.(outgoing) === false) return;
+        if (!outgoing.draft) this.sentImages.clear();
+        if (outgoing.draft) {
           const { images } = localDesign(this.config.project);
-          const referenced = new Set([...frame.draft.ideas, ...frame.draft.screens].flatMap(c => c.image ? [c.image.hash] : []));
+          const referenced = new Set([...outgoing.draft.ideas, ...outgoing.draft.screens].flatMap(c => c.image ? [c.image.hash] : []));
           await sendDesignImages(this.config.floor, [...images.values()].filter(i => referenced.has(i.meta.hash)), this.sentImages,
             f => this.send?.(f), () => generation === this.generation && !!this.binding);
         }
