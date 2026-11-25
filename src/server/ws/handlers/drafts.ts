@@ -26,4 +26,5 @@ export const draftsHandlers = {
       draftsChanged(ctx);
     } catch (error) { ctx.warn(c, (error as Error).message); }
   },
+  'drafts.kickoff'(ctx, c) { ctx.warn(c, 'Kickoff is not switched on in this office yet'); },
 } satisfies HandlerMap<DraftsClientMsg>;

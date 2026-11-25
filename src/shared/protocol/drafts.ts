@@ -41,6 +41,20 @@ export interface DraftView {
   designers: number;
 }
 
+/**
+ * What a kicked-off project keeps for everyone (cubbies step 3): the Design book on the bookshelf and
+ * the brand poster by the elevator. Text only, from the draft's last boards.
+ */
+export interface Launched {
+  name: string;
+  at: number;
+  /** owner/name when the repository is on GitHub; absent for a local test remote. */
+  repo?: string;
+  brand: DraftBrand;
+  /** The approved screens' titles, for the Design book. */
+  screens: string[];
+}
+
 /** Sent with each floor you arrive on: whether it's one of your drafts, and whether you may start projects. */
 export interface DraftsState {
   enabled: boolean;
@@ -48,16 +62,29 @@ export interface DraftsState {
   canStart: boolean;
   /** The floor you're on, when it's a draft of yours. */
   here?: DraftView;
+  /** Whether this office can kick a draft off (a kickoff remote is configured); false shows why not. */
+  canKickoff?: boolean;
+  /** The floor you're on, when it was kicked off from a draft (for everyone on it). */
+  launched?: Launched;
 }
 
 export type DraftsClientMsg =
   /** New project: makes a draft floor and rides you to it. */
-  | { t: 'drafts.new'; name: string };
+  | { t: 'drafts.new'; name: string }
+  /** Kick off (cubbies step 3): `confirm` must be the draft's name, typed again. */
+  | { t: 'drafts.kickoff'; floorId: string; confirm: string };
 
 export type DraftsServerMsg =
   | { t: 'drafts'; state: DraftsState }
   /** Your new draft is ready; ride to it. */
-  | { t: 'drafts.made'; floorId: string };
+  | { t: 'drafts.made'; floorId: string }
+  /** A draft was kicked off and is open to everyone now (sent to everyone in the building). */
+  | { t: 'drafts.kicked'; floorId: string; name: string; by: string }
+  /** Your kickoff couldn't finish; nothing changed (sent to the owner only). */
+  | { t: 'drafts.kickoffFailed'; floorId: string; error: string };
+
+/** How long a kicked-off floor wears its "New" badge in the elevator. */
+export const NEW_BADGE_MS = 3 * 24 * 60 * 60_000;
 
 /** The longest a draft's name may be. */
 export const DRAFT_NAME_MAX = 40;

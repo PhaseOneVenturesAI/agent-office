@@ -66,6 +66,8 @@ export interface FloorInfo {
   wing: number;
   /** One of your draft floors (cubbies step 2): only ever in its owner's list. */
   draft?: true;
+  /** Kicked off from a draft recently (cubbies step 3): the elevator shows a "New" badge. */
+  isNew?: true;
 }
 
 /** How far a new floor's clone has got, from git's progress. */
