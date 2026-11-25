@@ -1,7 +1,8 @@
 // One cubby as the hall shows it: its front (clear glass for yours, frosted for anyone else's, an open
 // doorway for yours and a free one), the dark sign pill over the door with its lamp, the shapes moving
-// behind frosted glass, and the door you walk up to. Inside your own is the Interior (interior.ts);
-// nobody else's inside is ever built, and the server never sends it.
+// behind frosted glass, and the door you walk up to. Inside your own is the Interior (interior.ts), and
+// inside one whose owner let you in to watch (cubbies step 4); nobody else's inside is ever built, and
+// the server never sends it.
 
 import * as THREE from 'three';
 import type { CubbyInfo } from '../../../shared/protocol/cubbies';
@@ -32,6 +33,8 @@ export class CubbyRoom {
     this.group.add(this.shell);
     this.group.add(this.dot.mesh);
     this.door = usableAt(place, 'cubbydoor', 0, depth / 2 + 0.7, 1.3);
+    // Aiming at the glass front (or its sign) is aiming at the door: first person picks by what you look at.
+    this.shell.userData.interact = this.door;
     this.group.userData.cubbySlot = place.slot;
   }
 
@@ -52,8 +55,8 @@ export class CubbyRoom {
     // Shapes behind someone else's frosted glass: how many are working, never who or what.
     const shapes = face === 'other' && info && info.lamp !== 'asleep' ? Math.min(3, Math.max(0, info.working | 0)) : 0;
     this.setShapes(shapes);
-    // The inside: only your own, only once your computer has sent it.
-    const interior = face === 'mine' && info?.interior ? info.interior : null;
+    // The inside: only your own, once your computer has sent it, or one whose owner let you in to watch.
+    const interior = (face === 'mine' || face === 'watch') && info?.interior ? info.interior : null;
     if (interior && !this.interior) {
       this.interior = new Interior(this.place);
       this.group.add(this.interior.group);
@@ -62,7 +65,7 @@ export class CubbyRoom {
       this.dropInterior();
       changed = true;
     }
-    if (interior && info && this.interior) this.interior.sync(info.id, interior, info.lamp, ownerName);
+    if (interior && info && this.interior) this.interior.sync(info.id, interior, info.lamp, ownerName, face === 'watch');
     return changed;
   }
 
@@ -98,6 +101,7 @@ export class CubbyRoom {
     const sign = textPlane(text, info ? { bg: INK, color: CREAM, size: 44, border: CREAM } : { bg: CREAM, color: INK, size: 44 });
     sign.scale.setScalar(0.9);
     sign.position.set(0, FRONT_HEIGHT + 0.42, this.place.depth / 2 + 0.09);
+    sign.userData.interact = this.door;
     this.group.add(sign);
     this.sign = sign;
     const half = ((sign.geometry.parameters.width as number) * 0.9) / 2;

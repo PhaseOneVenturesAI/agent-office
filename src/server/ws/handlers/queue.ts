@@ -20,25 +20,33 @@ function ownTask(ctx: Ctx, c: Client, id: string, quietMissing = false) {
   return floor;
 }
 
-export const queueHandlers = {
-  'queue.add'(ctx, c, msg) {
-    const who = c.peer.name;
-    const floor = here(ctx, c);
-    if (!floor) return;
-    if (msg.provider !== undefined && (!isAgentProvider(msg.provider) || !floor.project.agentProviders.includes(msg.provider))) {
-      ctx.warn(c, 'Unknown agent provider');
-      return;
+/** The shared queue.add path, including personal sign-in checks and attribution. */
+export function addQueueTask(ctx: Ctx, c: Client, msg: Extract<QueueClientMsg, { t: 'queue.add' }>,
+  onAdded?: () => void, beforeAdd?: () => boolean) {
+  const who = c.peer.name;
+  const floor = here(ctx, c);
+  if (!floor) return;
+  if (msg.provider !== undefined && (!isAgentProvider(msg.provider) || !floor.project.agentProviders.includes(msg.provider))) {
+    ctx.warn(c, 'Unknown agent provider');
+    return;
+  }
+  const issue = Number.isInteger(msg.issue) && (msg.issue as number) > 0 ? (msg.issue as number) : undefined;
+  const model = msg.model === undefined ? undefined : str(msg.model, OPEN_CODE_MODEL_MAX + 1);
+  const effort = isAgentEffort(msg.effort) ? msg.effort : undefined;
+  // Its worker runs on the sign-ins of whoever queued it, whenever it gets a desk.
+  ctx.withSignIn(c, ctx.signInFor(msg.provider ?? floor.workers.officeDefault.provider), () => {
+    if (c.out || c.ws.readyState !== 1 || ctx.floorOf(c) !== floor || (beforeAdd && !beforeAdd())) return;
+    const err = floor.queue.add(str(msg.prompt, 20000), who, str(msg.title, 200), issue, msg.provider, model, effort, c.accountId, sanitizeSharedWith(ctx, c.accountId, msg.sharedWith));
+    if (err) ctx.warn(c, err);
+    else {
+      ctx.toastFloor(floor, `📋 ${who} queued ${issue !== undefined ? `issue #${issue}` : 'a task'}`);
+      onAdded?.();
     }
-    const issue = Number.isInteger(msg.issue) && (msg.issue as number) > 0 ? (msg.issue as number) : undefined;
-    const model = msg.model === undefined ? undefined : str(msg.model, OPEN_CODE_MODEL_MAX + 1);
-    const effort = isAgentEffort(msg.effort) ? msg.effort : undefined;
-    // Its worker runs on the sign-ins of whoever queued it, whenever it gets a desk.
-    ctx.withSignIn(c, ctx.signInFor(msg.provider ?? floor.workers.officeDefault.provider), () => {
-      const err = floor.queue.add(str(msg.prompt, 20000), who, str(msg.title, 200), issue, msg.provider, model, effort, c.accountId, sanitizeSharedWith(ctx, c.accountId, msg.sharedWith));
-      if (err) ctx.warn(c, err);
-      else ctx.toastFloor(floor, `📋 ${who} queued ${issue !== undefined ? `issue #${issue}` : 'a task'}`);
-    });
-  },
+  });
+}
+
+export const queueHandlers = {
+  'queue.add': addQueueTask,
   'queue.remove'(ctx, c, msg) {
     const floor = ownTask(ctx, c, str(msg.taskId, 32));
     if (floor) ctx.warn(c, floor.queue.remove(str(msg.taskId, 32)));

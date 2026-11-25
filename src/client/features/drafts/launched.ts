@@ -1,14 +1,14 @@
 // What a kicked-off floor keeps, for everyone on it (store.drafts.launched): a "Design" book standing
 // face out on the bookshelf (E opens the approved screens and the brand, see ui-design.ts) and a
-// framed brand poster on an easel just east of the elevator's doors: the name, the tagline and the
-// colors. Both are put away, not bumped into and not usable on any other floor.
+// framed brand poster hung flat on the elevator's front, beside its doors: the name, the tagline and the
+// colors. Both are put away and not usable on any other floor.
 
 import * as THREE from 'three';
 import type { Launched } from '../../../shared/protocol/drafts';
 import { BOOKSHELF, ELEVATOR, ELEVATOR_FRONT } from '../../../shared/layout';
 import type { Fixture } from '../../world/office/fixture';
-import { mesh, roundedBox, toon } from '../../world/toon';
-import type { Collider, Interactable } from '../../world/types';
+import { mesh, toon } from '../../world/toon';
+import type { Interactable } from '../../world/types';
 import { CREAM, FONT, Face, INK } from '../cubbies/props';
 import { wrap } from './boards';
 import { posterOf } from './kickoff-model';
@@ -30,8 +30,14 @@ export interface LaunchedView {
 
 /** Where the Design book stands: face out on the shelf at eye height, toward the shelf's east end. */
 export const DESIGN_BOOK = { x: BOOKSHELF.x + 0.42, y: 1.0, z: BOOKSHELF.z - BOOKSHELF.depth / 2 - 0.035, width: 0.34, height: 0.44 } as const;
-/** The brand poster's easel: east of the elevator's doors, turned a little toward the room. */
-export const POSTER = { x: ELEVATOR.x + ELEVATOR.width / 2 + 0.55, z: ELEVATOR_FRONT + 0.5, rotY: -0.4, width: 1.1, height: 1.45, bottom: 0.75 } as const;
+/**
+ * The brand poster: hung flat on the elevator's front, on the strip of wall west of its doors (the call
+ * button is on the east strip). Flush with the wall, it can't stand in front of the merge gong (east of
+ * the doors) or the PR board (west of the shaft) from any angle, and it's at eye height as you walk up.
+ */
+const PILLAR = (ELEVATOR.width - ELEVATOR.doorWidth) / 2;
+const TRIM = 0.08;
+export const POSTER = { x: ELEVATOR.x - ELEVATOR.width / 2 + (PILLAR - TRIM) / 2, z: ELEVATOR_FRONT + 0.03, width: 0.42, height: 0.58, bottom: 1.06 } as const;
 
 const MUTED = '#6c7086';
 
@@ -96,7 +102,7 @@ function paintPoster(c: CanvasRenderingContext2D, w: number, h: number, l: Launc
   swatchRow(c, p.colors, w / 2, h * 0.8, w * 0.8, w * 0.12);
 }
 
-function build(colliders: Collider[]): LaunchedView {
+function build(): LaunchedView {
   const group = new THREE.Group();
   group.name = 'launched';
   group.visible = false;
@@ -114,29 +120,14 @@ function build(colliders: Collider[]): LaunchedView {
   book.traverse((o) => void (o.userData.interact = bookIt));
   group.add(book);
 
-  // The poster on its easel.
-  const easel = new THREE.Group();
-  easel.position.set(POSTER.x, 0, POSTER.z);
-  easel.rotation.y = POSTER.rotY;
-  const wood = toon('#7f5539');
-  for (const sx of [-1, 1]) {
-    const leg = mesh(new THREE.BoxGeometry(0.05, POSTER.bottom + POSTER.height + 0.15, 0.05), wood, sx * (POSTER.width / 2 - 0.1), (POSTER.bottom + POSTER.height + 0.15) / 2, 0.04);
-    leg.rotation.x = -0.06;
-    easel.add(leg);
-  }
-  const back = mesh(new THREE.BoxGeometry(0.05, POSTER.bottom + POSTER.height, 0.05), wood, 0, (POSTER.bottom + POSTER.height) / 2 - 0.05, -0.32);
-  back.rotation.x = 0.22;
-  easel.add(back);
-  easel.add(mesh(roundedBox(POSTER.width + 0.12, 0.05, 0.12, 0.02), wood, 0, POSTER.bottom - 0.03, 0.1));
-  const frame = mesh(new THREE.BoxGeometry(POSTER.width + 0.1, POSTER.height + 0.1, 0.05), toon(INK), 0, POSTER.bottom + POSTER.height / 2, 0.08);
-  easel.add(frame);
+  // The poster, framed on the elevator's front.
+  const wallPoster = new THREE.Group();
+  wallPoster.position.set(POSTER.x, 0, POSTER.z);
+  wallPoster.add(mesh(new THREE.BoxGeometry(POSTER.width + 0.06, POSTER.height + 0.06, 0.03), toon(INK), 0, POSTER.bottom + POSTER.height / 2, 0, false));
   const poster = new Face(POSTER.width, POSTER.height, 768);
-  poster.mesh.position.set(0, POSTER.bottom + POSTER.height / 2, 0.11);
-  easel.add(poster.mesh);
-  group.add(easel);
-  // What you bump into: the easel's feet, about as wide as the poster.
-  const r = POSTER.width / 2 + 0.05;
-  const easelCollider: Collider = { minX: POSTER.x - r, maxX: POSTER.x + r, minZ: POSTER.z - 0.4, maxZ: POSTER.z + 0.2, top: POSTER.bottom + POSTER.height };
+  poster.mesh.position.set(0, POSTER.bottom + POSTER.height / 2, 0.017);
+  wallPoster.add(poster.mesh);
+  group.add(wallPoster);
   let key = '';
 
   return {
@@ -145,10 +136,6 @@ function build(colliders: Collider[]): LaunchedView {
     set(l) {
       group.visible = !!l;
       bookIt.off = !l;
-      // Only bumped into while it's there (the floor's own list: see Site.colliders).
-      const at = colliders.indexOf(easelCollider);
-      if (l && at < 0) colliders.push(easelCollider);
-      if (!l && at >= 0) colliders.splice(at, 1);
       if (!l) return;
       const k = JSON.stringify([l.name, l.brand]);
       if (k === key) return;
@@ -160,7 +147,7 @@ function build(colliders: Collider[]): LaunchedView {
 }
 
 /** The Design book and the brand poster, put away until the floor you're on was kicked off. */
-export const launched: Fixture<'launched'> = (site) => {
-  const built = build(site.colliders);
+export const launched: Fixture<'launched'> = () => {
+  const built = build();
   return { group: built.group, interactables: [built.book], handle: { launched: built } };
 };

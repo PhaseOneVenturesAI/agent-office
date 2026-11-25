@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, writeFileSync, renameSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ownerFingerprint, ownerPublicKey } from '../wire.js';
+import { ownerPublicKey } from '../wire.js';
+import { pinOf, readPins, updatePins } from './devices.js';
 import { canonical, jsonFile, run, uuid, type Run } from './io.js';
 
 export interface LocalOptions {
@@ -105,25 +106,19 @@ export function persistSelection(config: LocalConfig): void {
   if (!existsSync(file)) writeFileSync(file, JSON.stringify(record), { flag: 'wx', mode: 0o600 });
 }
 
-function ownerPinFile(state: string, floor: string): string {
-  return path.join(state, `owner-${createHash('sha256').update(floor).digest('hex')}.json`);
-}
 function checkOwnerPin(state: string, floor: string, ownerKey: string, replace = false): void {
-  const file = ownerPinFile(state, floor);
-  if (!existsSync(file)) return;
-  const pinned = jsonFile(file);
-  if (pinned.floor !== floor || typeof pinned.ownerKey !== 'string') throw new Error('Invalid local owner key record');
-  ownerPublicKey(pinned.ownerKey);
-  if (pinned.ownerKey !== ownerKey && !replace) throw new Error('Different --owner-key: use --replace-owner-key locally only to authorize this device');
+  const pins = readPins(state, floor);
+  if (pins && !pins.some((p) => p.key === ownerKey) && !replace) throw new Error('Different --owner-key: use --replace-owner-key locally only to authorize this device');
 }
-/** Recheck under the project lock. Only this local path can create or replace the pin. */
+/**
+ * Recheck under the project lock. The first device is pinned here; --replace-owner-key (for a key that isn't
+ * trusted yet) starts the list again from this one device. More devices are added by a trusted one (devices.ts), never by join.
+ */
 function persistOwnerPin(config: LocalConfig): void {
   ownerPublicKey(config.ownerKey);
-  checkOwnerPin(config.state, config.floor, config.ownerKey, config.replaceOwnerKey);
-  const file = ownerPinFile(config.state, config.floor);
-  const temp = `${file}.${randomUUID()}.tmp`;
-  try {
-    writeFileSync(temp, JSON.stringify({ floor: config.floor, ownerKey: config.ownerKey, fingerprint: ownerFingerprint(config.ownerKey).match(/.{4}/g)!.join('-') }), { flag: 'wx', mode: 0o600 });
-    renameSync(temp, file);
-  } finally { try { unlinkSync(temp); } catch { /* renamed successfully or never created */ } }
+  updatePins(config.state, config.floor, pins => {
+    if (pins?.some(p => p.key === config.ownerKey)) return pins;
+    if (pins && !config.replaceOwnerKey) throw new Error('Different --owner-key: use --replace-owner-key locally only to authorize this device');
+    return [pinOf(config.ownerKey, 'First device', Date.now())];
+  });
 }

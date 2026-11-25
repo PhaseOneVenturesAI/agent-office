@@ -58,8 +58,9 @@ export type NodeExtension = (nodeId: string, owner: string | undefined, frame: u
 export class Nodes {
   extension?: NodeExtension;
   isOnline(id: string): boolean { const n = this.nodes.get(id); return !!n?.ws && n.lastSeen > 0 && Date.now() - n.lastSeen < STALE_MS; }
+  /** False means nothing was queued; callers may retry after disconnect/backpressure clears. */
   sendSigned(id: string, frame: (tokenHash: string) => unknown): boolean {
-    const n = this.nodes.get(id); if (!n || !this.isOnline(id) || n.ws!.readyState !== 1) return false;
+    const n = this.nodes.get(id); if (!n || !this.isOnline(id) || n.ws!.readyState !== 1 || n.ws!.bufferedAmount > 4 * 1024 * 1024) return false;
     try { n.ws!.send(JSON.stringify(frame(n.token))); return true; } catch { return false; }
   }
 

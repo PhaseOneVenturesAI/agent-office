@@ -1,5 +1,5 @@
 import { createHash, createHmac, createPublicKey, timingSafeEqual, verify } from 'node:crypto';
-import { ownerChatEncoding, type CubbyOwnerPayload, type CubbyRelayFrame } from '../../shared/protocol/cubbies.js';
+import { deviceCode, ownerChatEncoding, ownerDeviceEncoding, type CubbyDevicePayload, type CubbyOwnerPayload, type CubbyRelayFrame } from '../../shared/protocol/cubbies.js';
 export const cubbyKey = (token: string) => createHash('sha256').update(token).digest('hex');
 export function relaySignature(key: string, frame: Omit<CubbyRelayFrame, 'signature'>): string {
   const f = frame as Record<string, unknown>;
@@ -24,12 +24,22 @@ export function ownerFingerprint(key: string): string {
   ownerPublicKey(key);
   return createHash('sha256').update(Buffer.from(key, 'base64url')).digest('hex').slice(0, 32);
 }
-export function verifyOwner(key: string, frame: CubbyOwnerPayload & { ownerSig?: unknown }): boolean {
-  if (typeof frame.ownerSig !== 'string' || !/^[A-Za-z0-9_-]{86}$/.test(frame.ownerSig)) return false;
+function verifySigned(key: string, encoded: string, ownerSig: unknown): boolean {
+  if (typeof ownerSig !== 'string' || !/^[A-Za-z0-9_-]{86}$/.test(ownerSig)) return false;
   try {
-    const sig = Buffer.from(frame.ownerSig, 'base64url');
-    if (sig.toString('base64url') !== frame.ownerSig) return false;
-    return verify('sha256', Buffer.from(ownerChatEncoding(frame)),
-      { key: ownerPublicKey(key), dsaEncoding: 'ieee-p1363' }, sig);
+    const sig = Buffer.from(ownerSig, 'base64url');
+    if (sig.toString('base64url') !== ownerSig) return false;
+    return verify('sha256', Buffer.from(encoded), { key: ownerPublicKey(key), dsaEncoding: 'ieee-p1363' }, sig);
   } catch { return false; }
+}
+export function verifyOwner(key: string, frame: CubbyOwnerPayload & { ownerSig?: unknown }): boolean {
+  return verifySigned(key, ownerChatEncoding(frame), frame.ownerSig);
+}
+/** A change to the trusted devices, signed by one of them. */
+export function verifyOwnerDevice(key: string, frame: CubbyDevicePayload & { ownerSig?: unknown }): boolean {
+  return verifySigned(key, ownerDeviceEncoding(frame), frame.ownerSig);
+}
+/** The code a device with this public key shows (the same digits as the browser works out for itself). */
+export function ownerDeviceCode(key: string): string {
+  return deviceCode(createHash('sha256').update(Buffer.from(key, 'base64url')).digest());
 }

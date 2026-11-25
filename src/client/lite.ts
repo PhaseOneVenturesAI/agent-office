@@ -32,6 +32,7 @@ import { askNotifyPermission, DesktopNotifier, notifyPermission, waitingOnSomeon
 import { repoChoices } from './shared/hiring';
 // The tab title counts the workers waiting on someone, on every floor, as the 3D office's does.
 import { renderTitle } from './shared/title';
+import { installLiteCubby } from './lite-cubby';
 
 // Sent here because this browser can't draw the 3D office (see noWebGL in core/scene.ts).
 if (new URLSearchParams(location.search).get('why') === 'webgl') {
@@ -100,7 +101,8 @@ function offTheRoof() {
 
 // ---- The floor you're on ------------------------------------------------------------------------
 const floorSelect = $('floor') as HTMLSelectElement;
-const floorLabel = (f: FloorInfo) => `${f.name}${f.cloning ? ` (${cloneLabel(f.clone)})` : f.waiting ? ` · 🙋 ${f.waiting}` : ''}`;
+// Your draft floors are in your list only (cubbies step 2), each tagged as a draft.
+const floorLabel = (f: FloorInfo) => `${f.draft ? '🔒 ' : ''}${f.name}${f.draft ? ' · draft' : ''}${f.cloning ? ` (${cloneLabel(f.clone)})` : f.waiting ? ` · 🙋 ${f.waiting}` : ''}`;
 
 function renderFloors() {
   const options = store.floors.map((f) => h('option', { value: f.id, disabled: !!f.cloning }, floorLabel(f)));
@@ -329,6 +331,7 @@ $('btn-nodes').addEventListener('click', () => openNodes(net));
 $('btn-context').addEventListener('click', () => openProjectContext(net));
 $('btn-queue').addEventListener('click', () => openQueue(net, { openTerminal: openWorker }));
 $('btn-new').addEventListener('click', () => sendToWorker('✨ New task'));
+installLiteCubby(net);
 
 function renderNav() {
   const count = (id: string, n: number) => ($(id).querySelector('.n')!.textContent = n ? String(n) : '');

@@ -1,6 +1,7 @@
 import os from 'node:os';
 import type { CubbyBinding, CubbyNodeFrame, CubbyRelayFrame } from '../../../shared/protocol/cubbies.js';
-import { cubbyKey, ownerFingerprint, verifyOwner, verifyRelay } from '../wire.js';
+import { cubbyKey, verifyOwner, verifyOwnerDevice, verifyRelay } from '../wire.js';
+import { ask, change, devicesFrame, fileStore, type DeviceStore } from './devices.js';
 import type { LocalConfig } from './config.js';
 import { persistSelection } from './config.js';
 import { clean } from './io.js';
@@ -23,7 +24,13 @@ export interface ConnectorDeps {
   commits?: (from?: string, to?: string) => Promise<number | undefined>;
   /** What was last seen before going away (tests; otherwise read from the local state). */
   seen?: () => import('./wake.js').Seen | undefined;
+  /** Who's trusted to talk to the lead (default: the project's files, see devices.ts). */
+  devices?: DeviceStore;
 }
+const FRAME_KEYS: Record<string, string[]> = {
+  'cubby.ready': [], 'cubby.chat': ['requestId', 'at', 'text', 'ownerSig'],
+  'cubby.device-request': ['requestId', 'at', 'publicKey', 'label'], 'cubby.device': ['requestId', 'at', 'action', 'target', 'ownerSig'],
+};
 
 /** One object survives websocket reconnects; no queue and no automatic work resume. */
 export class CubbyConnector {
@@ -42,8 +49,10 @@ export class CubbyConnector {
   private polling = false;
   /** Set by each new binding: its first snapshot says what changed while the cubby was away. */
   private waking = false;
+  private devices: DeviceStore;
   constructor(private config: LocalConfig, token: string, private deps: ConnectorDeps = {}) {
     this.key = cubbyKey(token); this.now = deps.now ?? Date.now;
+    this.devices = deps.devices ?? fileStore(config.state, config.floor, config.ownerKey);
     this.release = deps.release ?? projectLock(config.state);
     try { if (!deps.release) persistSelection(config); }
     catch (error) { this.release(); throw error; }
@@ -63,8 +72,8 @@ export class CubbyConnector {
       : Buffer.isBuffer(data) ? data.toString('utf8') : Buffer.from(data).toString('utf8');
     let frame: CubbyRelayFrame;
     try { frame = JSON.parse(raw); } catch { return; }
-    if (!frame || (frame.t !== 'cubby.ready' && frame.t !== 'cubby.chat')) return;
-    const allowed = new Set(['t', 'signature', ...bindingKeys, ...(frame.t === 'cubby.chat' ? ['requestId', 'at', 'text', 'ownerSig'] : [])]);
+    if (!frame || typeof frame.t !== 'string' || !Object.hasOwn(FRAME_KEYS, frame.t)) return;
+    const allowed = new Set(['t', 'signature', ...bindingKeys, ...FRAME_KEYS[frame.t]]);
     if (Object.keys(frame).some((key) => !allowed.has(key)) ||
       bindingKeys.some((key) => typeof frame[key] !== 'string' || !frame[key] || frame[key].length > 128) ||
       frame.floorId !== this.config.floor || frame.computerId !== this.config.computerId || !verifyRelay(this.key, frame)) return;
@@ -73,16 +82,16 @@ export class CubbyConnector {
       this.connections.add(frame.connectionId);
       this.binding = Object.fromEntries(bindingKeys.map((key) => [key, frame[key]])) as unknown as CubbyBinding;
       this.waking = true;
-      this.send({ t: 'cubby.owner-key', floorId: this.config.floor, fingerprint: ownerFingerprint(this.config.ownerKey) });
+      this.sendDevices();
       void this.snapshot();
       this.timer = setInterval(() => void this.snapshot(), 15_000);
       return;
     }
     if (!this.binding || bindingKeys.some((key) => frame[key] !== this.binding![key]) ||
-      typeof frame.text !== 'string' || !frame.text.trim() || frame.text.length > 8000 ||
-      typeof frame.requestId !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(frame.requestId) ||
-      !Number.isSafeInteger(frame.at)) return;
-    if (!verifyOwner(this.config.ownerKey, frame)) {
+      typeof frame.requestId !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(frame.requestId) || !Number.isSafeInteger(frame.at)) return;
+    if (frame.t === 'cubby.device-request' || frame.t === 'cubby.device') { this.device(frame); return; }
+    if (typeof frame.text !== 'string' || !frame.text.trim() || frame.text.length > 8000) return;
+    if (!this.trusted((key) => verifyOwner(key, frame))) {
       this.reply(frame.requestId, "Message not signed by this cubby's owner key", true); return;
     }
     if (Math.abs(this.now() - frame.at) > 60_000) { this.reply(frame.requestId, 'Message expired or computer clocks disagree. Check the computer clock and send again.', true); return; }
@@ -98,6 +107,31 @@ export class CubbyConnector {
       (error) => { if (this.generation === generation && !abort.signal.aborted) this.reply(frame.requestId,
         error instanceof LeadError ? error.message : 'Local lead unavailable; inspect its native terminal.', true); },
     ).finally(() => { if (this.abort === abort) this.abort = undefined; });
+  }
+  /** Whether one of the trusted devices made this signature (a damaged trust record trusts nobody). */
+  private trusted(check: (key: string) => boolean): boolean {
+    try { return this.devices.pins().some((p) => check(p.key)); } catch { return false; }
+  }
+  private sendDevices(note?: string): void {
+    try { if (this.binding) this.send?.(devicesFrame(this.devices, this.config.floor, this.now(), note)); }
+    catch { /* a damaged trust record: chat stays shut (trusted() is false) until it's fixed here */ }
+  }
+  /** A new device asking to be trusted, or a trusted device's signed change (see devices.ts). */
+  private device(frame: Extract<CubbyRelayFrame, { t: 'cubby.device-request' | 'cubby.device' }>): void {
+    if (Math.abs(this.now() - frame.at) > 60_000 || this.seen.has(frame.requestId) || this.seen.size >= MAX_SEEN) return;
+    this.seen.set(frame.requestId, frame.at);
+    let note: string | undefined;
+    try {
+      if (frame.t === 'cubby.device-request') {
+        if (typeof frame.publicKey !== 'string' || typeof frame.label !== 'string' || frame.label.length > 80) return;
+        note = ask(this.devices, { requestId: frame.requestId, key: frame.publicKey, label: frame.label }, this.now());
+      } else {
+        if (!['add', 'deny', 'revoke'].includes(frame.action) || typeof frame.target !== 'string' || frame.target.length > 200) return;
+        const done = change(this.devices, frame.action, frame.target, this.now(), key => verifyOwnerDevice(key, frame));
+        note = done.note ?? done.error;
+      }
+    } catch { note = 'Couldn’t update this computer’s trusted devices. Nothing changed.'; }
+    this.sendDevices(note);
   }
   private reply(requestId: string, text: string, error = false): void {
     if (this.binding) this.send?.({ t: 'cubby.reply', floorId: this.config.floor, requestId,
@@ -124,6 +158,7 @@ export class CubbyConnector {
       }
       if (!this.deps.snapshot) saveSeen(this.config.state, { at: this.now(), head, agents: frame.agents.map(({ id, tool, role, task, status }) => ({ id, tool, role, task, status })) });
       if (generation === this.generation && this.binding && Buffer.byteLength(JSON.stringify(frame)) <= 64 * 1024) this.send?.(frame);
+      if (generation === this.generation) this.sendDevices();
     } catch { /* source failure is retried at the next bounded interval */ }
     finally { this.polling = false; }
   }
