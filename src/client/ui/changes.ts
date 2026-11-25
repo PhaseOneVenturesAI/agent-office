@@ -135,7 +135,7 @@ export function openChanges(net: Net, workerId: string, onTerminal?: () => void,
   const diff = h('section.changes-diff', {}, diffHead, diffBody);
   const summary = h('span.grow');
   const discardBtn = h('button.btn', { type: 'button', title: 'Throw away every uncommitted change in this checkout' }, '🗑️ Discard all');
-  const commitBtn = h('button.btn', { type: 'button', title: 'git add -A && git commit' }, '✅ Commit…');
+  const commitBtn = h('button.btn', { type: 'button', title: "The worker's agent reviews its changes and commits them, writing the message itself" }, '✅ Commit…');
   const prSlot = h('span.pr-slot');
   const tabs = h('nav.changes-tabs', { role: 'tablist', 'aria-label': 'Repositories' });
   const el = h(
@@ -292,8 +292,21 @@ export function openChanges(net: Net, workerId: string, onTerminal?: () => void,
     if (shownSig !== null && shownSig !== f.sig && !loading) requestDiff();
   };
 
+  /** The fallback for when the worker's agent can't write the commit message: the person types one. */
+  const openCommitPrompt = () => {
+    const n = state?.files.filter((f) => f.uncommitted).length ?? 0;
+    openPrompt({
+      title: `✅ Commit ${n} file${n === 1 ? '' : 's'}`,
+      subtitle: `Stages everything in ${where()} and commits it${state?.branch ? ` on ${state.branch}` : ''}.`,
+      placeholder: 'What changed, and why',
+      submitLabel: 'Commit',
+      onSubmit: (text) => net.send({ t: 'changes.commit', workerId, message: text, repo }),
+    });
+  };
+
   const onMsg = (msg: ServerMsg) => {
     if (msg.t === 'changes' && msg.state.workerId === workerId && msg.state.repo === repo) onState(msg.state);
+    else if (msg.t === 'changes.commitManual' && msg.workerId === workerId && msg.repo === repo) openCommitPrompt();
     else if (msg.t === 'changes.diff' && msg.workerId === workerId && msg.repo === repo && msg.path === selected) {
       loading = false;
       shownSig = requestedSig;
@@ -331,14 +344,9 @@ export function openChanges(net: Net, workerId: string, onTerminal?: () => void,
     );
   });
   commitBtn.addEventListener('click', () => {
-    const n = state?.files.filter((f) => f.uncommitted).length ?? 0;
-    openPrompt({
-      title: `✅ Commit ${n} file${n === 1 ? '' : 's'}`,
-      subtitle: `Stages everything in ${where()} and commits it${state?.branch ? ` on ${state.branch}` : ''}.`,
-      placeholder: 'What changed, and why',
-      submitLabel: 'Commit',
-      onSubmit: (text) => net.send({ t: 'changes.commit', workerId, message: text, repo }),
-    });
+    // The worker's agent writes the commit message; when it can't (a shell, asleep, gone), the
+    // office answers changes.commitManual and the person who pressed the button types one instead.
+    net.send({ t: 'changes.commit', workerId, repo });
   });
   terminalBtn.addEventListener('click', () => {
     onTerminal?.();
