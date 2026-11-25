@@ -5,7 +5,7 @@
 // directly standing about, and the rest on overflow bean bags. The wall boards are the lead's plan and
 // what needs you. Asleep, the laptop's lid shuts, the lamp goes grey and every helper shows 💤.
 //
-// Only built for a cubby whose interior the server sent you, which is only ever your own.
+// Only built for a cubby whose interior the server sent you: your own, or one you were let in to watch.
 
 import * as THREE from 'three';
 import type { CubbyAgent, CubbyInfo, CubbyInterior } from '../../../shared/protocol/cubbies';
@@ -15,18 +15,12 @@ import { textSprite } from '../../world/toon';
 import type { Collider } from '../../world/types';
 import { Laptop } from '../workers/laptop';
 import { focusedOf, showTags, type Focus } from './focus';
-import { OVERFLOW_BAG_SCALE, agentCard, clip, colliderOf, deadlineText, furniture, toFloor, layoutAgents, layoutKey, usableAt, workerStatus, type CubbyIt, type CubbyPlacement, type Spot } from './model';
+import { OVERFLOW_BAG_SCALE, agentCard, clip, colliderOf, deadlineText, furniture, toFloor, layoutAgents, layoutKey, leadColorIndex, usableAt, workerStatus, type CubbyIt, type CubbyPlacement, type Spot } from './model';
 import { CREAM, FONT, Face, INK, beanbag, builderDesk, disposeTree, factoryMachine, fitText, lamp, simpleDesk, wallScreen } from './props';
 
 /** A helper's color, by the tool it runs in. */
 const TOOL_COLOR: Record<string, string> = { claude: '#d97757', codex: '#4a7dbd', kimi: '#5b5bd6' };
 const toolColor = (tool: string) => TOOL_COLOR[tool.toLowerCase().split(/\s/)[0]] ?? '#8d99ae';
-
-function hash(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
-  return h >>> 0;
-}
 
 interface AgentView {
   agent: CubbyAgent;
@@ -132,7 +126,7 @@ export class Interior {
     this.group.add(this.agentsGroup);
   }
 
-  sync(cubbyId: string, it: CubbyInterior, lampState: CubbyInfo['lamp'], ownerName: string) {
+  sync(cubbyId: string, it: CubbyInterior, lampState: CubbyInfo['lamp'], ownerName: string, watching = false) {
     this.cubbyId = cubbyId;
     this.interior = it;
     this.asleep = lampState === 'asleep';
@@ -141,10 +135,10 @@ export class Interior {
     if (lookKey !== this.leadLook) {
       this.leadLook = lookKey;
       this.lead.setLook(it.look);
-      this.lead.setColor(AVATAR_COLORS[hash(it.leadName) % AVATAR_COLORS.length]);
+      this.lead.setColor(AVATAR_COLORS[leadColorIndex(it.leadName) % AVATAR_COLORS.length]);
       this.lead.setLabel(clip(it.leadName, 24) || 'Lead', null);
     }
-    const doing = this.asleep ? `💤 asleep on ${clip(it.computerName, 20)}` : it.error ? `⚠️ ${clip(it.error, 40)}` : `Lead · E to talk`;
+    const doing = this.asleep ? `💤 asleep on ${clip(it.computerName, 20)}` : it.error ? `⚠️ ${clip(it.error, 40)}` : watching ? 'Lead · E to listen in' : `Lead · E to talk`;
     if (doing !== this.leadDoing) this.lead.setDoing((this.leadDoing = doing));
     if (it.computerName !== this.computerName) {
       this.computerName = it.computerName;

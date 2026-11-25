@@ -92,9 +92,9 @@ try {
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?3d=1`);
   await page.waitForFunction(() => window.__audit && window.__office?.net.up);
   const keyEvidence = await page.evaluate(async () => {
-    const { ownerDeviceKey } = await import('/features/cubbies/keys.ts');
+    const { ownerDeviceKey } = await import('/shared/cubby/keys.ts');
     const first = await ownerDeviceKey('Jordan Fixture');
-    const reload = await import('/features/cubbies/keys.ts?reload');
+    const reload = await import('/shared/cubby/keys.ts?reload');
     const persisted = await reload.ownerDeviceKey('Jordan Fixture');
     const other = await ownerDeviceKey('Alex Fixture');
     const otherOffice = await ownerDeviceKey('Jordan Fixture', 'https://other-office.example');
@@ -218,8 +218,8 @@ try {
     return { lead: text(lead), mine: text(doorOf(0)), alex: text(doorOf(1)), sam: text(doorOf(2)), free: text(doorOf(3)), direct: text(its.find((it) => it.agentId === 'dr')) };
   });
   assert.match(hints.lead, /Nova.*Runs on your Mac mini.*E.*Talk to Nova/);
-  assert.match(hints.alex, /Alex Fixture.*2 working · private/);
-  assert.doesNotMatch(hints.alex, /E/);
+  // Someone else's: name, lamp and count only, and E knocks (cubbies step 4, tests/cubby-sharing-ui.mjs).
+  assert.match(hints.alex, /Alex Fixture.*2 working.*E.*Knock/);
   assert.match(hints.sam, /asleep/);
   assert.match(hints.free, /Free cubby.*E.*Set up/);
   assert.match(hints.direct, /Tool and branch/);

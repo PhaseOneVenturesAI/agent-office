@@ -1,6 +1,6 @@
 // What a kicked-off floor keeps, for everyone on it (store.drafts.launched): a "Design" book standing
 // face out on the bookshelf (E opens the approved screens and the brand, see ui-design.ts) and a
-// framed brand poster on an easel just east of the elevator's doors: the name, the tagline and the
+// framed brand poster on an easel just west of the elevator's doors: the name, the tagline and the
 // colors. Both are put away, not bumped into and not usable on any other floor.
 
 import * as THREE from 'three';
@@ -30,8 +30,11 @@ export interface LaunchedView {
 
 /** Where the Design book stands: face out on the shelf at eye height, toward the shelf's east end. */
 export const DESIGN_BOOK = { x: BOOKSHELF.x + 0.42, y: 1.0, z: BOOKSHELF.z - BOOKSHELF.depth / 2 - 0.035, width: 0.34, height: 0.44 } as const;
-/** The brand poster's easel: east of the elevator's doors, turned a little toward the room. */
-export const POSTER = { x: ELEVATOR.x + ELEVATOR.width / 2 + 0.55, z: ELEVATOR_FRONT + 0.5, rotY: -0.4, width: 1.1, height: 1.45, bottom: 0.75 } as const;
+/**
+ * The brand poster's easel: just west of the elevator's doors, out from the wall and turned toward the
+ * room and the doors. The merge gong is east of the doors, so the easel never stands in front of it.
+ */
+export const POSTER = { x: ELEVATOR.x - ELEVATOR.width / 2 - 0.75, z: ELEVATOR_FRONT + 1.2, rotY: 0.9, width: 1.1, height: 1.45, bottom: 0.75 } as const;
 
 const MUTED = '#6c7086';
 

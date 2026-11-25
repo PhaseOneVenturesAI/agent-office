@@ -292,8 +292,9 @@ try {
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => window.__office.player.hasMouse, null, { timeout: 2000 });
 
-  await stand(8.6, -4.2, toward(8.6, -4.2, 10.4, -10.2), 0.05);
-  await shot('12-brand-poster-by-elevator', () => stand(9.8, -6.3, toward(9.8, -6.3, 10.6, -10.2), 0.08));
+  // Stepping out of the elevator: the poster west of its doors, the merge gong east of them, both whole.
+  await stand(8.9, -3.6, toward(8.9, -3.6, 9.3, -11.5), 0.12);
+  await shot('12-brand-poster-by-elevator', () => stand(9.5, -1.4, toward(9.5, -1.4, 9.5, -11.5), 0.12));
 
   // ---- Everyone's elevator: the floor with its "New" badge. ----
   await stand(3, 6, Math.PI, -0.3);
