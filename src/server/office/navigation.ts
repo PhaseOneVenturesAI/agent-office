@@ -14,6 +14,7 @@ export function navigation(ctx: Ctx): Navigation {
    * everything. They arrive in the elevator, or `at` the spot they came by.
    */
   const goToFloor = (c: Client, floor: Floor, at?: Spot) => {
+    if (!ctx.floorVisible(floor.id, c)) return ctx.warn(c, 'No such floor');
     if (c.peer.floor === floor.id) return;
     const left = leave(c, at);
     Object.assign(c.peer, { floor: floor.id });

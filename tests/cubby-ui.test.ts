@@ -30,8 +30,8 @@ const agent = (id: string, role: CubbyAgent['role'], extra: Partial<CubbyAgent> 
 const interior = { computerName: 'Mac mini', leadName: 'Nova', look, agents: [], plan: [], needsYou: [], chat: [] };
 const state = (cs: CubbyInfo[], floorId = 'f1'): CubbiesState => ({ enabled: true, floorId, cubbies: cs, setupAllowed: true });
 
-test('the slice is registered last, and keeps nobody else’s interior even if one arrives', () => {
-  assert.equal(SLICES[SLICES.length - 1], cubbies);
+test('the slice is registered (just before drafts, the last), and keeps nobody else’s interior even if one arrives', () => {
+  assert.equal(SLICES[SLICES.length - 2], cubbies);
   const leaked = state([
     { id: 'a', slot: 0, ownerName: 'Jonathan', mine: true, lamp: 'online', working: 1, interior },
     { id: 'b', slot: 1, ownerName: 'Alex', mine: false, lamp: 'working', working: 2, interior },

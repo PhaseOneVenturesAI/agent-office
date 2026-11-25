@@ -1,3 +1,4 @@
+import { draftExecution } from '../drafts/visibility.js';
 import type { ClientMsg } from '../../shared/protocol.js';
 import type { Ctx } from '../office/context.js';
 import type { Client } from '../office/client.js';
@@ -12,5 +13,6 @@ type AnyHandler = (ctx: Ctx, c: Client, msg: ClientMsg) => void;
  */
 export function dispatch(ctx: Ctx, c: Client, msg: ClientMsg): void {
   if (typeof msg.t !== 'string' || !Object.hasOwn(handlers, msg.t)) return;
+  if (draftExecution(ctx, c, msg.t)) return;
   (handlers[msg.t] as AnyHandler)(ctx, c, msg);
 }

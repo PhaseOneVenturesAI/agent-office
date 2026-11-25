@@ -6,8 +6,11 @@ import { send } from '../util.js';
 import type { Route } from '../router.js';
 
 /** Every floor's: a port is the machine's, whichever floor its worker sits on. */
-function forwards(ctx: Ctx): ForwardList {
-  const items = ctx.services.list().map((s) => {
+function forwards(ctx: Ctx, accountId?: string): ForwardList {
+  const items = ctx.services.list().filter(s => {
+    const floor = ctx.workerFloor(s.workerId);
+    return !floor || ctx.floorVisible(floor.id, { accountId });
+  }).map((s) => {
     const floor = ctx.workerFloor(s.workerId);
     return { port: s.port, title: s.title || s.command, command: s.command, worker: floor?.workers.get(s.workerId)?.name, floor: floor?.def.name };
   });
@@ -15,5 +18,5 @@ function forwards(ctx: Ctx): ForwardList {
 }
 
 export const serviceRoutes = {
-  forwards: { method: 'GET', path: FORWARDS_PATH, auth: 'session', handle: (ctx, { res }) => send(res, 200, forwards(ctx)) },
+  forwards: { method: 'GET', path: FORWARDS_PATH, auth: 'session', handle: (ctx, { res, session }) => send(res, 200, forwards(ctx, session.account?.id)) },
 } satisfies Record<string, Route>;

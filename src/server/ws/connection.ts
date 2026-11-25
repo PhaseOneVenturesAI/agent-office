@@ -22,12 +22,13 @@ export function onConnection(ctx: Ctx, ws: WebSocket, url: URL, session: Session
   const { sendTo, broadcast, floorInfos, floorsChanged, arrivalFloor, meOf, accountsChanged, limitsOf } = ctx;
   const id = randomBytes(5).toString('hex');
   // Back on the floor they were on before a reload, a restart or closing the tab, else the first floor.
+  const viewer = { accountId: session.account?.id };
   const wanted = url.searchParams.get('floor');
   // Their floor's gone since (taken off the building, or its checkout deleted): up to the roof instead.
-  const gone = !!wanted && wanted !== ROOF && !floors.has(wanted);
+  const gone = !!wanted && wanted !== ROOF && (!floors.has(wanted) || !ctx.floorVisible(wanted, viewer));
   // Up on the roof, as long as there's a building under it.
-  const onRoof = (wanted === ROOF || gone) && floors.size > 0;
-  const floor = onRoof ? undefined : arrivalFloor(wanted);
+  const onRoof = (wanted === ROOF || gone) && floorInfos(viewer).some(f => !f.cloning);
+  const floor = onRoof ? undefined : arrivalFloor(wanted, viewer);
   // Back where they were standing on it too; anywhere else, they arrive by elevator.
   const back = !gone && wanted !== null && (onRoof || floor?.id === wanted);
   const spot = (back && spotFrom(url.searchParams)) || { ...elevatorSpot(), y: 0, rotY: 0 };
@@ -66,7 +67,7 @@ export function onConnection(ctx: Ctx, ws: WebSocket, url: URL, session: Session
     t: 'welcome',
     you: id,
     peers: [...clients.values()].map((c) => c.peer),
-    floors: floorInfos(),
+    floors: floorInfos(viewer),
     projectsDir: building.projectsDirState(),
     ice: cfg.iceServers,
     chat: chat.recent(50),

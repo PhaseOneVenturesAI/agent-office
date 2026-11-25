@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { accessSync, constants, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { accessSync, constants, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { FLOOR_PALETTES, MAX_FLOORS, normalizeRepo, sameRepo } from '../shared/floors.js';
@@ -19,6 +19,8 @@ export interface FloorDef {
   palette: number;
   addedBy: string;
   addedAt: number;
+  /** Private project before kickoff; ownership lives in drafts.json. */
+  draft?: boolean;
 }
 
 /** A projects folder picked in ⚙️ Settings (or with --projects), as projects-folder.json keeps it. */
@@ -134,7 +136,7 @@ export class Building {
       if (why) return why;
       // Cloning into a project would nest checkouts inside its git tree.
       const inside = this.defs.find((d) => within(dir, path.resolve(d.dir)));
-      if (inside) return `${tildify(dir)} is inside ${inside.name}'s checkout — pick a folder outside every project`;
+      if (inside) return inside.draft ? 'Pick a folder outside every project checkout' : `${tildify(dir)} is inside ${inside.name}'s checkout — pick a folder outside every project`;
     }
     this.picked = dir === this.defaultProjectsDir ? undefined : { dir, by, at: Date.now() };
     try {
@@ -249,6 +251,18 @@ export class Building {
     this.defs.unshift(def);
     this.localId = def.id;
     this.save();
+    return def;
+  }
+
+  /** Register an already initialized local checkout without cloning or replacing the office's home. */
+  addLocal(input: Omit<FloorDef, 'palette'>): FloorDef {
+    if (this.defs.length + this.cloning.size >= MAX_FLOORS) throw Error(`The building is full (${MAX_FLOORS} floors)`);
+    if ([...this.defs, ...this.pending()].some(d => d.id === input.id || path.resolve(d.dir) === path.resolve(input.dir))) throw Error('That floor already exists');
+    const def = { ...this.newDef(input.name, undefined, input.dir, input.addedBy), ...input };
+    // Persist before exposing it; a failed write must not acknowledge a new private floor.
+    writeFileSync(this.file + '.tmp', JSON.stringify([...this.defs, def], null, 2), { mode: 0o600 });
+    renameSync(this.file + '.tmp', this.file);
+    this.defs.push(def);
     return def;
   }
 
@@ -416,6 +430,7 @@ export class Building {
         ids.add(s.id);
         this.defs.push({
           id: s.id,
+          ...(s.draft === true ? { draft: true } : {}),
           name: typeof s.name === 'string' && s.name ? s.name.slice(0, 100) : path.basename(s.dir),
           repo: normalizeRepo(s.repo),
           dir: s.dir,

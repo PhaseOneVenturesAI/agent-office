@@ -63,3 +63,50 @@ test('roster snapshot bounds agent count/bytes and keeps unverified sources visi
   assert.equal(result.agents.length, 128); assert.ok(Buffer.byteLength(JSON.stringify(result)) <= 64 * 1024);
   assert.match(result.error!, /coverage unavailable/); assert.ok(!result.error!.includes('SECRET'));
 });
+
+test('draft publication is bounded and cleaned at both connector and server boundaries', async t => {
+  const f = fixture(t), boards = path.join(f.project, '.agent-office'); mkdirSync(boards);
+  const raw = { decisions: ['  Decision\u0000\n one  ', ...Array(20).fill('x'.repeat(400))], plan: Array(20).fill('Plan'),
+    screens: [{ title: '  Screen\nOne ', status: 'review' }, { title: 'Bad', status: 'published' }, ...Array(30).fill({ title: 's'.repeat(200), status: 'sketch' })],
+    brand: { name: ' Brand\u0007 name ', tagline: 't'.repeat(300), colors: ['#AABBCC', '#fff', 'red', '#112233', '#000000', '#ffffff', '#abcdef'] }, secret: 'NEVER PUBLISH' };
+  writeFileSync(path.join(boards, 'draft.json'), JSON.stringify(raw));
+  const deps = { home: f.home, scan: async () => ({ complete: true, processes: [] }), run: async () => '[]' };
+  const result = await roster(f.config, deps), draft = result.draft!;
+  assert.equal(draft.decisions.length, 16); assert.equal(draft.plan.length, 16);
+  assert.equal(draft.decisions[0], 'Decision one'); assert.equal(draft.decisions[1].length, 300);
+  assert.equal(draft.screens.length, 23); assert.equal(draft.screens[0].title, 'Screen One'); assert.equal(draft.screens[1].title.length, 120);
+  assert.equal(draft.brand.name, 'Brand name'); assert.equal(draft.brand.tagline!.length, 200);
+  assert.deepEqual(draft.brand.colors, ['#aabbcc', '#112233', '#000000', '#ffffff']);
+  assert.doesNotMatch(JSON.stringify(result), /NEVER PUBLISH/);
+  const { snapshot } = await import('../src/server/cubbies/snapshot.js');
+  assert.deepEqual(snapshot({ ...result, draft: raw }, result.observedAt)!.draft, draft);
+  assert.deepEqual(snapshot({ ...result, draft: { decisions: [null, {}, 1], screens: [null, {}, { title: 'X', status: null }], brand: null } }, result.observedAt)!.draft,
+    { decisions: [], plan: [], screens: [], brand: { colors: [] } });
+});
+
+test('draft files use the bounded no-follow reader; bad publications never forward file contents', async t => {
+  const f = fixture(t), boards = path.join(f.project, '.agent-office'); mkdirSync(boards);
+  const file = path.join(boards, 'draft.json');
+  const deps = { home: f.home, scan: async () => ({ complete: true, processes: [] }), run: async () => '[]' };
+  for (const text of ['{bad', JSON.stringify({ decisions: ['SECRET'.repeat(12000)] })]) {
+    writeFileSync(file, text);
+    const result = await roster(f.config, deps);
+    assert.equal(result.draft, undefined); assert.match(result.error!, /Draft board record unavailable/);
+    assert.doesNotMatch(JSON.stringify(result), /SECRET/);
+  }
+  rmSync(file); const outside = path.join(f.outside, 'private.json');
+  writeFileSync(outside, JSON.stringify({ decisions: ['SECRET'] })); symlinkSync(outside, file);
+  const result = await roster(f.config, deps);
+  assert.equal(result.draft, undefined); assert.match(result.error!, /Draft board record unavailable/);
+  rmSync(file);
+  assert.equal((await roster(f.config, deps)).draft, undefined);
+});
+
+test('harness designers retain their builder seat and publish the designer marker', async t => {
+  const f = fixture(t), runs = path.join(f.home, 'Library/Application Support/AgentHarness/runs'); mkdirSync(runs, { recursive: true });
+  writeFileSync(path.join(runs, '123-ab.json'), JSON.stringify({ schema: 1, pid: 123, folder: f.project, role: 'designer', provider: 'codex', title: 'Draw screens' }));
+  const result = await roster(f.config, { home: f.home, isAlive: () => true, scan: async () => ({ complete: true, processes: [] }), run: async () => '[]' });
+  assert.equal(result.agents[0].role, 'builder'); assert.equal(result.agents[0].designer, true);
+  const { snapshot } = await import('../src/server/cubbies/snapshot.js');
+  assert.equal(snapshot(result, result.observedAt)!.agents[0].designer, true);
+});

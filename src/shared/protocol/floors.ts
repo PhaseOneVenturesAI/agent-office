@@ -1,4 +1,5 @@
 import type { CubbiesState } from './cubbies.js';
+import type { DraftsState } from './drafts.js';
 // The building: its floors, going between them, and what each floor holds.
 
 import type { CabinetView } from '../cabinet.js';
@@ -63,6 +64,8 @@ export interface FloorInfo {
   people: number;
   /** How many rows its back office is built out (see WING), for the building's outside. */
   wing: number;
+  /** One of your draft floors (cubbies step 2): only ever in its owner's list. */
+  draft?: true;
 }
 
 /** How far a new floor's clone has got, from git's progress. */
@@ -99,6 +102,7 @@ export interface RepoChoice {
 
 export interface FloorView {
   cubbies: CubbiesState;
+  drafts: DraftsState;
   /** The floor you're on; null while the building has none. */
   floor: string | null;
   project: ProjectInfo | null;

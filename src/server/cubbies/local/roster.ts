@@ -1,3 +1,4 @@
+import { cleanDraftBoards } from '../../drafts/boards.js';
 import os from 'node:os';
 import path from 'node:path';
 import type { CubbyAgent, CubbyNodeFrame } from '../../../shared/protocol/cubbies.js';
@@ -97,7 +98,10 @@ export async function roster(config: LocalConfig, deps: RosterDeps = {}): Promis
     const record = jsonFile(path.join(config.project, '.agent-office/cubby.json'));
     plan = list(record.plan); needsYou = list(record.needsYou);
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') errors.push('Cubby board record unavailable'); }
-  const snapshot: Snapshot = { t: 'cubby.snapshot', floorId: config.floor, agents, plan, needsYou, observedAt: Date.now(),
+  let draft: Snapshot['draft'];
+  try { draft = cleanDraftBoards(jsonFile(path.join(config.project, '.agent-office/draft.json'))); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') errors.push('Draft board record unavailable'); }
+  const snapshot: Snapshot = { t: 'cubby.snapshot', floorId: config.floor, agents, plan, needsYou, ...(draft ? { draft } : {}), observedAt: Date.now(),
     ...(errors.length ? { error: errors.join('; ') } : {}) };
   while (Buffer.byteLength(JSON.stringify(snapshot)) > 64 * 1024 && agents.length) agents.pop();
   return snapshot;

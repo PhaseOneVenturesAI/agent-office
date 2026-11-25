@@ -10,10 +10,11 @@ export const projectView: ViewPieces['project'] = (_ctx, floor) => floor?.projec
 export const floorHandlers = {
   'floor.go'(ctx, c, msg) {
     if (msg.floor === ROOF) {
-      if (ctx.floors.size) ctx.goToRoof(c);
+      if (ctx.floorInfos(c).some(f => !f.cloning)) ctx.goToRoof(c);
       else ctx.warn(c, 'There is no building to go up on yet');
       return;
     }
+    if (!ctx.floorVisible(str(msg.floor, 64), c)) return ctx.warn(c, 'No such floor');
     const floor = ctx.floors.get(str(msg.floor, 64));
     if (!floor) ctx.warn(c, ctx.building.pending().some((d) => d.id === msg.floor) ? "That floor is still being cloned — it'll be ready in a moment" : 'No such floor');
     else ctx.goToFloor(c, floor, arrivalSpot(msg.at));
@@ -52,12 +53,14 @@ export const floorHandlers = {
     const admin = ctx.meOf(c.accountId).admin;
     const id = str(msg.floor, 64);
     const def = ctx.building.pending().find((d) => d.id === id);
+    if (!ctx.floorVisible(id, c)) return ctx.warn(c, 'No such floor');
     const err = ctx.building.cancel(id, `${who} stopped the clone`, (owner) => admin || (!!owner && owner === c.accountId));
     if (err) ctx.warn(c, err);
     else ctx.toastAll(`🛗 ${who} stopped cloning ${def?.repo ?? def?.name ?? 'a floor'}`);
   },
   'floor.remove'(ctx, c, msg) {
     const who = c.peer.name;
+    if (!ctx.floorVisible(str(msg.floor, 64), c)) return ctx.warn(c, 'No such floor');
     // Everyone's workers on it stop: admins do it.
     if (!ctx.meOf(c.accountId).admin) return ctx.warn(c, 'Only admins can take a floor off the building');
     const id = str(msg.floor, 64);

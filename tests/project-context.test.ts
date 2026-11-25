@@ -150,7 +150,7 @@ test('invalid UTF-8 is refused instead of being silently replaced during a save'
 test('route requires authentication, admin same-origin mutation, and an explicit known floor', async (t) => {
   const a = fixture(t), b = fixture(t);
   const floors = new Map([['a', { id: 'a', def: { dir: a.dir, name: 'Project A' }, docs: new Docs(a.dir) }], ['b', { id: 'b', def: { dir: b.dir, name: 'Project B' }, docs: new Docs(b.dir) }]]);
-  const ctx: any = { cfg: { port: 0, trustProxy: false }, floors, services: { lookup() {} }, auth: { fromRequest: (req: http.IncomingMessage) => req.headers.cookie ? { account: { id: req.headers.cookie } } : undefined }, meOf: (id: string) => ({ admin: id === 'admin', account: { name: id } }) };
+  const ctx: any = { floorVisible: () => true, cfg: { port: 0, trustProxy: false }, floors, services: { lookup() {} }, auth: { fromRequest: (req: http.IncomingMessage) => req.headers.cookie ? { account: { id: req.headers.cookie } } : undefined }, meOf: (id: string) => ({ admin: id === 'admin', account: { name: id } }) };
   const server = http.createServer(requestHandler(ctx, [projectContextRoute]));
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise<void>((resolve) => server.close(() => resolve())));

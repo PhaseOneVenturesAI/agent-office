@@ -50,6 +50,7 @@ export function presence(roots: readonly string[], dir = runsDir(), isAlive: (pi
         task: clean(r.title, 80) || (role === 'reviewer' ? 'Review' : 'Harness task'),
         branch: clean(r.branch),
         status: 'working',
+        ...(r.role === 'designer' ? { designer: true } : {}),
         ...(role === 'reviewer' && r.role === 'researcher' ? { progress: 'research' } : {}),
       },
     });

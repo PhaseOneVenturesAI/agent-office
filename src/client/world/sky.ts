@@ -185,6 +185,7 @@ const HAZE = /* glsl */ `
 #endif
 `;
 
+/** The office's light indoors, set afresh each frame by update(): a draft floor turns it down after (features/drafts). */ export const officeFill = (): THREE.Color => uniforms.skyOffice.value;
 // Everything with fog gets the haze above; every lit material also gets the lines before that,
 // sharing one set of uniforms. Nothing else in the office uses onBeforeCompile, so this is its
 // default; unlit ones (glass, signs, outlines) only get the haze.

@@ -21,7 +21,7 @@ This is an interactive user CLI connection, not an unattended service authentica
 
 ## Private cubbies (preview)
 
-This opt-in module is disabled unless the Office server starts with `AGENT_OFFICE_CUBBIES=1`. It adds a separate owner-chat and presence path to Satellites; ordinary `join` remains presence-only. Each cubby belongs to one Office account, one computer and one floor. Coworkers, including other admins, receive only its owner name, status lamp and working count. Its underlying Satellite record is owner-only too. Only one unconnected setup may be reserved per owner per floor; connect it before claiming another computer. Revoked accounts leave a visibly occupied “Former account” room, never a falsely free slot. They do not receive the lead name, computer name, roster, plan, decisions or chat. Watchers, draft floors, kickoff, task transfer and lite-view cubby controls are not part of step one.
+This opt-in module is disabled unless the Office server starts with `AGENT_OFFICE_CUBBIES=1`. It adds a separate owner-chat and presence path to Satellites; ordinary `join` remains presence-only. Each cubby belongs to one Office account, one computer and one floor. Coworkers, including other admins, receive only its owner name, status lamp and working count. Its underlying Satellite record is owner-only too. Only one unconnected setup may be reserved per owner per floor; connect it before claiming another computer. Revoked accounts leave a visibly occupied “Former account” room, never a falsely free slot. They do not receive the lead name, computer name, roster, plan, decisions or chat. Watchers, kickoff, task transfer and lite-view cubby controls are not part of this preview. Draft floors are described below.
 
 The owner uses **Set up** at a free cubby, names and styles its lead, and runs the displayed connection command on their computer. The local project path stays on that computer. The computer opens the outbound connection; Office does not open a port or reach into it. Existing Cloudflare Access login applies unchanged. Cubby chat requires HTTPS, except for loopback development on the same computer. If the setup token is lost, stop the local connection and press E at your offline cubby’s door to use Set up again; the old token is revoked and the room remains bound to the same computer.
 
@@ -52,6 +52,25 @@ Presence is limited to the selected Git project and actual worktrees. Direct ses
 Ctrl-C stops the connector and closes the chat path. It cancels only a native turn the connector itself owns, never another open lead. A clean disconnect greys the lamp immediately; an abrupt network loss or sleep is detected by the normal Satellite heartbeat timeout. Reconnection does not replay old messages or move work to the Office server. Turning the server flag off disables the module without deleting account credentials or native histories.
 
 The relay is a narrow extension of existing Office protocols. Alternatives reviewed were [Happy](https://github.com/slopus/happy), a broader mobile/remote agent app, and the official [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript). Neither was installed; the implementation reuses the existing WebSocket transport and locally selected native CLI.
+
+## Draft floors (preview)
+
+With `AGENT_OFFICE_CUBBIES=1`, set `AGENT_OFFICE_PROJECT_STARTERS=Jonathan` to allow that account to use **New project**. This is a comma-separated list of account names, matched case-insensitively; unset, empty, and shared-password guests allow nobody. Each draft is a local Git repository on `main` with one empty commit, under `<dataDir>/drafts/<id>`. It has no remote. Ownership and names are saved in `drafts.json` with mode `0600`; the Building registers it through `addLocal`, without cloning or replacing the office's own local floor.
+
+Only the owner sees the draft in the elevator, welcome or floor view. Other accounts (including admins) cannot ride there, arrive with `?floor=`, remove it or fetch its project files. Private locations are removed from the people list, and draft checkouts are excluded from the shared hygiene report. Turning the cubbies flag off keeps saved drafts closed and invisible. Server workers, board agents, meetings and queue hiring stay idle on drafts; work runs on the owner's computer.
+
+Press **E** at the studio table to use the existing cubby setup flow, slot `0`. A draft has exactly one cubby, its owner's. Publish the boards from the connected project's local `.agent-office/draft.json`:
+
+```json
+{
+  "decisions": ["Keep the first release small"],
+  "plan": ["Review the first screen"],
+  "screens": [{ "title": "Welcome", "status": "review" }],
+  "brand": { "name": "Project", "tagline": "A short promise", "colors": ["#336699"] }
+}
+```
+
+The connector reads only this explicit JSON file, at most 64 KiB, without following symlinks. Decisions and plan have at most 16 lines of 300 characters each; screens have at most 24 titles of 120 characters and status `sketch`, `review` or `approved`. Brand name and tagline are optional (80 and 200 characters); colors are at most six `#rrggbb` values. Text is cleaned to single lines and unknown fields are discarded. The server validates the same limits and keeps the last boards only in memory, visible only to the owner, including while the computer sleeps. Restarting the Office clears them until the connector republishes. Harness agents with role `designer` keep their builder seat and publish the designer marker used by the draft view. Kickoff is a later step.
 
 ## Existing CI runs, one watcher
 

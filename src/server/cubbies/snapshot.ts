@@ -1,3 +1,4 @@
+import { cleanDraftBoards } from '../drafts/boards.js';
 import type { CubbyAgent, CubbyNodeFrame } from '../../shared/protocol/cubbies.js';
 const roles = new Set(['lead', 'builder', 'reviewer', 'factory', 'paradev', 'direct']);
 const statuses = new Set(['idle', 'working', 'needs-you', 'unknown']);
@@ -9,9 +10,9 @@ export function snapshot(raw: Record<string, unknown>, now: number): Extract<Cub
   for (const a of raw.agents) {
     if (!a || typeof a !== 'object' || typeof a.id !== 'string' || !/^[\w:.-]{1,128}$/.test(a.id) || ids.has(a.id) || !roles.has(a.role) || !statuses.has(a.status)) return;
     ids.add(a.id);
-    agents.push({ id: a.id, tool: short(a.tool, 40), role: a.role, task: a.role === 'direct' ? `${short(a.tool, 40)} session` : short(a.task, 160), branch: short(a.branch, 120), status: a.status,
+    agents.push({ id: a.id, ...(a.designer === true ? { designer: true } : {}), tool: short(a.tool, 40), role: a.role, task: a.role === 'direct' ? `${short(a.tool, 40)} session` : short(a.task, 160), branch: short(a.branch, 120), status: a.status,
       ...(a.role !== 'direct' && typeof a.progress === 'string' ? { progress: short(a.progress, 600) } : {}),
       ...(a.role === 'factory' && typeof a.deadlineAt === 'number' && Number.isFinite(a.deadlineAt) ? { deadlineAt: a.deadlineAt } : {}) });
   }
-  return { t: 'cubby.snapshot', floorId: short(raw.floorId, 128), agents, observedAt: raw.observedAt, plan: lines(raw.plan), needsYou: lines(raw.needsYou), ...(typeof raw.error === 'string' ? { error: short(raw.error, 400) } : {}), ...(typeof raw.wake === 'string' && raw.wake.trim() ? { wake: short(raw.wake, 600) } : {}) };
+  return { ...(raw.draft !== undefined ? { draft: cleanDraftBoards(raw.draft) } : {}), t: 'cubby.snapshot', floorId: short(raw.floorId, 128), agents, observedAt: raw.observedAt, plan: lines(raw.plan), needsYou: lines(raw.needsYou), ...(typeof raw.error === 'string' ? { error: short(raw.error, 400) } : {}), ...(typeof raw.wake === 'string' && raw.wake.trim() ? { wake: short(raw.wake, 600) } : {}) };
 }

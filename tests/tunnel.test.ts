@@ -74,6 +74,7 @@ async function setup() {
   const accounts = new Accounts(mkdtempSync(path.join(os.tmpdir(), 'ao-tunnel-')));
   const cfg = { port: 0, trustProxy: false };
   const ctx = {
+    floorVisible: () => true,
     cfg,
     accounts,
     auth: new Auth(scryptSync('hunter2', salt, 32), salt, 'secret', accounts),

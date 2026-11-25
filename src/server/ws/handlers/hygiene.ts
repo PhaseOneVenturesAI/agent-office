@@ -21,10 +21,14 @@ export const hygieneHandlers = {
     void ctx.hygiene.scan();
   },
   async 'hygiene.prune'(ctx, c, msg) {
+    if (!ctx.floorVisible(str(msg.floor, 60), c)) return ctx.warn(c, 'No such floor');
+    if (ctx.floors.get(str(msg.floor, 60))?.def.draft) return ctx.warn(c, 'Draft floors have no server workers to clean up');
     if (!admin(ctx, c)) return;
     ctx.toastAll(`🧹 ${await ctx.hygiene.prune(str(msg.floor, 60))}`);
   },
   async 'hygiene.home'(ctx, c, msg) {
+    if (!ctx.floorVisible(str(msg.floor, 60), c)) return ctx.warn(c, 'No such floor');
+    if (ctx.floors.get(str(msg.floor, 60))?.def.draft) return ctx.warn(c, 'Draft floors have no server workers to clean up');
     if (!admin(ctx, c)) return;
     const floor = ctx.floors.get(str(msg.floor, 60));
     const w = floor?.workers.get(str(msg.worker, 60));

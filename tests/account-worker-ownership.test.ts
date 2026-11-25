@@ -35,7 +35,7 @@ function fixture(actor: string | undefined = 'bob', owner: string | undefined = 
   const task = {id:'task',owner,provider:'kimi'};
   const floor = {id:'floor',workers,queue:{state:()=>({tasks:[task]}),retry:()=>calls.push('retry'),remove:()=>calls.push('remove'),move:()=>calls.push('move'),clear:()=>calls.push('clear')},github:{pulls:{items:[]}},meetings:{state:()=>({current:{owner,provider:'kimi'}}),stop:()=>calls.push('stop'),clear:()=>calls.push('meeting.clear')}};
   const ctx = {
-    workerFloor: () => floor, floorOf: () => floor,
+    workerFloor: () => floor, floorOf: () => floor, floorVisible: () => true,
     signins:{officeAllowed:()=>false,officeRevoked:()=>false}, meOf:()=>({admin:true}),
     accounts:{get:(id:string)=>({name:id==='alice'?'Alice':'Bob'})},
     warn: (_c:unknown, error:unknown) => {if(error) warnings.push(String(error));},

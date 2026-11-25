@@ -40,6 +40,10 @@ export interface Cubbies {
   readonly group: THREE.Group;
   /** Each placed cubby, by slot (empty while disabled). */
   rooms(): ReadonlyMap<number, CubbyRoom>;
+  /** Opens the setup window for the cubby in `slot`, as E at a free cubby does (a draft's studio table uses it). */
+  setUp(slot: number): void;
+  /** Opens the chat with your cubby's lead, as E at the lead does. */
+  talk(cubbyId: string): void;
 }
 
 /** How long after asking to set a cubby up its token is still welcome without the setup window. */
@@ -186,6 +190,14 @@ export function installCubbies(ctx: Ctx, deps: CubbiesDeps = { aimed: () => null
     askedAt = -Infinity;
   });
 
+  function setUp(slot: number) {
+    if (setup?.open) return;
+    setup = openSetup(slot, (leadName, look) => {
+      askedAt = performance.now();
+      send({ t: 'cubbies.setup', slot, leadName, look });
+    });
+  }
+
   const at = (it: Interactable) => it as CubbyIt;
   const roomOf = (it: Interactable) => rooms.get(at(it).slot);
   const mineOf = (it: Interactable) => {
@@ -211,12 +223,8 @@ export function installCubbies(ctx: Ctx, deps: CubbiesDeps = { aimed: () => null
     },
     use: (it, k) => {
       const info = roomOf(it)?.info;
-      if (k !== 'E' || (info && (!info.mine || info.lamp !== 'asleep')) || !store.cubbies.setupAllowed || setup?.open) return;
-      const slot = at(it).slot;
-      setup = openSetup(slot, (leadName, look) => {
-        askedAt = performance.now();
-        send({ t: 'cubbies.setup', slot, leadName, look });
-      });
+      if (k !== 'E' || (info && (!info.mine || info.lamp !== 'asleep')) || !store.cubbies.setupAllowed) return;
+      setUp(at(it).slot);
     },
   });
 
@@ -268,6 +276,8 @@ export function installCubbies(ctx: Ctx, deps: CubbiesDeps = { aimed: () => null
     },
     group,
     rooms: () => rooms,
+    setUp,
+    talk: (cubbyId) => openLeadChat(windows, cubbyId),
   };
 }
 
