@@ -33,7 +33,17 @@ Back to the [README](../README.md).
 
 You can also click a nearby desk to interact with it, or click a worker in the Workers panel (**🤖 Workers**, top right) to open its terminal.
 
-On a phone, use the 2D view at `/lite` instead: a terminal there has a row of keys under it (**1** **2** **3**, the arrows, Enter, Tab, Esc, Ctrl+C) and a box to send a prompt. See [Features](features.md).
+## On a phone or touch-only tablet
+
+Choose **Stay in 3D** to walk around with on-screen controls:
+
+- Drag the bottom-left thumb-stick to walk relative to the camera. A small drag walks slowly; a full drag walks at normal speed. Release to stop.
+- Drag the right side of the scene to look up, down and around. Walk and look with two fingers at once. A tap there uses the crosshair target in first person, or selects at the tapped point in third person.
+- The bottom-right action button is **E**. Its label follows the office hint (Open, Talk, Sit, and so on). Hold and release it for actions such as shooting the basketball. A smaller **Q** button appears only when the hint offers it, for example to put a card back.
+
+The controls use the shorter screen dimension and safe-area insets, and rearrange live on rotation or when folding/unfolding between small phone and tablet sizes. Chat and hints sit above them. Windows, side panels, typing and the on-screen keyboard hide the controls and stop walking; closing them restores touch control without another scene tap. Close a side panel with its ✕ or its top-bar button to resume walking. Devices with a fine mouse pointer keep the existing desktop controls.
+
+**Open the 2D view** at `/lite` remains available for workers, boards and terminals. Its terminal has a row of keys a phone keyboard lacks (**1** **2** **3**, arrows, Enter, Tab, Esc, Ctrl+C) and a prompt box. **Stay in 3D** remembers not to show the offer again; the ☰ menu still offers 2D. See [Features](features.md).
 
 ## In a terminal
 
