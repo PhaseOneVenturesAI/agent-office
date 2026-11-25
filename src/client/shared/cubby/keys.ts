@@ -4,7 +4,7 @@ export interface OwnerDeviceKey {
   privateKey: CryptoKey;
   publicKey: string;
   fingerprint: string;
-  /** The six-digit code this device shows when it asks to be trusted (from its own key, see deviceCode). */
+  /** The 16-character code this device shows when it asks to be trusted (from its own key, see deviceCode). */
   code: string;
 }
 const pending = new Map<string, Promise<OwnerDeviceKey>>();

@@ -52,7 +52,7 @@ export function deviceSection(sends: DeviceSends | undefined, cubbyId: string, f
     if (!deviceTrusted(c, key)) {
       const waiting = it.deviceRequests?.some((r) => r.publicKey === key.publicKey) || Date.now() - asked < 60_000;
       parts.push(h('p.cb-note.cb-device-ask', {}, waiting
-        ? `Waiting for approval. This device's code is ${key.code}. On a device that already talks to ${lead}, check the code matches and press Approve, or on ${computer} run: agent-office cubby devices approve ${key.code.replace(' ', '')} --project <project folder>`
+        ? `Waiting for approval. This device's code is ${key.code}. On a device that already talks to ${lead}, check the code matches and press Approve, or on ${computer} run: agent-office cubby devices approve ${key.code.replace(/ /g, '')} --project <project folder>`
         : `This device can't talk to ${lead} yet. Ask ${computer} to trust it; a device you already use (or ${computer} itself) approves it.`));
       if (!waiting) parts.push(h('button.btn.primary.cb-device-add', { type: 'button', disabled: asleep || !sends,
         onclick: () => { asked = Date.now(); sends?.addDevice(cubbyId, key.publicKey, deviceLabel()); redraw(); } }, '📱 Add this device'));

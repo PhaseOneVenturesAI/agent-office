@@ -42,8 +42,14 @@ const chat = [
   { id: 'c1', role: 'user', text: 'What is next?', at: 1 },
   { id: 'c2', role: 'assistant', text: 'Checkout fix lands first, then the cart polish. <img src=x onerror="window.__xss=1">', at: 2 },
 ];
-/** The six-digit code for a key, as deviceCode works it out (protocol/cubbies.ts). */
-const codeOf = (key) => { const d = createHash('sha256').update(Buffer.from(key, 'base64url')).digest(); const v = String(d.readUInt32BE(0) % 1_000_000).padStart(6, '0'); return `${v.slice(0, 3)} ${v.slice(3)}`; };
+/** The 16-character code for a key, as deviceCode works it out (protocol/cubbies.ts): 80 bits in Crockford base32. */
+const codeOf = (key) => {
+  const d = createHash('sha256').update(Buffer.from(key, 'base64url')).digest();
+  let bits = '', out = '';
+  for (const b of d.subarray(0, 10)) bits += b.toString(2).padStart(8, '0');
+  for (let i = 0; i < 80; i += 5) out += '0123456789ABCDEFGHJKMNPQRSTVWXYZ'[parseInt(bits.slice(i, i + 5), 2)];
+  return out.match(/.{4}/g).join(' ');
+};
 const interior = (lamp) => ({ computerId: 'fixture-computer', ownerDevices: [{ fingerprint: ownerFingerprint, label: 'Mac', addedAt: 1 }], deviceRequests: [], computerName: 'Mac mini', leadName: 'Nova', look, agents, plan: ['Fix checkout bug', 'Cart screen polish', 'Review PR #512', 'Invoices, tasks 1-4'], needsYou: ['Approve the new cart screen?', 'Merge PR #512 after review?'], chat, observedAt: 1 });
 const cubbies = (lamp = 'working', extra = {}) => ({
   enabled: true,
