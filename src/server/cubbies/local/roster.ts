@@ -4,11 +4,12 @@ import type { CubbyAgent, CubbyNodeFrame } from '../../../shared/protocol/cubbie
 import { projectScope, type LocalConfig } from './config.js';
 import { canonical, clean, jsonFile, run, type Run } from './io.js';
 import { processes, type ProcessScan } from './processes.js';
+import { presence, runsDir } from './presence.js';
 
 type Snapshot = Extract<CubbyNodeFrame, { t: 'cubby.snapshot' }>;
 const rows = (value: any, key: string): any[] => Array.isArray(value) ? value : Array.isArray(value?.[key]) ? value[key] : [];
 const list = (value: unknown): string[] => Array.isArray(value) ? value.slice(0, 16).map((s) => clean(s, 240)).filter(Boolean) : [];
-export interface RosterDeps { run?: Run; scan?: () => Promise<ProcessScan>; home?: string }
+export interface RosterDeps { run?: Run; scan?: () => Promise<ProcessScan>; home?: string; isAlive?: (pid: number) => boolean }
 
 /** Canonical metadata only; never forward a source record wholesale. */
 export async function roster(config: LocalConfig, deps: RosterDeps = {}): Promise<Snapshot> {
@@ -45,6 +46,10 @@ export async function roster(config: LocalConfig, deps: RosterDeps = {}): Promis
     if (!matches.size && agents.length < 128) agents.push(selected);
     return selected;
   };
+  // Harness workers say what they are (builder, reviewer, factory) and their task title; first, so the
+  // process scan's bare "local session" for the same PID merges into it.
+  try { for (const p of presence(config.roots, runsDir(home), deps.isAlive)) add(p.agent, p.pid); }
+  catch { errors.push('Harness presence unavailable'); }
   try {
     const f = jsonFile(path.join(home, 'Library/Application Support/AgentHarness/factory/active-run.json'));
     const root = scoped(f.worktree) ?? scoped(f.repository);
@@ -55,6 +60,9 @@ export async function roster(config: LocalConfig, deps: RosterDeps = {}): Promis
         status: live && f.phase === 'running' ? 'working' : 'unknown',
         ...(typeof f.deadline === 'number' && Number.isFinite(f.deadline) ? { deadlineAt: f.deadline * 1000 } : {}) }, live?.pid ?? f.pid);
       if (live && live.ppid === f.pid) ids.set(`pid:${live.ppid}`, agent);
+      // A harness presence record for the same run wins the merge; keep the factory's clock on it.
+      if (agent.deadlineAt === undefined && typeof f.deadline === 'number' && Number.isFinite(f.deadline)) agent.deadlineAt = f.deadline * 1000;
+      if (agent.role !== 'factory') agent.role = 'factory';
     }
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') errors.push('Factory metadata unavailable'); }
   try {
@@ -78,7 +86,9 @@ export async function roster(config: LocalConfig, deps: RosterDeps = {}): Promis
   } catch { errors.push('Paradev metadata unavailable'); }
   for (const p of scan.processes) {
     if (!scoped(p.cwd)) continue;
-    add({ id: `pid:${p.pid}`, tool: p.tool, role: 'direct', task: `${p.tool} session`,
+    // The lead's own session (the bridge's, open in its app) is the room's lead, not a stray local session.
+    const isLead = !!config.bridge && p.session === config.session;
+    add({ id: isLead ? `lead:${config.session}` : `pid:${p.pid}`, tool: p.tool, role: isLead ? 'lead' : 'direct', task: isLead ? 'Project lead' : `${p.tool} session`,
       branch: clean(config.branches.get(p.cwd)), status: 'unknown' }, p.pid, p.session);
   }
   let plan: string[] = [], needsYou: string[] = [];

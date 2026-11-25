@@ -107,6 +107,7 @@ export class Cubbies {
         const next = snapshot(f, this.now());
         if (!next || next.observedAt < (live.interior.observedAt ?? 0)) return true;
         Object.assign(live.interior, { agents: next.agents, plan: next.plan, needsYou: next.needsYou, observedAt: next.observedAt, error: next.error });
+        if (next.wake) this.line(live, { id: id(), role: 'notice', text: `💤→☀️ ${next.wake}`, at: this.now() });
       } else if (f.t === 'cubby.reply') {
         if (!live.pending || live.pending.id !== f.requestId || typeof f.text !== 'string') return true;
         this.line(live, { id: id(), role: f.error ? 'notice' : 'assistant', text: short(f.text, 12000), at: this.now() }); live.pending = undefined;

@@ -7,6 +7,9 @@ import { clean } from './io.js';
 import { projectLock } from './lock.js';
 import { LeadError, NativeLead, type Lead } from './lead.js';
 import { roster } from './roster.js';
+import { BridgeLead } from './bridge.js';
+import { commitsSince, headOf, loadSeen, saveSeen, wakeSummary } from './wake.js';
+import { run } from './io.js';
 
 type Send = (frame: CubbyNodeFrame) => void;
 const bindingKeys = ['cubbyId', 'floorId', 'ownerId', 'connectionId'] as const;
@@ -14,6 +17,11 @@ const MAX_SEEN = 16_384;
 export interface ConnectorDeps {
   lead?: Lead; snapshot?: () => Promise<Extract<CubbyNodeFrame, { t: 'cubby.snapshot' }>>; now?: () => number;
   release?: () => void;
+  /** The project's HEAD now, for the wake summary's commit count (default: git). */
+  head?: () => Promise<string | undefined>;
+  commits?: (from?: string, to?: string) => Promise<number | undefined>;
+  /** What was last seen before going away (tests; otherwise read from the local state). */
+  seen?: () => import('./wake.js').Seen | undefined;
 }
 
 /** One object survives websocket reconnects; no queue and no automatic work resume. */
@@ -31,12 +39,14 @@ export class CubbyConnector {
   private key: string;
   private closed = false;
   private polling = false;
+  /** Set by each new binding: its first snapshot says what changed while the cubby was away. */
+  private waking = false;
   constructor(private config: LocalConfig, token: string, private deps: ConnectorDeps = {}) {
     this.key = cubbyKey(token); this.now = deps.now ?? Date.now;
     this.release = deps.release ?? projectLock(config.state);
     try { if (!deps.release) persistSelection(config); }
     catch (error) { this.release(); throw error; }
-    this.lead = deps.lead ?? new NativeLead(config);
+    this.lead = deps.lead ?? (config.bridge ? new BridgeLead(config.state) : new NativeLead(config));
   }
   get notice() { return this.lead.blocker; }
   connected(send: Send, computerName = os.hostname()): void {
@@ -61,6 +71,7 @@ export class CubbyConnector {
       if (this.binding || this.connections.has(frame.connectionId) || this.connections.size >= MAX_SEEN) return;
       this.connections.add(frame.connectionId);
       this.binding = Object.fromEntries(bindingKeys.map((key) => [key, frame[key]])) as unknown as CubbyBinding;
+      this.waking = true;
       void this.snapshot();
       this.timer = setInterval(() => void this.snapshot(), 15_000);
       return;
@@ -97,6 +108,16 @@ export class CubbyConnector {
       if (this.lead.busy) frame.agents = frame.agents.filter((a) => a.role !== 'lead').slice(0, 127).concat({
         id: `lead:${this.config.session}`, tool: this.config.provider, role: 'lead', task: 'Owner chat',
         branch: clean(this.config.branches.get(this.config.project)), status: 'working' });
+      if (generation !== this.generation || !this.binding) return;
+      const head = await (this.deps.head?.() ?? headOf(this.config.project, run));
+      if (this.waking) {
+        this.waking = false;
+        const before = this.deps.snapshot ? undefined : loadSeen(this.config.state);
+        const commits = await (this.deps.commits?.(before?.head, head) ?? commitsSince(this.config.project, before?.head, head, run));
+        const wake = wakeSummary(before ?? this.deps.seen?.(), frame.agents, this.now(), commits);
+        if (wake) frame.wake = wake;
+      }
+      if (!this.deps.snapshot) saveSeen(this.config.state, { at: this.now(), head, agents: frame.agents.map(({ id, tool, role, task, status }) => ({ id, tool, role, task, status })) });
       if (generation === this.generation && this.binding && Buffer.byteLength(JSON.stringify(frame)) <= 64 * 1024) this.send?.(frame);
     } catch { /* source failure is retried at the next bounded interval */ }
     finally { this.polling = false; }

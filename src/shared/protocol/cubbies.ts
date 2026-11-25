@@ -47,7 +47,7 @@ export type CubbiesServerMsg =
 /** Bound to one authenticated satellite and a locally chosen project folder. */
 export type CubbyNodeFrame =
   | { t: 'cubby.hello'; floorId: string; computerId: string; computerName: string }
-  | { t: 'cubby.snapshot'; floorId: string; agents: CubbyAgent[]; plan: string[]; needsYou: string[]; observedAt: number; error?: string }
+  | { t: 'cubby.snapshot'; floorId: string; agents: CubbyAgent[]; plan: string[]; needsYou: string[]; observedAt: number; error?: string; wake?: string }
   | { t: 'cubby.reply'; floorId: string; requestId: string; text: string; error?: boolean };
 export interface CubbyBinding { cubbyId: string; floorId: string; ownerId: string; connectionId: string }
 export type CubbyRelayFrame =

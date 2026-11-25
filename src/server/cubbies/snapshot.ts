@@ -13,5 +13,5 @@ export function snapshot(raw: Record<string, unknown>, now: number): Extract<Cub
       ...(a.role !== 'direct' && typeof a.progress === 'string' ? { progress: short(a.progress, 600) } : {}),
       ...(a.role === 'factory' && typeof a.deadlineAt === 'number' && Number.isFinite(a.deadlineAt) ? { deadlineAt: a.deadlineAt } : {}) });
   }
-  return { t: 'cubby.snapshot', floorId: short(raw.floorId, 128), agents, observedAt: raw.observedAt, plan: lines(raw.plan), needsYou: lines(raw.needsYou), ...(typeof raw.error === 'string' ? { error: short(raw.error, 400) } : {}) };
+  return { t: 'cubby.snapshot', floorId: short(raw.floorId, 128), agents, observedAt: raw.observedAt, plan: lines(raw.plan), needsYou: lines(raw.needsYou), ...(typeof raw.error === 'string' ? { error: short(raw.error, 400) } : {}), ...(typeof raw.wake === 'string' && raw.wake.trim() ? { wake: short(raw.wake, 600) } : {}) };
 }

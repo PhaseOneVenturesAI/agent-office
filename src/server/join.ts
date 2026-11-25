@@ -37,6 +37,8 @@ Options:
   --lead-session <UUID>  Existing native session; never forks the conversation
   --lead-profile personal|phase-one  Local Claude subscription profile
   --new-lead     Locally authorize a new persistent lead only if none is recorded
+  --lead-bridge  Talk to the project's lead session already running here (it runs
+                 agent-office cubby wait); never starts a second lead
   -h, --help      Show this help
 `;
 
@@ -133,6 +135,7 @@ export async function joinCommand(argv: string[]): Promise<number> {
       else if (a === '--lead-session') local.session = value();
       else if (a === '--lead-profile') local.profile = value();
       else if (a === '--new-lead') local.newLead = true;
+      else if (a === '--lead-bridge') local.bridge = true;
       else if (a.startsWith('-')) throw new Error(`unknown option ${a}`);
       else if (url) throw new Error(`one office at a time: ${url} or ${a}?`);
       else url = a;

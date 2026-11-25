@@ -6,11 +6,14 @@ import { canonical, jsonFile, run, uuid, type Run } from './io.js';
 
 export interface LocalOptions {
   floor?: string; project?: string; provider?: string; session?: string; profile?: string; newLead?: boolean;
+  /** The lead is the project's session already running here (the Claude app, say), reached through the bridge. */
+  bridge?: boolean;
 }
 export interface LocalConfig {
   floor: string; project: string; roots: string[]; branches: Map<string, string>; state: string;
   computerId: string; provider: 'claude' | 'codex'; session: string;
   executable: string; claudeHome: string; fresh: boolean;
+  bridge?: boolean;
 }
 
 export async function projectScope(project: string, execute: Run = run) {
@@ -35,6 +38,7 @@ export async function configure(options: LocalOptions, home = os.homedir(), exec
   if (options.profile && !['personal', 'phase-one'].includes(options.profile)) throw new Error('--lead-profile must be personal or phase-one');
   if (options.session && !uuid(options.session)) throw new Error('--lead-session must be a UUID');
   if (options.session && options.newLead) throw new Error('Choose an existing session or --new-lead, not both');
+  if (options.bridge && options.newLead) throw new Error('--lead-bridge talks to the running lead; it never starts a new one');
   const scope = await projectScope(options.project, execute);
   const registryPath = path.join(home, 'Documents/AgentHarness/projects.json');
   let entry: any;
@@ -81,7 +85,8 @@ export async function configure(options: LocalOptions, home = os.homedir(), exec
   const claudeHome = profile === 'phase-one' ? path.join(home, '.claude-phase-one-ventures') : profile === 'personal'
     ? path.join(home, '.claude') : process.env.CLAUDE_CONFIG_DIR ?? path.join(home, '.claude');
   return { ...scope, floor: options.floor, state, computerId, provider, session: session ?? randomUUID(),
-    executable: profile ? `claude-${profile}` : provider, claudeHome, fresh: !session || saved?.authorizedNew === true };
+    executable: profile ? `claude-${profile}` : provider, claudeHome, fresh: !options.bridge && (!session || saved?.authorizedNew === true),
+    ...(options.bridge ? { bridge: true } : {}) };
 }
 
 /** Called only under the project lock, before accepting any inbound chat. */
