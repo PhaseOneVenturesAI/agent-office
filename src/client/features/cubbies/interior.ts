@@ -369,7 +369,7 @@ export class Interior {
 }
 
 /**
- * A cubby is about 3 by 2.5 m, so the office's full-size name tags and task cards would fill the view
+ * A cubby is about 4.4 by 2.9 m, so the office's full-size name tags and task cards would fill the view
  * from its doorway. Each label a helper draws (a sprite, redrawn whenever it changes) is shown at half
  * size here, once.
  */
