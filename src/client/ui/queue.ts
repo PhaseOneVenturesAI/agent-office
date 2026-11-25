@@ -3,7 +3,7 @@ import { openDelivery } from './delivery';
 import type { AgentProvider, QueueTask, Usage } from '../../shared/protocol';
 import type { Net } from '../net';
 import { store } from '../state';
-import { h, openModal, timeAgo, STATUS_LABEL } from './dom';
+import { clip, h, openModal, timeAgo, STATUS_LABEL } from './dom';
 import { confirmDialog } from './prompt';
 import { providerPicker, providerLabel, providerUsageState, providerWaitingLabel, resolvedProvider, modelBadge } from './provider';
 import { officeFull } from '../../shared/machine';
@@ -16,10 +16,23 @@ export interface QueueActions {
 
 /** The queue task's name, linked to its GitHub issue when it has one. */
 function taskTitle(t: QueueTask): HTMLElement {
-  if (t.issue === undefined) return h('div.queue-title', { title: t.prompt }, t.title);
+  if (t.issue === undefined) return h('div.queue-title', {}, t.title);
   const issue = store.issues.items.find((i) => i.number === t.issue);
   const text = t.title.startsWith(`#${t.issue}`) ? t.title : `#${t.issue} ${t.title}`;
-  return h('div.queue-title', { title: t.prompt }, issue ? h('a', { href: issue.url, target: '_blank', rel: 'noopener' }, text) : text);
+  return h('div.queue-title', {}, issue ? h('a', { href: issue.url, target: '_blank', rel: 'noopener' }, text) : text);
+}
+
+/** The task's full prompt behind a disclosure: the first line peeks from the collapsed row, and the list
+ * re-renders on every store update, so what's open is remembered by task id rather than left in the DOM. */
+function taskDetails(t: QueueTask, expanded: Set<string>): HTMLElement {
+  const peek = clip(t.prompt.replace(/\s+/g, ' ').trim(), 100);
+  const details = h('details.queue-details', {}, h('summary', {}, h('span.peek', { title: peek }, peek || t.title)), h('pre.queue-prompt', {}, t.prompt));
+  details.addEventListener('toggle', () => {
+    if (details.open) expanded.add(t.id);
+    else expanded.delete(t.id);
+  });
+  details.open = expanded.has(t.id);
+  return details;
 }
 
 function outcome(t: QueueTask): string {
@@ -86,6 +99,9 @@ export function openQueue(net: Net, actions: QueueActions) {
     return h('div', {}, h('h4', {}, title, h('span.count', {}, String(tasks.length)), extra ?? null), h('ul.queue-list', {}, ...tasks.map(row)));
   };
 
+  // Which prompts are open, by task id: the list below re-renders on every store update.
+  const expanded = new Set<string>();
+
   const row = (t: QueueTask): HTMLElement => {
     const w = t.workerId ? store.workers.get(t.workerId) : undefined;
     const meta: string[] = [];
@@ -142,7 +158,7 @@ export function openQueue(net: Net, actions: QueueActions) {
       'li',
       { class: t.status },
       pos ? h('span.pos', {}, pos) : null,
-      h('div.queue-main', {}, taskTitle(t), h('div.queue-meta', {}, meta.join(' · '))),
+      h('div.queue-main', {}, taskTitle(t), h('div.queue-meta', {}, meta.join(' · ')), taskDetails(t, expanded)),
       h('div.queue-actions', {}, ...buttons),
     );
   };

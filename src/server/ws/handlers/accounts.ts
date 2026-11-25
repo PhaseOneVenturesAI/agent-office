@@ -40,7 +40,7 @@ export const accountsHandlers = {
     ctx.toastAll(`${who} revoked ${a.name}'s account`);
     ctx.accountsChanged(); // signs them out everywhere
     ctx.signins.forget(a.id); // and their Claude and GitHub sign-ins go with the account
-    ctx.accountLimits.get(a.id)?.reader.close();
+    ctx.accountLimits.get(a.id)?.hub.close();
     ctx.accountLimits.delete(a.id);
   },
   'accounts.role'(ctx, c, msg) {

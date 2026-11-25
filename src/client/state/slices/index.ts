@@ -21,6 +21,7 @@ import { floorPlan } from './floor-plan';
 import { hygiene } from './hygiene';
 import { jail } from './jail';
 import { jukebox } from './jukebox';
+import { tv } from './tv';
 import { leaveOnMerge } from './leave-on-merge';
 import { machine } from './machine';
 import { map } from './map';
@@ -69,4 +70,5 @@ export const SLICES: readonly Slice[] = [
   hygiene,
   costwall,
   nodes,
+  tv,
 ];

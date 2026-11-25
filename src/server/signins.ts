@@ -125,14 +125,13 @@ export class SignIns {
   }
 
   /**
-   * Changes whenever what `id`'s Claude signs in with changes (to read its plan's limits afresh).
-   * Undefined when it's the office's own.
+   * Changes whenever what `id` signs in to `which` with changes (to read that plan's limits
+   * afresh). Always set for an account: everyone's workers run on their own sign-ins.
    */
-  claudeKey(id: string): string | undefined {
+  planKey(id: string, which: 'claude' | 'kimi' | 'codex'): string {
     const s = this.load(id);
-    const how = this.how(id, s, 'claude');
-    if (how === 'office') return undefined;
-    return `${how}:${s.claude?.use === 'token' ? s.claude.token.slice(-12) : ''}:${s.seen?.claude ?? ''}`;
+    const saved = s[which];
+    return `${this.how(id, s, which)}:${saved?.use === 'token' ? saved.token.slice(-12) : ''}:${s.seen?.[which] ?? ''}`;
   }
 
   /** The GitHub login `id` acts as (for "you" on comments); undefined when it's the office's own or none. */

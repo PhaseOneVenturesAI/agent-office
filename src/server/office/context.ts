@@ -19,7 +19,7 @@ import type { Upgrader } from '../upgrade.js';
 import type { Services } from '../services.js';
 import type { ImageProxy } from '../decor.js';
 import type { Ledger } from '../usage.js';
-import type { PlanLimitsReader } from '../limits.js';
+import type { LimitsHub } from '../limits/index.js';
 import type { Webhook } from '../webhook.js';
 import type { Machine } from '../machine.js';
 import type { Building, FloorDef } from '../building.js';
@@ -80,14 +80,14 @@ export interface BuildingServices {
   deliveries: Deliveries;
   /** Cloudflare Access sign-in, when the office runs behind it (see server/cloudflare.ts). */
   cloudflare?: CloudflareAccess;
-  /** The office's own Claude plan limits. */
-  limits: PlanLimitsReader;
-  /** Each account's own, once it runs on a Claude sign-in of its own. */
-  accountLimits: Map<string, { key: string; reader: PlanLimitsReader }>;
+  /** The office's own plan limits, one reader per provider that can report them. */
+  limits: LimitsHub;
+  /** Each account's own, once it runs on sign-ins of its own. */
+  accountLimits: Map<string, { key: string; hub: LimitsHub }>;
   webhook: Webhook;
   machine: Machine;
-  /** Whose plan `c` sees: their own, on an account with its own Claude sign-in; else the office's. */
-  limitsOf(c: Client): PlanLimitsReader;
+  /** Whose plans `c` sees: their own, on an account with sign-ins of its own; else the office's. */
+  limitsOf(c: Client): LimitsHub;
   /** Queues everywhere may be waiting for room under the worker limit: let them look again. */
   pumpQueues(except?: Floor): void;
 }

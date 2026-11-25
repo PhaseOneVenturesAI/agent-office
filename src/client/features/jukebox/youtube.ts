@@ -2,50 +2,7 @@
 // play, so it goes through YouTube's own embedded player, kept out of sight, which the jukebox drives
 // like it drives an <audio> element: play, volume, seek, and whether it's paused.
 
-/** The bits of YouTube's IFrame Player API the jukebox uses. */
-interface YTPlayer {
-  playVideo(): void;
-  stopVideo(): void;
-  seekTo(seconds: number, allowSeekAhead: boolean): void;
-  setVolume(volume: number): void;
-  getDuration(): number;
-  destroy(): void;
-}
-interface YTNamespace {
-  Player: new (el: HTMLIFrameElement, opts: { events: Record<string, (e: { data: number; target: YTPlayer }) => void> }) => YTPlayer;
-}
-declare global {
-  interface Window {
-    YT?: YTNamespace;
-    onYouTubeIframeAPIReady?: () => void;
-  }
-}
-
-const PLAYING = 1;
-const ENDED = 0;
-
-let api: Promise<YTNamespace> | null = null;
-
-/** YouTube's player API, loaded once. */
-function loadApi(): Promise<YTNamespace> {
-  if (window.YT?.Player) return Promise.resolve(window.YT);
-  api ??= new Promise<YTNamespace>((resolve, reject) => {
-    const before = window.onYouTubeIframeAPIReady;
-    window.onYouTubeIframeAPIReady = () => {
-      before?.();
-      if (window.YT) resolve(window.YT);
-    };
-    const s = document.createElement('script');
-    s.src = 'https://www.youtube.com/iframe_api';
-    s.async = true;
-    s.onerror = () => {
-      api = null;
-      reject(new Error('YouTube player failed to load'));
-    };
-    document.head.append(s);
-  });
-  return api;
-}
+import { YT_ENDED as ENDED, YT_PLAYING as PLAYING, loadYouTubeApi as loadApi, youTubeFrame, type YTPlayer } from '../../core/youtube';
 
 /** Why a video won't play, from the player's error code. */
 function why(code: number): string {
@@ -76,15 +33,7 @@ export class YouTubeStream {
     this.box = document.createElement('div');
     this.box.setAttribute('aria-hidden', 'true');
     this.box.style.cssText = 'position:fixed;left:-10000px;top:0;width:320px;height:180px;opacity:0;pointer-events:none;';
-    const frame = document.createElement('iframe');
-    frame.width = '320';
-    frame.height = '180';
-    frame.allow = 'autoplay; encrypted-media';
-    // The office's pages send no referrer, and YouTube's player refuses to play without one (error 153).
-    frame.referrerPolicy = 'strict-origin-when-cross-origin';
-    frame.tabIndex = -1;
-    const q = new URLSearchParams({ enablejsapi: '1', origin: location.origin, playsinline: '1', controls: '0', rel: '0' });
-    frame.src = `https://www.youtube.com/embed/${id}?${q}`;
+    const frame = youTubeFrame(id, 320, 180);
     this.box.append(frame);
     document.body.append(this.box);
 
