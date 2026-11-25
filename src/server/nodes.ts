@@ -51,7 +51,16 @@ interface LiveNode extends SavedNode {
   lastSeen: number;
 }
 
+export type NodeExtension = (nodeId: string, owner: string | undefined, frame: unknown) => boolean;
+
 export class Nodes {
+  extension?: NodeExtension;
+  isOnline(id: string): boolean { const n = this.nodes.get(id); return !!n?.ws && n.lastSeen > 0 && Date.now() - n.lastSeen < STALE_MS; }
+  sendSigned(id: string, frame: (tokenHash: string) => unknown): boolean {
+    const n = this.nodes.get(id); if (!n || !this.isOnline(id) || n.ws!.readyState !== 1) return false;
+    try { n.ws!.send(JSON.stringify(frame(n.token))); return true; } catch { return false; }
+  }
+
   private file: string;
   private nodes = new Map<string, LiveNode>();
   private sweeper: NodeJS.Timeout;
@@ -155,6 +164,7 @@ export class Nodes {
     }
     node.ws = ws;
     node.lastSeen = 0;
+    this.onChange(); // Invalidate extensions before a replacement socket can say hello.
     let helloReceived = false;
     const greeted = setTimeout(() => ws.close(4003, 'no hello'), 10_000);
     ws.on('message', (raw) => {
@@ -186,6 +196,7 @@ export class Nodes {
           this.save();
         }
       } else if (frame.t !== 'ping') {
+        this.extension?.(node.id, node.owner, frame);
         return;
       }
       node.lastSeen = Date.now();
