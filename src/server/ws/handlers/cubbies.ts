@@ -1,9 +1,10 @@
+import { addQueueTask } from './queue.js';
 import { draftsChanged } from './drafts.js';
 import type { CubbiesClientMsg } from '../../../shared/protocol/cubbies.js';
 import type { Ctx } from '../../office/context.js';
 import type { Client } from '../../office/client.js';
-import type { HandlerMap, ViewPieces } from './types.js';
-export const cubbiesView: ViewPieces['cubbies'] = (ctx, floor, c) => ctx.cubbies?.state(floor?.id, c.accountId) ?? { enabled: false, cubbies: [], setupAllowed: false };
+import type { FeatureHooks, HandlerMap, ViewPieces } from './types.js';
+export const cubbiesView: ViewPieces['cubbies'] = (ctx, floor, c) => ctx.cubbies?.state(floor?.id, c.out ? undefined : c.accountId, c.id) ?? { enabled: false, cubbies: [], setupAllowed: false };
 const last = new WeakMap<Client, string>();
 export function cubbiesChanged(ctx: Ctx) {
   draftsChanged(ctx);
@@ -28,9 +29,53 @@ export const cubbiesHandlers = {
     try { ctx.cubbies.chat(floor.id, c.accountId, msg.id, msg); }
     catch (e) { ctx.warn(c, (e as Error).message); }
   },
-  // Cubbies step 4 placeholders: off until the sharing module lands.
-  'cubbies.knock'(ctx, c) { ctx.warn(c, 'Knocking is not switched on yet'); },
-  'cubbies.admit'(ctx, c) { ctx.warn(c, 'Knocking is not switched on yet'); },
-  'cubbies.leave'() {},
-  'cubbies.sendTask'(ctx, c) { ctx.warn(c, 'Sending tasks to the floor is not switched on yet'); },
+  'cubbies.knock'(ctx, c, msg) {
+    try {
+      const floor = signedInFloor(ctx, c);
+      const { owner, by } = ctx.cubbies.knock(floor.id, c.accountId!, msg.id, c.id);
+      for (const client of ctx.clients.values()) if (!client.out && client.accountId === owner) {
+        ctx.sendTo(client, { t: 'cubbies.knocked', id: msg.id, by });
+      }
+    } catch (e) { ctx.warn(c, (e as Error).message); }
+  },
+  'cubbies.admit'(ctx, c, msg) {
+    try {
+      const floor = signedInFloor(ctx, c);
+      const clients = ctx.cubbies.admit(floor.id, c.accountId!, msg.id, msg.accountId, msg.allow);
+      for (const id of clients) {
+        const client = ctx.clients.get(id);
+        if (client && !client.out) ctx.sendTo(client, { t: 'cubbies.answer', id: msg.id, allow: msg.allow });
+      }
+    } catch (e) { ctx.warn(c, (e as Error).message); }
+  },
+  'cubbies.leave'(ctx, c, msg) {
+    if (typeof msg.id === 'string') ctx.cubbies.leave(c.id, msg.id);
+  },
+  'cubbies.sendTask'(ctx, c, msg) {
+    // Sign-in can finish asynchronously: check ownership and the floor again before enqueueing.
+    const validate = () => {
+      const floor = signedInFloor(ctx, c);
+      return ctx.cubbies.task(floor.id, c.accountId!, msg.id, msg.title, msg.prompt);
+    };
+    try {
+      const task = validate();
+      addQueueTask(ctx, c, { t: 'queue.add', ...task },
+        () => ctx.sendTo(c, { t: 'cubbies.taskSent', id: msg.id, title: task.title }),
+        () => { try { validate(); return true; } catch (e) { ctx.warn(c, (e as Error).message); return false; } });
+    } catch (e) { ctx.warn(c, (e as Error).message); }
+  },
 } satisfies HandlerMap<CubbiesClientMsg>;
+
+function signedInFloor(ctx: Ctx, c: Client) {
+  const floor = ctx.floorOf(c);
+  if (c.out || !c.accountId || !floor) throw Error('Sign in on the cubby’s floor first');
+  return floor;
+}
+export const cubbiesHooks: FeatureHooks = {
+  leaving(ctx, c) {
+    if (!ctx.cubbies?.enabled) return;
+    ctx.cubbies.leave(c.id);
+    return () => cubbiesChanged(ctx);
+  },
+  closed: (ctx, c) => ctx.cubbies?.leave(c.id),
+};
