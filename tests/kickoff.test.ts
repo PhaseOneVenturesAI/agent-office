@@ -205,3 +205,11 @@ test('a floor persistence failure rolls back the successful local push and launc
   f.building.launchDraft = launch;
   await f.kickoff(); assert.equal(f.def.draft, undefined);
 });
+
+test('an owner taken off the project starters can no longer kick off', async t => {
+  const f = fixture(t), head = f.git('rev-parse', 'HEAD');
+  (f.drafts as any).starters = new Set();
+  await f.kickoff(f.alice);
+  assert.match(f.alice.ws.sent.at(-1).error, /Only designated project starters/);
+  assert.equal(f.def.draft, true); assert.equal(f.git('rev-parse', 'HEAD'), head); assert.equal(existsSync(f.remote), false);
+});
