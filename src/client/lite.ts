@@ -25,6 +25,7 @@ import { openQueue } from './ui/queue';
 import { openAsk } from './ui/ask';
 import { openMeeting, type MeetingPreset } from './ui/meeting';
 import { openSignIns } from './ui/signins';
+import { initShare, routeShareMessage } from './ui/share';
 import { modelBadge, providerLabel } from './ui/provider';
 import { byUrgency, waitingInOrder, waitingLabel } from './nextup';
 import { askNotifyPermission, DesktopNotifier, notifyPermission, waitingOnSomeone } from './notify';
@@ -50,12 +51,14 @@ const notifier = new DesktopNotifier(() => settings.notify, (id) => openWorker(i
 let bootVersion = '';
 
 net.onStatus((up) => $('conn').classList.toggle('hidden', up));
+initShare(net);
 net.onMessage((msg) => {
   store.apply(msg);
   routeTerminalMessage(msg);
   routeChangesMessage(msg);
   routePullMessage(msg);
   routeWorktreeMessage(msg);
+  routeShareMessage(msg);
   switch (msg.t) {
     case 'welcome': {
       // Back from a restart on another version: this page's code is stale, so load the new one.
@@ -259,8 +262,8 @@ function promptWorker(id: string) {
 }
 
 // ---- New work: a prompt for a worker who's here, or a new one at a free desk -------------------
-function hire(deskId: string, prompt: string, worktree: boolean, provider?: AgentProvider, model?: string, effort?: AgentEffort, repos?: string[], issue?: number) {
-  net.send({ t: 'worker.spawn', deskId, prompt, worktree, provider, model, effort, issue, repos: repos?.length ? repos : undefined });
+function hire(deskId: string, prompt: string, worktree: boolean, provider?: AgentProvider, model?: string, effort?: AgentEffort, repos?: string[], issue?: number, sharedWith?: string[]) {
+  net.send({ t: 'worker.spawn', deskId, prompt, worktree, provider, model, effort, issue, repos: repos?.length ? repos : undefined, sharedWith: sharedWith?.length ? sharedWith : undefined });
 }
 
 /** With `issue`, the worker the prompt goes to takes that GitHub issue. */
@@ -278,9 +281,9 @@ function sendToWorker(title: string, text: { context?: string; initial?: string 
     worktreeOption: !!store.project.branch,
     providerOption: true,
     repoOptions: repoChoices(),
-    onSubmit: (prompt, to, worktree, provider, model, effort, repos) => {
+    onSubmit: (prompt, to, worktree, provider, model, effort, repos, sharedWith) => {
       if (to) net.send({ t: 'worker.prompt', workerId: to, prompt, issue });
-      else if (desk) hire(desk, prompt, worktree, provider, model, effort, repos, issue);
+      else if (desk) hire(desk, prompt, worktree, provider, model, effort, repos, issue, sharedWith);
     },
   });
 }
