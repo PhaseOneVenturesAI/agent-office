@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { BALCONY_DOOR, EXIT_DOOR, FLOOR, WALL_HEIGHT, WALL_T, WINDOWS, WING, type Opening, type Side } from '../../../shared/layout';
+import { CUBBY_DOORWAY } from '../../../shared/cubbyhall';
 import type { NightParts } from '../outside';
 import { mergeByMaterial, mesh, textPlane, toon } from '../toon';
 import type { Collider } from '../types';
@@ -315,7 +316,8 @@ export function wallRun(into: THREE.Group, cols: Collider[], axis: 'x' | 'z', at
 /** Outside walls, with real windows you see out of and a door out, and the glass doors out to the balcony. */
 export const walls: Fixture = (site) => {
   const night = site.get('night');
-  const openings = [...WINDOWS, EXIT_DOOR, BALCONY_DOOR];
+  // The cubby hall's doorway is walled up by its own plug (features/cubbies/hall.ts) until the floor has one.
+  const openings = [...WINDOWS, EXIT_DOOR, BALCONY_DOOR, CUBBY_DOORWAY];
   buildWalls(site.group, site.colliders, openings, site.looks);
   const glazing = new THREE.Group();
   for (const o of WINDOWS) {
