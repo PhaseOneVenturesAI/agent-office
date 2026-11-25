@@ -5,7 +5,8 @@ const lines = (v: unknown) => Array.isArray(v) ? v.slice(0, 16).map(s => text(s,
 /** A card id: the one draft.json gives, else one made from the title; unique within the board. */
 function cardId(raw: unknown, title: string, taken: Set<string>): string {
   let id = (typeof raw === 'string' && /^[\w-]{1,64}$/.test(raw) ? raw : title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48)) || 'card';
-  for (let n = 2; taken.has(id); n++) id = `${id.replace(/-\d+$/, '')}-${n}`;
+  const base = id;
+  for (let n = 2; taken.has(id); n++) { const suffix = `-${n}`; id = base.slice(0, 64 - suffix.length) + suffix; }
   taken.add(id);
   return id;
 }

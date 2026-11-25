@@ -24,7 +24,7 @@ function kept(state: unknown) {
   s.apply({ t: 'drafts', state } as never);
   return s.drafts;
 }
-const here = { id: 'draft-1', name: 'Kindly', createdAt: 1, online: true, designers: 0, boards: { decisions: [], plan: [], screens: [], brand: { colors: [] } } };
+const here = { id: 'draft-1', name: 'Kindly', createdAt: 1, online: true, designers: 0, boards: { ideas: [], decisions: [], plan: [], screens: [], brand: { colors: [] } } };
 const launched = { name: 'Kindly', at: 5, repo: 'PhaseOneVenturesAI/kindly', brand: { name: 'Kindly', tagline: 'Your family’s week, in one calm place', colors: ['#ef476f', '#ffd166'] }, screens: ['Home', 'Calendar'] };
 
 test('the store keeps canKickoff and what a kicked-off floor keeps, cleaned', () => {

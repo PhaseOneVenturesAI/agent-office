@@ -1,4 +1,4 @@
-import { cleanDraftBoards } from '../../drafts/boards.js';
+import { localDesign } from './design.js';
 import os from 'node:os';
 import path from 'node:path';
 import type { CubbyAgent, CubbyNodeFrame } from '../../../shared/protocol/cubbies.js';
@@ -99,7 +99,7 @@ export async function roster(config: LocalConfig, deps: RosterDeps = {}): Promis
     plan = list(record.plan); needsYou = list(record.needsYou);
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') errors.push('Cubby board record unavailable'); }
   let draft: Snapshot['draft'];
-  try { draft = cleanDraftBoards(jsonFile(path.join(config.project, '.agent-office/draft.json'))); }
+  try { draft = localDesign(config.project).boards; }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') errors.push('Draft board record unavailable'); }
   const snapshot: Snapshot = { t: 'cubby.snapshot', floorId: config.floor, agents, plan, needsYou, ...(draft ? { draft } : {}), observedAt: Date.now(),
     ...(errors.length ? { error: errors.join('; ') } : {}) };

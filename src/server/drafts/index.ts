@@ -36,7 +36,7 @@ export class Drafts {
     this.kicking.add(id);
     try {
       const boards = this.state(id, owner, cubbies).here!.boards;
-      return await kickoffProject(def, boards, this.remote, this.run, launched => {
+      const launched = await kickoffProject(def, boards, this.remote, this.run, launched => {
         if (!this.owns(id, owner) || this.building.list().find(d => d.id === id) !== def) throw Error('Draft changed');
         this.records.rows.set(id, { ...r, kickedOffAt: launched.at, launched });
         try {
@@ -47,7 +47,9 @@ export class Drafts {
           this.records.save();
           throw e;
         }
-      });
+      }, hash => cubbies.draftImage(id, owner!, hash));
+      cubbies.dropDraftImages(id);
+      return launched;
     } finally { this.kicking.delete(id); }
   }
   canStart(owner?: string): boolean {

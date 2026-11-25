@@ -143,7 +143,7 @@ test('one owner cubby supplies private boards and designers, retains boards asle
   const ws = socket(); f.nodes.attach(ws as any, setup.token);
   ws.frame({ t: 'hello', host: 'private', providers: [] });
   ws.frame({ t: 'cubby.hello', floorId: def.id, computerId: 'computer-alice', computerName: 'Mac mini' });
-  const boards = { decisions: ['PRIVATE decision'], plan: ['PRIVATE plan'], screens: [{ title: 'PRIVATE screen', status: 'review' }], brand: { name: 'PRIVATE brand', colors: ['#aabbcc'] } };
+  const boards = { ideas: [], decisions: ['PRIVATE decision'], plan: ['PRIVATE plan'], screens: [{ id: 'private-screen', title: 'PRIVATE screen', status: 'review', feedback: [] }], brand: { name: 'PRIVATE brand', colors: ['#aabbcc'] } };
   ws.frame({ t: 'cubby.snapshot', floorId: def.id, observedAt: Date.now(), agents: [{ id: 'designer', role: 'builder', tool: 'codex', task: 'Design', branch: '', status: 'working', designer: true }], plan: [], needsYou: [], draft: boards });
   const here = f.drafts.state(def.id, 'alice', f.ctx.cubbies).here!;
   assert.deepEqual(here.boards, boards); assert.equal(here.designers, 1); assert.equal(here.online, true);
