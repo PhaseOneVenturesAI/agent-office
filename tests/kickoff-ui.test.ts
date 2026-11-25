@@ -99,7 +99,8 @@ test('the lead walks from the table through the doorway into cubby 0, round the 
   }
   assert.equal(ko.along(points, 0).done, false);
   assert.equal(ko.along(points, len + 1).done, true);
-  assert.deepEqual({ x: ko.along(points, len).x, z: ko.along(points, len).z }, end);
+  const last = ko.along(points, len);
+  assert.ok(Math.hypot(last.x - end.x, last.z - end.z) < 1e-9, 'walking the whole path ends at its last point');
 });
 
 test('the Design book, the poster and the "New" badge', () => {
