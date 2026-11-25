@@ -3,6 +3,7 @@
  * has you come in, up on its throne; and where you're standing, to come back to.
  */
 import { ELEVATOR, ELEVATOR_CAR, FLOOR, POLE, SLAB, STOREY, WALL_HEIGHT, inElevator, inWing } from '../../shared/layout';
+import { inCubbyHall } from '../../shared/cubbyhall';
 import { ROOF, ROOF_NAME } from '../../shared/rooftop';
 import type { Arrival } from '../features/climbing/controller';
 import { rememberSpot, store, type Spot } from '../state';
@@ -34,7 +35,7 @@ export function installPlace(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'worl
   function indoors(): boolean {
     const p = player.pos;
     if (core.upTop || !inOffice() || p.y < -1 || p.y > WALL_HEIGHT) return false;
-    return (p.x > FLOOR.minX && p.x < FLOOR.maxX && p.z > FLOOR.minZ && p.z < FLOOR.maxZ) || inWing(p.x, p.z, parts.worlds.officeWing());
+    return (p.x > FLOOR.minX && p.x < FLOOR.maxX && p.z > FLOOR.minZ && p.z < FLOOR.maxZ) || inWing(p.x, p.z, parts.worlds.officeWing()) || (ctx.office.cubbyHall.on && inCubbyHall(p.x, p.z));
   }
 
   /** On your feet at `at`, facing `rotY` and looking straight ahead. */

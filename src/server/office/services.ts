@@ -1,4 +1,6 @@
 import path from 'node:path';
+import { Cubbies } from '../cubbies/index.js';
+import { cubbiesChanged } from '../ws/handlers/cubbies.js';
 import os from 'node:os';
 import { childEnv, resolveCommand } from '../workers.js';
 import { SignIns } from '../signins.js';
@@ -94,9 +96,12 @@ export function createServices(ctx: Ctx): BuildingServices {
   // and heartbeats. Each browser gets its own wall: a private machine shows only for the
   // account that invited it and for admins.
   const deliveries = new Deliveries();
+  let cubbies: Cubbies | undefined;
   const nodes = new Nodes(cfg.dataDir, () => {
     for (const c of clients.values()) ctx.sendTo(c, { t: 'nodes', state: nodes.state({ id: c.accountId, admin: ctx.meOf(c.accountId).admin }) });
+    cubbies?.refresh();
   });
+  cubbies = new Cubbies(cfg.dataDir, process.env.AGENT_OFFICE_CUBBIES === '1', nodes, id => accounts.get(id)?.name, id => floors.has(id), () => cubbiesChanged(ctx));
 
   // Behind Cloudflare Access, its edge login is the front door (see cloudflare.ts): no office
   // password is needed, and each verified email gets an account of its own.
@@ -167,7 +172,7 @@ export function createServices(ctx: Ctx): BuildingServices {
     });
   };
 
-  return { sky, themes, maps, prompts, leaveOnMerge, ledger, signins, deploys, hygiene, costwall, nodes, deliveries, cloudflare, limits, accountLimits, webhook, machine, limitsOf, pumpQueues };
+  return { sky, themes, maps, prompts, leaveOnMerge, ledger, signins, deploys, hygiene, costwall, nodes, cubbies, deliveries, cloudflare, limits, accountLimits, webhook, machine, limitsOf, pumpQueues };
 }
 
 /** What's made once the floors are open: the SSH team, the tailnet, workers' web servers, pictures and upgrades. */

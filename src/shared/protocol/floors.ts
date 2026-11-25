@@ -1,3 +1,4 @@
+import type { CubbiesState } from './cubbies.js';
 // The building: its floors, going between them, and what each floor holds.
 
 import type { CabinetView } from '../cabinet.js';
@@ -97,6 +98,7 @@ export interface RepoChoice {
 /** Everything that belongs to the floor you're on: sent when you walk in, and when you change floors. */
 
 export interface FloorView {
+  cubbies: CubbiesState;
   /** The floor you're on; null while the building has none. */
   floor: string | null;
   project: ProjectInfo | null;
