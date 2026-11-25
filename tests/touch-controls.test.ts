@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { stickMovement, lookDrag, touchLayout } from '../src/client/features/touch/math.js';
+import { stickMovement, lookDrag, touchLayout, touchFirst } from '../src/client/features/touch/math.js';
 
 test('stick is camera-relative, analog, dead-zoned and capped diagonally', () => {
   assert.deepEqual(stickMovement(0, 0, 40), { x: 0, z: 0 });
@@ -44,4 +44,10 @@ test('landscape look area fits beside HUD instead of disappearing above it', asy
   ]);
   assert.ok(r.left > 490);
   assert.ok(r.width >= 72 && r.height >= 44);
+});
+
+test('touch controls show when touch is the main pointer, even if iOS also reports a fine pointer', () => {
+  assert.equal(touchFirst(true, 5), true); // iPhone Duo Safari: pointer coarse, any-pointer fine
+  assert.equal(touchFirst(false, 10), false); // touchscreen laptop: mouse is primary
+  assert.equal(touchFirst(true, 0), false);
 });

@@ -2,13 +2,14 @@ import { Vector2 } from 'three';
 import type { Ctx } from '../../core/context';
 import { isTyping } from '../../player';
 import { modalOpen } from '../../ui/dom';
-import { touchOnly } from '../../ui/litesuggest';
-import { lookDrag, stickMovement } from './math';
+import { lookDrag, stickMovement, touchFirst } from './math';
 import { createTouchUI, hintVerb } from './ui';
 
 type Gesture = { kind: 'stick' | 'look' | 'E' | 'Q'; x: number; y: number; moved: number; surface: HTMLElement };
 
 /** Touch owns only its surfaces. Movement, clicks and E/Q still use the office's ordinary paths. */
+const touchOnly = () => touchFirst(matchMedia('(pointer: coarse)').matches, navigator.maxTouchPoints ?? 0);
+
 export function installTouch(ctx: Ctx) {
   if (!touchOnly()) return;
   const { player } = ctx;
@@ -116,7 +117,7 @@ export function installTouch(ctx: Ctx) {
   document.addEventListener('focusout', () => queueMicrotask(sync));
   window.addEventListener('resize', reset);
   window.visualViewport?.addEventListener('resize', () => { reset(); sync(); });
-  for (const query of ['(pointer: coarse)', '(any-pointer: fine)']) matchMedia(query).addEventListener('change', sync);
+  for (const query of ['(pointer: coarse)']) matchMedia(query).addEventListener('change', sync);
   ctx.windowOpened.add(() => { reset(); sync(); });
   ctx.ticks.add('pre', sync);
   ctx.ticks.add('steer', () => { if (active) Object.assign(player.walkInput, movement); });

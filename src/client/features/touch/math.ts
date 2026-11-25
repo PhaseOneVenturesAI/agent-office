@@ -36,3 +36,9 @@ export function lookRegion(width: number, top: number, bottom: number, right: nu
   }
   return best;
 }
+
+/** Touch is the main input: coarse primary pointer on a touch screen. iOS can also report a fine
+ * pointer (a connected trackpad, or the iPhone Duo in Safari), which must not hide the controls. */
+export function touchFirst(coarsePrimary: boolean, maxTouchPoints: number) {
+  return coarsePrimary && maxTouchPoints > 0;
+}
