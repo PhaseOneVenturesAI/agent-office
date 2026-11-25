@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { DRAFT_LIMITS, type DraftImage } from '../../shared/protocol/drafts.js';
+import { DRAFT_LIMITS, validDraftImageSize, type DraftImage } from '../../shared/protocol/drafts.js';
 export interface DesignImage { meta: DraftImage; bytes: Buffer }
 const pngSignature = Buffer.from('89504e470d0a1a0a', 'hex');
 const fail = (): never => { throw Error('Invalid design image'); };
@@ -40,6 +40,7 @@ export function cleanImage(input: Buffer): DesignImage {
       if (n < 2 || next > input.length) fail();
       if ([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf].includes(marker)) {
         if (n < 8) fail(); height = input.readUInt16BE(p + 3); width = input.readUInt16BE(p + 5);
+        if (!validDraftImageSize(width, height)) fail();
       }
       if (!(marker >= 0xe1 && marker <= 0xef) && marker !== 0xfe) parts.push(input.subarray(start, next));
       p = next;
@@ -68,12 +69,17 @@ export function cleanImage(input: Buffer): DesignImage {
         if (n !== 10 || (d[0] & 2)) fail(); // Animation may embed nested metadata; only still designs.
         d[0] &= ~(0x20 | 0x08 | 0x04);
         width = d.readUIntLE(4, 3) + 1; height = d.readUIntLE(7, 3) + 1;
+        if (!validDraftImageSize(width, height)) fail();
       } else if (type === 'VP8 ') {
         if (n < 10 || !d.subarray(3, 6).equals(Buffer.from([0x9d, 0x01, 0x2a]))) fail();
-        data = true; if (!width) { width = d.readUInt16LE(6) & 0x3fff; height = d.readUInt16LE(8) & 0x3fff; }
+        const w = d.readUInt16LE(6) & 0x3fff, h = d.readUInt16LE(8) & 0x3fff;
+        if (!validDraftImageSize(w, h) || (width && (width !== w || height !== h))) fail();
+        data = true; width = w; height = h;
       } else if (type === 'VP8L') {
         if (n < 5 || d[0] !== 0x2f) fail();
-        data = true; if (!width) { const v = d.readUInt32LE(1); width = (v & 0x3fff) + 1; height = ((v >>> 14) & 0x3fff) + 1; }
+        const v = d.readUInt32LE(1), w = (v & 0x3fff) + 1, h = ((v >>> 14) & 0x3fff) + 1;
+        if (!validDraftImageSize(w, h) || (width && (width !== w || height !== h))) fail();
+        data = true; width = w; height = h;
       }
       // Only codec chunks survive; unknown chunks could carry private metadata too.
       if (['VP8X', 'VP8 ', 'VP8L', 'ALPH'].includes(type)) parts.push(chunk);
@@ -84,6 +90,6 @@ export function cleanImage(input: Buffer): DesignImage {
     header.writeUInt32LE(4 + parts.reduce((n, b) => n + b.length, 0), 4);
     bytes = Buffer.concat([header, ...parts]);
   } else return fail();
-  if (width < 1 || height < 1 || width > 16384 || height > 16384) fail();
+  if (!validDraftImageSize(width, height)) fail();
   return { bytes, meta: { hash: createHash('sha256').update(bytes).digest('hex'), mime, width, height } };
 }

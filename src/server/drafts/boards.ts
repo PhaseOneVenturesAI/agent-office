@@ -1,4 +1,4 @@
-import { DRAFT_LIMITS, type DraftBoards, type DraftFeedback, type DraftIdea, type DraftImage, type DraftScreen } from '../../shared/protocol/drafts.js';
+import { DRAFT_LIMITS, validDraftImageSize, type DraftBoards, type DraftFeedback, type DraftIdea, type DraftImage, type DraftScreen } from '../../shared/protocol/drafts.js';
 const text = (v: unknown, max: number) => typeof v === 'string'
   ? v.replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max) : '';
 const lines = (v: unknown) => Array.isArray(v) ? v.slice(0, 16).map(s => text(s, 300)).filter(Boolean) : [];
@@ -19,8 +19,8 @@ function feedback(v: unknown): DraftFeedback[] {
 }
 function image(v: any): DraftImage | undefined {
   if (!v || typeof v.hash !== 'string' || !/^[0-9a-f]{64}$/.test(v.hash) || !['image/png', 'image/jpeg', 'image/webp'].includes(v.mime)) return;
-  const size = (n: unknown) => (Number.isSafeInteger(n) && (n as number) > 0 && (n as number) <= 16384 ? n as number : 0);
-  return { hash: v.hash, mime: v.mime, width: size(v.width), height: size(v.height) };
+  if (!validDraftImageSize(v.width, v.height)) return;
+  return { hash: v.hash, mime: v.mime, width: v.width, height: v.height };
 }
 /** The same bounded publication schema is enforced both locally and at the relay boundary. */
 export function cleanDraftBoards(raw: unknown): DraftBoards {

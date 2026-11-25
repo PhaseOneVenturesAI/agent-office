@@ -49,7 +49,10 @@ export function localDesign(project: string) {
 export async function sendDesignImages(floorId: string, images: Iterable<DesignImage>, sent: Set<string>,
   send: (frame: import('../../../shared/protocol/cubbies.js').CubbyNodeFrame) => boolean | void,
   current: () => boolean): Promise<void> {
-  for (const image of images) {
+  const currentImages = [...images];
+  const referenced = new Set(currentImages.map(image => image.meta.hash));
+  for (const hash of sent) if (!referenced.has(hash)) sent.delete(hash);
+  for (const image of currentImages) {
     if (!current()) return;
     if (sent.has(image.meta.hash)) continue;
     const data = image.bytes.toString('base64'), total = Math.ceil(data.length / DRAFT_LIMITS.chunk);

@@ -80,8 +80,12 @@ test('connector sends cleaned referenced images once per connection, resends on 
   assert.equal(images().length, 1); assert.deepEqual(Buffer.from(images()[0].data, 'base64'), png);
   f.send(f.note()); await tick(); assert.equal(images().length, 1);
   f.connector.connected(x => f.sent.push(x)); f.ready('second'); await tick(); await tick(); assert.equal(images().length, 2);
+  const screens = f.raw.screens;
   f.raw.screens = []; writeFileSync(path.join(f.dir, '.agent-office/draft.json'), JSON.stringify(f.raw));
-  f.connector.connected(x => f.sent.push(x)); f.ready('third'); await tick(); await tick(); assert.equal(images().length, 2);
+  await (f.connector as any).snapshot(); assert.equal(images().length, 2);
+  f.raw.screens = screens; writeFileSync(path.join(f.dir, '.agent-office/draft.json'), JSON.stringify(f.raw));
+  await (f.connector as any).snapshot(); assert.equal(images().length, 3, 'same bytes re-sent on the same connection after removal');
+  await (f.connector as any).snapshot(); assert.equal(images().length, 3);
 });
 
 test('office relays feedback only for owner, current draft card and online computer and shows notices', t => {

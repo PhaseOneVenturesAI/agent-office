@@ -2,43 +2,44 @@
 // with this browser's session (same origin), decoded once into an ImageBitmap and kept by hash, so the
 // wall, the phone's list and the card window all draw the same one. The bytes never leave this page.
 
-import { DRAFT_LIMITS, draftImageUrl, type DraftImage } from '../../../shared/protocol/drafts';
+import { DRAFT_LIMITS, draftImageUrl, validDraftImageSize, type DraftImage, type DraftView } from '../../../shared/protocol/drafts';
+import { DraftImageCache } from './image-cache';
 
 const HASH = /^[0-9a-f]{64}$/;
-/** null: it didn't load (the card shows as text). */
-const done = new Map<string, ImageBitmap | null>();
-const loading = new Set<string>();
+const cache = new DraftImageCache<ImageBitmap>(24);
+let referenced = new Set<string>();
 const listeners = new Set<() => void>();
 
-async function load(floorId: string, hash: string): Promise<ImageBitmap | null> {
+/** Release removed images and all resources from a departed or kicked-off draft, including pending loads. */
+export function syncDraftImages(draft?: DraftView): void {
+  referenced = new Set(draft ? [...draft.boards.ideas, ...draft.boards.screens]
+    .flatMap(card => card.image ? [`${draft.id}/${card.image.hash}`] : []) : []);
+  cache.retain(referenced);
+}
+
+async function load(floorId: string, img: DraftImage, signal: AbortSignal): Promise<ImageBitmap | null> {
   try {
-    const res = await fetch(draftImageUrl(floorId, hash), { credentials: 'same-origin', cache: 'force-cache' });
+    const res = await fetch(draftImageUrl(floorId, img.hash), { credentials: 'same-origin', cache: 'no-store', signal });
     if (!res.ok || !/^image\/(png|jpeg|webp)$/.test(res.headers.get('content-type')?.split(';')[0].trim() ?? '')) return null;
     const blob = await res.blob();
-    if (!blob.size || blob.size > DRAFT_LIMITS.imageBytes) return null;
-    return await createImageBitmap(blob);
+    if (!blob.size || blob.size > DRAFT_LIMITS.imageBytes || signal.aborted) return null;
+    const bmp = await createImageBitmap(blob);
+    if (!validDraftImageSize(bmp.width, bmp.height) || bmp.width !== img.width || bmp.height !== img.height) {
+      bmp.close();
+      return null;
+    }
+    return bmp;
   } catch {
     return null;
   }
 }
 
-/**
- * The image if it's loaded, null if it couldn't be, undefined while it's on its way (it starts
- * loading on the first ask, and everyone listening hears once it's in).
- */
+/** The decoded image, null for a text card, or undefined while loading. Check pixels before fetching. */
 export function draftImage(floorId: string, img: DraftImage | undefined): ImageBitmap | null | undefined {
-  if (!img || !HASH.test(img.hash)) return null;
-  const k = `${floorId}/${img.hash}`;
-  if (done.has(k)) return done.get(k);
-  if (!loading.has(k)) {
-    loading.add(k);
-    void load(floorId, img.hash).then((bmp) => {
-      loading.delete(k);
-      done.set(k, bmp);
-      for (const fn of listeners) fn();
-    });
-  }
-  return undefined;
+  if (!img || !HASH.test(img.hash) || !validDraftImageSize(img.width, img.height)) return null;
+  const key = `${floorId}/${img.hash}`;
+  if (!referenced.has(key)) return null;
+  return cache.get(key, signal => load(floorId, img, signal), () => { for (const fn of listeners) fn(); });
 }
 
 /** Hears every image that finishes loading (or fails to); returns how to stop. */

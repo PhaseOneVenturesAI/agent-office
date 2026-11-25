@@ -170,3 +170,20 @@ test('owner board exposes an image URL only when its bytes are ready to serve', 
   f.upload(); assert.deepEqual(view().image, f.image.meta);
   f.publish({}); assert.equal(f.cubbies.draftImage(f.def.id, 'alice', f.image.meta.hash), undefined);
 });
+
+test('the 16-megapixel cap rejects oversize PNG, JPEG, WebP and board metadata before publication', () => {
+  const sizedPng = (w: number, h: number) => {
+    const header = Buffer.from(png.subarray(16, 29)); header.writeUInt32BE(w, 0); header.writeUInt32BE(h, 4);
+    return Buffer.concat([png.subarray(0, 8), pngChunk('IHDR', header), png.subarray(33)]);
+  };
+  const allowed = cleanImage(sizedPng(4000, 4000));
+  assert.equal(allowed.meta.width * allowed.meta.height, DRAFT_LIMITS.imagePixels);
+  assert.throws(() => cleanImage(sizedPng(4000, 4001)));
+  const largeJpeg = Buffer.from(jpeg); largeJpeg.writeUInt16BE(4001, 7); largeJpeg.writeUInt16BE(4000, 9);
+  assert.throws(() => cleanImage(largeJpeg));
+  const x = Buffer.alloc(10); x.writeUIntLE(3999, 4, 3); x.writeUIntLE(4000, 7, 3);
+  assert.throws(() => cleanImage(webp(webpChunk('VP8X', x), webpChunk('VP8L', Buffer.from([0x2f, 2, 0x40, 0, 0])))));
+  for (const image of [{ ...allowed.meta, height: 4001 }, { ...allowed.meta, width: 0 }]) {
+    assert.equal(cleanDraftBoards({ ideas: [{ title: 'Text fallback', image }] }).ideas[0].image, undefined);
+  }
+});

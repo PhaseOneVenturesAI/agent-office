@@ -138,9 +138,15 @@ export function ownerFeedbackEncoding(f: DraftFeedbackPayload): string {
 export const DRAFT_LIMITS = {
   ideas: 16, screens: 24, feedbackPerCard: 20, feedbackText: 1000, note: 400,
   /** Images on one draft, and the largest one after cleaning. */
-  images: 16, imageBytes: 2 * 1024 * 1024,
+  images: 16, imageBytes: 2 * 1024 * 1024, imagePixels: 16_000_000,
   /** Base64 characters per image chunk frame (the node socket's frames stay well under 64 KB). */
   chunk: 48 * 1024,
 } as const;
 /** The URL the owner's page loads a board image from. */
 export const draftImageUrl = (floorId: string, hash: string) => `/api/drafts/${encodeURIComponent(floorId)}/images/${hash}`;
+
+/** Bound decoded memory as well as encoded bytes, before any browser fetch or local transfer. */
+export function validDraftImageSize(width: number, height: number): boolean {
+  return Number.isSafeInteger(width) && Number.isSafeInteger(height) && width > 0 && height > 0 &&
+    width <= 16384 && height <= 16384 && width * height <= DRAFT_LIMITS.imagePixels;
+}

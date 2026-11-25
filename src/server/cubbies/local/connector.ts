@@ -193,6 +193,7 @@ export class CubbyConnector {
       if (!this.deps.snapshot) saveSeen(this.config.state, { at: this.now(), head, agents: frame.agents.map(({ id, tool, role, task, status }) => ({ id, tool, role, task, status })) });
       if (generation === this.generation && this.binding && Buffer.byteLength(JSON.stringify(frame)) <= 64 * 1024) {
         if (this.send?.(frame) === false) return;
+        if (!frame.draft) this.sentImages.clear();
         if (frame.draft) {
           const { images } = localDesign(this.config.project);
           const referenced = new Set([...frame.draft.ideas, ...frame.draft.screens].flatMap(c => c.image ? [c.image.hash] : []));

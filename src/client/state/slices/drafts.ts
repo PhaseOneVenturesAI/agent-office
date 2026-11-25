@@ -1,5 +1,6 @@
 import type { Slice } from '../store';
-import { DRAFT_LIMITS, EMPTY_BOARDS, cleanDraftName, type DraftBoards, type DraftFeedback, type DraftIdea, type DraftImage, type DraftScreen, type DraftsState, type DraftView, type Launched } from '../../../shared/protocol/drafts';
+import { syncDraftImages } from '../../shared/drafts/images';
+import { DRAFT_LIMITS, validDraftImageSize, EMPTY_BOARDS, cleanDraftName, type DraftBoards, type DraftFeedback, type DraftIdea, type DraftImage, type DraftScreen, type DraftsState, type DraftView, type Launched } from '../../../shared/protocol/drafts';
 
 declare module '../store' {
   interface Store { drafts: DraftsState }
@@ -31,7 +32,7 @@ function cleanImage(x: unknown): DraftImage | undefined {
   const i = x as Partial<DraftImage>;
   const width = side(i.width);
   const height = side(i.height);
-  if (typeof i.hash !== 'string' || !/^[0-9a-f]{64}$/.test(i.hash) || !MIMES.includes(i.mime as DraftImage['mime']) || !width || !height) return undefined;
+  if (typeof i.hash !== 'string' || !/^[0-9a-f]{64}$/.test(i.hash) || !MIMES.includes(i.mime as DraftImage['mime']) || !validDraftImageSize(width, height)) return undefined;
   return { hash: i.hash, mime: i.mime as DraftImage['mime'], width, height };
 }
 
@@ -123,8 +124,12 @@ export const drafts: Slice = {
   on: {
     drafts(s, m) {
       s.drafts = cleanDrafts(m.state);
+      syncDraftImages(s.drafts.here);
       return ['drafts'];
     },
+    'drafts.kicked'(s, m) {
+      if (s.drafts.here?.id === m.floorId) syncDraftImages();
+    },
   },
-  enter(s, v) { s.drafts = cleanDrafts(v.drafts); return ['drafts']; },
+  enter(s, v) { s.drafts = cleanDrafts(v.drafts); syncDraftImages(s.drafts.here); return ['drafts']; },
 };
