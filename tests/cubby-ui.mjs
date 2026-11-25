@@ -1,0 +1,262 @@
+// The cubby hall in a real browser: the actual main.ts, office, renderer and PlayerController, with the
+// cubbies feature installed the way the root will install it (appended to the served main.ts only; the
+// file on disk is untouched). Two synthetic accounts' cubbies and synthetic agents only: no providers,
+// no live office, no real tokens. Screenshots at desktop and 390 px go to OFFICE_CUBBY_OUTPUT.
+//
+//   node tests/cubby-ui.mjs
+import { createServer } from 'vite';
+import { chromium } from 'playwright-core';
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import assert from 'node:assert/strict';
+
+const root = realpathSync(process.env.OFFICE_CUBBY_ROOT ?? process.cwd());
+const out = process.env.OFFICE_CUBBY_OUTPUT ?? '/tmp/agent-office-cubby-ui';
+mkdirSync(out, { recursive: true });
+const FAKE_TOKEN = 'fixture-token-not-real';
+const SECRET = 'SECRET-OTHER-ACCOUNT-INTERIOR';
+
+const server = await createServer({ configFile: root + '/vite.config.ts', root: root + '/src/client', configLoader: 'runner', cacheDir: out + '/.vite', logLevel: 'warn', server: { host: '127.0.0.1', port: 0, fs: { allow: [root, realpathSync(root + '/node_modules')] } } });
+await server.listen();
+const browser = await chromium.launch({ executablePath: process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true });
+const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 2 });
+const errors = [];
+const sent = [];
+let socket = null;
+page.on('pageerror', (e) => errors.push(e.message));
+
+const look = { skin: 2, hair: 4, style: 1 };
+const agents = [
+  { id: 'lead', tool: 'Claude', role: 'lead', task: 'Lead', branch: 'main', status: 'working' },
+  { id: 'b1', tool: 'Codex', role: 'builder', task: 'Fix checkout', branch: 'fix/checkout', status: 'working', progress: 'tests 41/41' },
+  { id: 'b2', tool: 'Claude', role: 'builder', task: 'Cart screen polish', branch: 'feat/cart', status: 'needs-you' },
+  { id: 'rv', tool: 'Kimi', role: 'reviewer', task: 'Review PR 512', branch: 'review/512', status: 'idle' },
+  { id: 'fx', tool: 'Factory', role: 'factory', task: 'Invoices, tasks 1-4', branch: 'factory/invoices', status: 'working', progress: 'task 2 of 4', deadlineAt: Date.now() + 12 * 60_000 },
+  { id: 'pd', tool: 'Paradev', role: 'paradev', task: 'npm test -- cart', branch: 'plimbo/fix-checkout', status: 'working' },
+  { id: 'dr', tool: 'Codex', role: 'direct', task: 'PRIVATE-DIRECT-PROMPT', branch: 'spike/search', status: 'working', progress: 'PRIVATE-DIRECT-PROGRESS' },
+  { id: 'b3', tool: 'Claude', role: 'builder', task: 'Extra builder', branch: 'feat/extra', status: 'working' },
+];
+const chat = [
+  { id: 'c1', role: 'user', text: 'What is next?', at: 1 },
+  { id: 'c2', role: 'assistant', text: 'Checkout fix lands first, then the cart polish. <img src=x onerror="window.__xss=1">', at: 2 },
+];
+const interior = (lamp) => ({ computerName: 'MacBook Pro', leadName: 'Nova', look, agents, plan: ['Fix checkout bug', 'Cart screen polish', 'Review PR #512', 'Invoices, tasks 1-4'], needsYou: ['Approve the new cart screen?', 'Merge PR #512 after review?'], chat, observedAt: 1 });
+const cubbies = (lamp = 'working', extra = {}) => ({
+  enabled: true,
+  floorId: 'fixture',
+  setupAllowed: true,
+  cubbies: [
+    { id: 'cub-me', slot: 0, ownerName: 'Jordan Fixture', mine: true, lamp, working: 6, interior: interior(lamp) },
+    // Another account's: the server never sends its inside; this one smuggles one in to prove the page drops it.
+    { id: 'cub-alex', slot: 1, ownerName: 'Alex Fixture', mine: false, lamp: 'working', working: 2, interior: { ...interior('working'), leadName: SECRET, computerName: SECRET, plan: [SECRET] } },
+    { id: 'cub-sam', slot: 2, ownerName: 'Sam Fixture', mine: false, lamp: 'asleep', working: 0 },
+    { id: 'cub-priya', slot: 3, ownerName: 'Priya Fixture', mine: false, lamp: 'online', working: 1 },
+  ],
+  ...extra,
+});
+const push = (m) => socket.send(JSON.stringify(m));
+
+const shot = async (name) => {
+  for (const [width, height, suffix] of [[1440, 1000, 'desktop'], [390, 844, 'phone']]) {
+    await page.setViewportSize({ width, height });
+    await page.waitForTimeout(450);
+    await page.screenshot({ path: `${out}/${name}-${suffix}.png` });
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+};
+
+try {
+  await page.addInitScript(() => {
+    localStorage.setItem('agent-office.profile', JSON.stringify({ name: 'Jordan Fixture', color: '#ff8a5b', look: { skin: 0, hair: 0, style: 0 } }));
+    localStorage.setItem('agent-office.settings', JSON.stringify({ muted: true, musicMuted: true, volume: 0, music: 0, view: 'first' }));
+    if (navigator.mediaDevices) navigator.mediaDevices.getUserMedia = async () => { throw new DOMException('Disabled in local fixture', 'NotAllowedError'); };
+  });
+  await page.route('**/api/**', (r) => r.fulfill({ contentType: 'application/json', body: '{}' }));
+  await page.route('**/api/whoami', (r) => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ me: { admin: false, account: { id: 'acct-jordan', name: 'Jordan Fixture', role: 'member' } } }) }));
+  await page.route('**/api/login', (r) => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ accounts: true, shared: false, cloudflare: true }) }));
+  await page.route('**/main.ts*', async (r) => {
+    const response = await r.fetch();
+    const body = (await response.text()) + "\nimport { installCubbies as __installCubbies } from './features/cubbies';\nwindow.__audit = { ctx, core, parts, cubbies: __installCubbies(ctx) };\n";
+    await r.fulfill({ response, body });
+  });
+  await page.routeWebSocket(/\/ws(?:\?|$)/, (ws) => {
+    socket = ws;
+    ws.onMessage((raw) => sent.push(JSON.parse(String(raw))));
+  });
+  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?3d=1`);
+  await page.waitForFunction(() => window.__audit && window.__office?.net.up);
+  const baseColliders = await page.evaluate(() => {
+    const a = window.__audit, o = window.__office, s = o.store;
+    s.floor = 'fixture'; s.you = 'fixture-self';
+    s.project = { name: 'Plimbo', dir: '/fixture', branch: 'main', agentProviders: ['claude'], defaultProvider: 'claude' };
+    for (const e of ['project', 'floor']) s.emit(e);
+    document.getElementById('loading')?.remove(); document.getElementById('loading-screen')?.remove();
+    a.core.upTop = false; a.core.trip = null; o.player.enabled = true; o.player.view = 'first';
+    // Six cubbies along the west side, fronts facing east (where the root's hall will put them).
+    a.cubbies.setPlacements(Array.from({ length: 6 }, (_, slot) => ({ slot, x: -15.9, z: -10.75 + slot * 4.3, width: 4.3, depth: 4, rotY: Math.PI / 2 })));
+    return o.world().colliders.length;
+  });
+
+  // ---- Disabled: nothing drawn, nothing to bump into or use. ----
+  push({ t: 'cubbies', state: { enabled: false, cubbies: cubbies().cubbies, setupAllowed: true } });
+  await page.waitForTimeout(200);
+  const off = await page.evaluate((base) => {
+    const a = window.__audit, o = window.__office;
+    const kinds = a.ctx.usables.lists().flat().map((it) => it.kind).filter((k) => k.startsWith('cubby'));
+    return { visible: a.cubbies.group.visible, rooms: a.cubbies.rooms().size, kinds, colliders: o.world().colliders.length - base };
+  }, baseColliders);
+  assert.deepEqual(off, { visible: false, rooms: 0, kinds: [], colliders: 0 });
+
+  // ---- Enabled: six slots, only your own inside. ----
+  push({ t: 'cubbies', state: cubbies() });
+  await page.waitForTimeout(400);
+  const on = await page.evaluate((secret) => {
+    const a = window.__audit, s = window.__office.store;
+    const rooms = [...a.cubbies.rooms().values()];
+    const texts = [];
+    a.cubbies.group.traverse((x) => { const img = x.material?.map?.image; if (img instanceof HTMLCanvasElement) texts.push(img.toDataURL().length); });
+    let leaked = false;
+    a.cubbies.group.traverse((x) => { if (JSON.stringify(x.userData ?? {}).includes(secret)) leaked = true; });
+    const mine = rooms[0].interior;
+    return {
+      visible: a.cubbies.group.visible,
+      rooms: rooms.length,
+      interiors: rooms.map((r) => !!r.interior),
+      storeDropped: s.cubbies.cubbies[1].interior === undefined,
+      leaked,
+      workers: [...mine.views.values()].filter((v) => v.model).map((v) => `${v.agent.id}:${v.spot.kind}`).sort(),
+      machine: mine.machine.group.visible,
+      screen: mine.screens[0].group.visible,
+      kinds: [...new Set(a.ctx.usables.lists().flat().map((it) => it.kind))].filter((k) => k.startsWith('cubby')).sort(),
+    };
+  }, SECRET);
+  assert.equal(on.visible, true);
+  assert.equal(on.rooms, 6);
+  assert.deepEqual(on.interiors, [true, false, false, false, false, false]);
+  assert.equal(on.storeDropped, true);
+  assert.equal(on.leaked, false);
+  assert.deepEqual(on.workers, ['b1:seat', 'b2:seat', 'b3:bag', 'dr:stand', 'rv:reviewer']);
+  assert.equal(on.machine, true);
+  assert.equal(on.screen, true);
+  assert.deepEqual(on.kinds, ['cubbyagent', 'cubbycomputer', 'cubbydoor', 'cubbylead']);
+
+  // The hall from outside: signs, lamps, frosted glass.
+  await page.evaluate(() => {
+    const o = window.__office;
+    o.player.pos.set(-10.8, 0, 9.5); o.player.camYaw = 0.32; o.player.lookPitch = 0.02; o.player.updateCamera(true);
+  });
+  await shot('hall');
+
+  // ---- Inside: hint bar names the lead; E talks to it. ----
+  const hints = await page.evaluate(() => {
+    const a = window.__audit, o = window.__office;
+    const its = a.ctx.usables.lists().flat();
+    const text = (it) => a.ctx.interactions.hint(it).parts.map((p) => (typeof p === 'string' ? p : p.textContent)).join(' ');
+    const lead = its.find((it) => it.kind === 'cubbylead');
+    const doorOf = (slot) => its.find((it) => it.kind === 'cubbydoor' && it.slot === slot);
+    o.player.pos.set(lead.x + 1.6, 0, lead.z); o.player.camYaw = Math.PI / 2; o.player.lookPitch = -0.12; o.player.updateCamera(true);
+    return { lead: text(lead), mine: text(doorOf(0)), alex: text(doorOf(1)), sam: text(doorOf(2)), free: text(doorOf(4)), direct: text(its.find((it) => it.agentId === 'dr')) };
+  });
+  assert.match(hints.lead, /Nova.*Runs on your MacBook Pro.*E.*Talk to Nova/);
+  assert.match(hints.alex, /Alex Fixture.*2 working · private/);
+  assert.doesNotMatch(hints.alex, /E/);
+  assert.match(hints.sam, /asleep/);
+  assert.match(hints.free, /Free cubby.*E.*Set up/);
+  assert.match(hints.direct, /Tool and branch/);
+  await page.evaluate(() => {
+    const o = window.__office;
+    o.player.pos.set(-12.9, 0, -10.75); o.player.camYaw = Math.PI / 2; o.player.lookPitch = -0.1; o.player.view = 'third'; o.player.updateCamera(true);
+  });
+  await shot('inside');
+
+  // ---- The lead's window: chat only, text only. ----
+  await page.evaluate(() => {
+    const a = window.__audit;
+    const lead = a.ctx.usables.lists().flat().find((it) => it.kind === 'cubbylead');
+    a.ctx.interactions.use(lead, 'E', null);
+  });
+  await page.waitForSelector('.cubby-chat');
+  assert.equal(await page.locator('.cubby-chat img').count(), 0, 'chat text is never HTML');
+  assert.equal(await page.evaluate(() => window.__xss), undefined);
+  await page.fill('.cubby-chat textarea', 'Ship the checkout fix first');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(150);
+  assert.deepEqual(sent.filter((m) => m.t === 'cubbies.chat'), [{ t: 'cubbies.chat', id: 'cub-me', text: 'Ship the checkout fix first' }]);
+  assert.equal(await page.locator('.cubby-chat .btn.close').count(), 1, 'the chat has its ✕');
+  await shot('chat');
+
+  // A helper's card from the roster; a direct session shows tool, branch and state only.
+  await page.locator('.cb-roster button', { hasText: 'Opened directly' }).click();
+  await page.waitForSelector('.cubby-agent');
+  const direct = await page.locator('.cubby-agent').innerText();
+  assert.match(direct, /spike\/search/);
+  assert.doesNotMatch(direct, /PRIVATE-DIRECT/);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(100);
+  assert.equal(await page.locator('.modal').count(), 0, 'Esc closes them');
+
+  // ---- Asleep: lamp grey, helpers 💤, chat can't send. ----
+  push({ t: 'cubbies', state: cubbies('asleep') });
+  await page.waitForTimeout(1200);
+  const asleep = await page.evaluate(() => {
+    const a = window.__audit;
+    const mine = a.cubbies.rooms().get(0).interior;
+    return { statuses: [...mine.views.values()].filter((v) => v.model).map((v) => v.model.status), lid: mine.laptop.lid.rotation.x };
+  });
+  assert.ok(asleep.statuses.every((s) => s === 'offline'), JSON.stringify(asleep));
+  assert.ok(asleep.lid > 1.5, `lid closed (${asleep.lid})`);
+  await page.evaluate(() => {
+    const a = window.__audit;
+    a.ctx.interactions.use(a.ctx.usables.lists().flat().find((it) => it.kind === 'cubbylead'), 'E', null);
+  });
+  await page.waitForSelector('.cubby-chat');
+  assert.equal(await page.locator('.cubby-chat textarea').isDisabled(), true);
+  const before = sent.length;
+  await page.locator('.cubby-chat form').evaluate((f) => f.requestSubmit());
+  assert.equal(sent.length, before, 'nothing sent while asleep');
+  await shot('asleep-chat');
+  await page.keyboard.press('Escape');
+
+  // ---- Setting up a free cubby, then the join command. ----
+  await page.evaluate(() => {
+    const a = window.__audit;
+    a.ctx.interactions.use(a.ctx.usables.lists().flat().find((it) => it.kind === 'cubbydoor' && it.slot === 4), 'E', null);
+  });
+  await page.waitForSelector('.cubby-setup');
+  await page.fill('.cubby-setup input[aria-label="Lead name"]', 'Atlas');
+  await page.locator('.cubby-setup button[role="radio"]', { hasText: 'Bun' }).click();
+  await shot('setup');
+  await page.locator('.cubby-setup button[type="submit"]').click();
+  await page.waitForTimeout(100);
+  const setup = sent.filter((m) => m.t === 'cubbies.setup');
+  assert.equal(setup.length, 1);
+  assert.equal(setup[0].slot, 4);
+  assert.equal(setup[0].leadName, 'Atlas');
+  assert.equal(setup[0].look.style, 2);
+  push({ t: 'cubbies.token', id: 'cub-new', floorId: 'fixture', token: FAKE_TOKEN });
+  await page.waitForSelector('.cb-join');
+  await page.waitForTimeout(150);
+  let cmd = await page.locator('.cb-cmd').innerText();
+  assert.equal(cmd, `agent-office join ${new URL(page.url()).origin} --token ${FAKE_TOKEN} --cubbies --floor fixture --project '<local project path>' --cloudflare-access`);
+  await page.fill('.cb-join input', '/Users/fixture/Projects/plimbo');
+  cmd = await page.locator('.cb-cmd').innerText();
+  assert.match(cmd, /--project \/Users\/fixture\/Projects\/plimbo --cloudflare-access$/);
+  assert.equal(JSON.stringify(sent).includes('/Users/fixture/Projects'), false, 'the project folder never goes to the office');
+  await shot('join');
+  await page.keyboard.press('Escape');
+
+  // ---- Off again: everything goes. ----
+  push({ t: 'cubbies', state: { enabled: false, cubbies: [], setupAllowed: false } });
+  await page.waitForTimeout(200);
+  const gone = await page.evaluate((base) => ({ visible: window.__audit.cubbies.group.visible, colliders: window.__office.world().colliders.length - base }), baseColliders);
+  assert.deepEqual(gone, { visible: false, colliders: 0 });
+
+  assert.deepEqual(errors, []);
+  assert.deepEqual(sent.filter((m) => /spawn|hire|resume|worker/.test(m.t)), []);
+  const report = { out, off, on, hints, asleep, sentTypes: [...new Set(sent.map((m) => m.t))], errors, browser: browser.version() };
+  writeFileSync(`${out}/report.json`, JSON.stringify(report, null, 2));
+  console.log(JSON.stringify(report));
+} finally {
+  await browser.close();
+  await server.close();
+}
