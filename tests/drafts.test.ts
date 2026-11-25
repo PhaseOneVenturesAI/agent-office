@@ -84,7 +84,7 @@ test('empty starter lists and the off flag have no drafts, including persisted d
   const disabled = new Drafts(f.dir, false, 'Alice', x => f.names[x], f.building);
   assert.equal(disabled.records.rows.size, 0);
   assert.throws(() => disabled.create('No', 'alice'), /designated/);
-  assert.deepEqual(disabled.state(id, 'alice', f.ctx.cubbies), { enabled: false, canStart: false });
+  assert.deepEqual(disabled.state(id, 'alice', f.ctx.cubbies), { enabled: false, canStart: false, canKickoff: false });
   f.ctx.drafts = disabled; f.ctx.openFloor(f.building.list()[0]);
   assert.deepEqual(f.ctx.floorInfos({ accountId: 'alice' }), []);
   const off = fixture(t, false); assert.equal(existsSync(path.join(off.dir, 'drafts.json')), false);

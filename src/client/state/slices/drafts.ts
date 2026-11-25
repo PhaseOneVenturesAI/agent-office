@@ -1,5 +1,5 @@
 import type { Slice } from '../store';
-import { EMPTY_BOARDS, cleanDraftName, type DraftBoards, type DraftScreen, type DraftsState, type DraftView } from '../../../shared/protocol/drafts';
+import { EMPTY_BOARDS, cleanDraftName, type DraftBoards, type DraftScreen, type DraftsState, type DraftView, type Launched } from '../../../shared/protocol/drafts';
 
 declare module '../store' {
   interface Store { drafts: DraftsState }
@@ -50,11 +50,23 @@ function cleanHere(x: unknown): DraftView | undefined {
   };
 }
 
+/** What a kicked-off floor keeps (cubbies step 3): text only, the brand as the boards keep it, the approved screens' titles. */
+function cleanLaunched(x: unknown): Launched | undefined {
+  if (!x || typeof x !== 'object') return undefined;
+  const l = x as Partial<Launched>;
+  const name = cleanDraftName(l.name);
+  if (!name) return undefined;
+  const repo = text(l.repo, 140);
+  const screens = (Array.isArray(l.screens) ? l.screens : []).map((s) => text(s, 80)).filter(Boolean).slice(0, MAX_LINES);
+  return { name, at: typeof l.at === 'number' ? l.at : 0, ...(repo ? { repo } : {}), brand: cleanBoards({ brand: l.brand }).brand, screens };
+}
+
 /** The state as the page keeps it: nothing at all unless the office has drafts turned on. */
 function cleanDrafts(x: DraftsState | undefined | null): DraftsState {
   if (!x || typeof x !== 'object' || !x.enabled) return NO_DRAFTS;
   const here = cleanHere(x.here);
-  return { enabled: true, canStart: x.canStart === true, ...(here ? { here } : {}) };
+  const launched = cleanLaunched(x.launched);
+  return { enabled: true, canStart: x.canStart === true, ...(here ? { here } : {}), ...(x.canKickoff === true ? { canKickoff: true } : {}), ...(launched ? { launched } : {}) };
 }
 
 export const drafts: Slice = {

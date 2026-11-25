@@ -2,6 +2,7 @@ import type { DraftsClientMsg } from '../../../shared/protocol/drafts.js';
 import type { Ctx } from '../../office/context.js';
 import type { Client } from '../../office/client.js';
 import type { HandlerMap, ViewPieces } from './types.js';
+import { cubbiesChanged } from './cubbies.js';
 
 export const draftsView: ViewPieces['drafts'] = (ctx, floor, c) =>
   ctx.drafts?.state(floor?.id, c.accountId, ctx.cubbies) ?? { enabled: false, canStart: false };
@@ -25,5 +26,19 @@ export const draftsHandlers = {
       ctx.goToFloor(c, floor);
       draftsChanged(ctx);
     } catch (error) { ctx.warn(c, (error as Error).message); }
+  },
+  async 'drafts.kickoff'(ctx, c, msg) {
+    const floor = ctx.floors.get(msg.floorId);
+    try {
+      if (!floor) throw Error('No such floor');
+      const launched = await ctx.drafts.kickoff(msg.floorId, msg.confirm, c.accountId, ctx.cubbies);
+      ctx.broadcast({ t: 'drafts.kicked', floorId: floor.id, name: launched.name, by: c.peer.name });
+      ctx.toastAll(`${launched.name} is open.`);
+      ctx.toFloor(floor, { t: 'gong', why: 'merged', by: c.peer.name });
+      ctx.floorsChanged();
+      cubbiesChanged(ctx); // Also publishes the draft/Design-book state.
+    } catch (error) {
+      ctx.sendTo(c, { t: 'drafts.kickoffFailed', floorId: msg.floorId, error: (error as Error).message });
+    }
   },
 } satisfies HandlerMap<DraftsClientMsg>;
