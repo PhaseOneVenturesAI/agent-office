@@ -14,6 +14,10 @@ import { officeFill } from '../../world/sky';
 import type { Collider, Interactable } from '../../world/types';
 import type { Cubbies } from '../cubbies';
 import { toolName } from '../cubbies/model';
+import { wireDesignBook } from './design';
+import { wireKickoff } from './kickoff';
+import { KICKOFF_KEY, kickoffOffer } from './kickoff-model';
+import { LoftLights } from './loft-lights';
 import { DIM, LEAD_SPOTS, PODS, PODS_BY_STUDIO, STUDIO, greeting, leadName, studioAction, uncoveredPods, walkedPast } from './model';
 import { DraftScene } from './world';
 
@@ -34,6 +38,8 @@ export interface DraftsDeps {
   idleAgents(): IdleAgent[];
   /** The cubbies: the lead's chat, and the setup window. */
   cubbies(): Pick<Cubbies, 'setUp' | 'talk'>;
+  /** What you're aiming at: the studio table for K, and whose name tag shows at an uncovered pod. */
+  aimed(): unknown;
 }
 
 /** The office's things a draft turns off: the boards, the TV, the whiteboard, every desk in a pod and the board agents' kiosks. */
@@ -62,17 +68,25 @@ export function installDrafts(ctx: Ctx, deps: DraftsDeps) {
   let quiet: { visible: boolean }[] = [];
   let kiosks: { visible: boolean }[] = [];
 
-  const active = () => !!store.drafts.here && ctx.inOffice() && !ctx.upTop();
+  /** The draft on the floor you're on, until it's kicked off (the office may still say it's one for a moment). */
+  const here = () => {
+    const h = store.drafts.here;
+    return h && !kick.kicked(h.id) ? h : undefined;
+  };
+  /** The draft that's up, as it was when it went up (it's still that while it's kicked off). */
+  let up: { id: string; name: string; floor: string } | undefined;
+  const active = () => (!!here() || kick.changing()) && ctx.inOffice() && !ctx.upTop();
   const cubbyOf = () => {
-    const id = store.drafts.here?.cubbyId;
+    const id = here()?.cubbyId;
     return id ? store.cubbies.cubbies.find((c) => c.id === id && c.mine) : undefined;
   };
-  const lead = () => leadName(store.drafts.here, cubbyOf()?.interior?.leadName);
+  const lead = () => leadName(here(), cubbyOf()?.interior?.leadName);
 
   function show(on: boolean) {
     shown = on;
     scene.group.visible = on;
     if (!on) {
+      up = undefined;
       for (const fn of undo.reverse()) fn();
       undo = [];
       covered = '';
@@ -81,6 +95,8 @@ export function installDrafts(ctx: Ctx, deps: DraftsDeps) {
       scene.clearDesigners();
       return;
     }
+    const h = here()!;
+    up = { id: h.id, name: h.name, floor: store.floor ?? h.id };
     leadAt = 'greet';
     placeLead(LEAD_SPOTS.greet);
     // Things to bump into: the whiteboard goes, the studio table comes.
@@ -116,9 +132,9 @@ export function installDrafts(ctx: Ctx, deps: DraftsDeps) {
 
   /** The covers, and the designers at the pods they've uncovered. */
   function syncPods() {
-    const here = store.drafts.here;
-    if (!here || !shown) return;
-    const open = uncoveredPods(here.designers);
+    const draft = here();
+    if (!draft || !shown) return;
+    const open = uncoveredPods(draft.designers);
     const k = [...open].join();
     if (k !== covered) {
       // Desks first back as they were, then the covered pods' put away again.
@@ -150,12 +166,12 @@ export function installDrafts(ctx: Ctx, deps: DraftsDeps) {
   }
 
   function sync() {
-    const here = store.drafts.here;
-    if (!here) return;
+    const draft = here();
+    if (!draft) return;
     const look = cubbyOf()?.interior?.look;
     const name = lead();
     scene.setLead(name, look, [...name].reduce((n, ch) => n + ch.charCodeAt(0), 0));
-    scene.boards.sync(here.boards);
+    scene.boards.sync(draft.boards);
     syncPods();
     ctx.hint.invalidate();
   }
@@ -169,7 +185,8 @@ export function installDrafts(ctx: Ctx, deps: DraftsDeps) {
 
   /** The lead greets you at the doors; once you've walked on past, it walks over to the table. */
   function moveLead(dt: number, t: number) {
-    const here = store.drafts.here!;
+    const draft = here();
+    if (!draft) return;
     const p = ctx.player.pos;
     const r = scene.lead.root;
     let moving = false;
@@ -202,33 +219,59 @@ export function installDrafts(ctx: Ctx, deps: DraftsDeps) {
         r.rotation.y += diff * (1 - Math.exp(-dt * 4));
       }
     }
-    scene.say(leadAt === 'greet' ? greeting(here) : '');
+    scene.say(leadAt === 'greet' ? greeting(draft) : '');
     scene.lead.update(dt, t, moving, false);
   }
 
   store.on('drafts', sync);
   store.on('cubbies', sync);
+  const kick = wireKickoff(ctx, {
+    scene,
+    aimed: deps.aimed,
+    shown: () => shown,
+    draft: () => up,
+    lead,
+    // Every pod's desks out from under their covers as they fly (they're all back for good once the floor's itself).
+    uncover: () => {
+      for (const p of PODS) for (const d of p.desks) {
+        const view = office.desks.get(d.id);
+        if (view) view.group.visible = true;
+      }
+    },
+  });
+  wireDesignBook(ctx);
+  const loft = new LoftLights(office.group, scene.group);
   ctx.usables.add({ usable: () => (shown ? [scene.table, scene.leadIt] : []), pickable: () => scene.group });
   ctx.ticks.add('others', (f) => {
     const on = active();
+    const h = here();
     // Straight from one draft to another: everything put back, then the new one's put up.
-    if (shown && on && store.drafts.here!.id !== shownFor) show(false);
+    if (shown && on && h && h.id !== shownFor) show(false);
     if (on !== shown) {
       show(on);
-      shownFor = on ? store.drafts.here!.id : '';
+      shownFor = on ? h!.id : '';
       if (on) sync();
     }
+    kick.tick(f.dt, f.t);
+    // The lead's walk into the cubby hall outlasts the draft: it alone stays up for it.
+    const walk = !shown && kick.walking();
+    scene.group.visible = shown || walk;
+    scene.onlyLead(walk);
     if (!shown) return;
     for (const v of [...quiet, ...kiosks]) v.visible = false;
-    moveLead(f.dt, f.t);
-    scene.update(f.dt, f.t);
+    if (!kick.walking()) moveLead(f.dt, f.t);
+    const p = ctx.player.pos;
+    scene.update(f.dt, f.t, { x: p.x, z: p.z, aimed: deps.aimed(), yaw: ctx.player.camYaw });
   });
   // After the sky (and the lamps indoors) have set the lights for this frame: turned down on a draft,
   // eased so stepping out of the elevator is a fade rather than a switch. Below in the garage, it's the garage's light.
+  // The loft's lamps go down and up with it; while it's kicked off, the lights come up a row at a time.
   ctx.ticks.add('env', ({ dt }) => {
-    const want = shown && ctx.player.pos.y > -1 ? DIM : 1;
-    dim += (want - dim) * (1 - Math.exp(-dt * 3));
+    const want = kick.changing() ? kick.light() : shown && ctx.player.pos.y > -1 ? DIM : 1;
+    if (kick.changing()) dim = want;
+    else dim += (want - dim) * (1 - Math.exp(-dt * 3));
     if (Math.abs(dim - want) < 0.002) dim = want;
+    loft.set(dim);
     if (dim === 1) return;
     for (const l of deps.lights()) l.intensity *= dim;
     officeFill().multiplyScalar(dim);
@@ -236,11 +279,11 @@ export function installDrafts(ctx: Ctx, deps: DraftsDeps) {
 
   ctx.messages.on('drafts.made', (m) => deps.ride(m.floorId));
 
-  const act = () => studioAction(store.drafts.here ?? {}, lead());
+  const act = () => studioAction(here() ?? {}, lead());
   const use = () => {
-    const here = store.drafts.here;
-    if (!here) return;
-    if (here.cubbyId) deps.cubbies().talk(here.cubbyId);
+    const draft = here();
+    if (!draft) return;
+    if (draft.cubbyId) deps.cubbies().talk(draft.cubbyId);
     else deps.cubbies().setUp(0);
   };
 
@@ -248,7 +291,10 @@ export function installDrafts(ctx: Ctx, deps: DraftsDeps) {
     reach: 3,
     hint: () => {
       const a = act();
-      return { k: `studio-${a.label}`, parts: [hintTitle('🛋️ Studio table'), aside(store.drafts.here?.name ?? ''), key('E', a.label)] };
+      // Kick off beside E, or why there's none (nothing while it's kicking off).
+      const offer = kick.walking() ? null : kickoffOffer({ here: here(), canKickoff: store.drafts.canKickoff });
+      const ko = !offer ? [] : offer.can ? [key(KICKOFF_KEY, offer.label)] : [aside(offer.why)];
+      return { k: `studio-${a.label}-${offer ? (offer.can ? 'k' : 'no') : ''}`, parts: [hintTitle('🛋️ Studio table'), aside(here()?.name ?? up?.name ?? ''), key('E', a.label), ...ko] };
     },
     use: (_it, k) => {
       if (k === 'E') use();
@@ -265,7 +311,7 @@ export function installDrafts(ctx: Ctx, deps: DraftsDeps) {
         : { k: `draftlead-setup-${name}`, parts: [hintTitle(`💬 ${name}`), aside('set up at the studio table to talk')] };
     },
     use: (_it, k) => {
-      if (k === 'E' && store.drafts.here?.cubbyId) use();
+      if (k === 'E' && here()?.cubbyId) use();
     },
   });
 

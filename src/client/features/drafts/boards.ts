@@ -248,6 +248,15 @@ export class DraftBoardsView {
     this.faces.get('brand')!.draw(JSON.stringify(b.brand), (c, w, h) => paintBrand(c, w, h, b.brand));
   }
 
+  /** How much of the panels is left (1 all there, 0 gone): they fade as a draft's kicked off. */
+  fade(k: number) {
+    for (const f of this.faces.values()) {
+      f.mesh.material.transparent = k < 1;
+      f.mesh.material.opacity = k;
+      f.mesh.visible = k > 0;
+    }
+  }
+
   dispose() {
     for (const f of this.faces.values()) f.dispose();
   }

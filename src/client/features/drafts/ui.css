@@ -1,4 +1,4 @@
-/* Draft floors: the New project window, and a draft's row in the elevator. */
+/* Draft floors: the New project and Kick off windows, the Design book, and a draft's (or a new floor's) row in the elevator. */
 .modal.draft-new { width: min(440px, 100%); }
 .draft-new .body p { margin: 0 0 12px; font-weight: 700; }
 .draft-new .dn-note { margin: 8px 0 0; font-size: 12px; font-weight: 700; color: var(--muted); }
@@ -9,3 +9,24 @@
 .elevator .draft-tag { font-size: 11px; font-weight: 900; color: var(--ink); background: #ffd166; border: 2px solid var(--ink); border-radius: 999px; padding: 0 7px; }
 .elevator .draft-lamp { opacity: .55; filter: grayscale(.35); }
 .elevator .new-project { margin-right: auto; }
+.elevator .new-tag { font-size: 11px; font-weight: 900; color: #fff; background: var(--accent, #ef476f); border: 2px solid var(--ink); border-radius: 999px; padding: 0 7px; margin-left: 6px; }
+.modal.draft-kickoff { width: min(500px, 100%); }
+.draft-kickoff .body > p { margin: 0 0 8px; font-weight: 800; }
+.draft-kickoff .ko-steps { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 8px; }
+.draft-kickoff .ko-steps li { display: flex; gap: 10px; align-items: flex-start; font-weight: 700; font-size: 14px; line-height: 1.35; background: var(--paper-2); border: 2px solid var(--ink); border-radius: 12px; padding: 8px 10px; }
+.draft-kickoff label b { font-weight: 900; }
+.draft-kickoff .ko-err { margin: 8px 0 0; font-size: 13px; font-weight: 800; color: var(--bad); }
+.draft-kickoff .ko-err:empty { display: none; }
+.modal.design-book { width: min(520px, 100%); }
+.design-book .db-brand { text-align: center; background: var(--paper-2); border: 3px solid var(--ink); border-radius: 16px; padding: 12px; margin-bottom: 14px; }
+.design-book .db-brand h3 { margin: 0; font-size: 24px; font-weight: 900; overflow-wrap: anywhere; }
+.design-book .db-tagline { margin: 4px 0 0; font-weight: 700; color: var(--muted); }
+.design-book .db-swatches { list-style: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 12px 0 0; padding: 0; }
+.design-book .db-swatch { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; font-weight: 800; }
+.design-book .db-chip { width: 44px; height: 44px; border: 3px solid var(--ink); border-radius: 10px; }
+.design-book h4 { margin: 0 0 8px; font-size: 14px; font-weight: 900; }
+.design-book .db-screens { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.design-book .db-screens li { display: flex; gap: 8px; align-items: center; font-weight: 800; border: 2px solid var(--ink); border-radius: 10px; padding: 6px 10px; background: #fff; overflow-wrap: anywhere; }
+.design-book .db-check { background: #06d6a0; border: 2px solid var(--ink); border-radius: 999px; width: 22px; height: 22px; display: inline-grid; place-items: center; font-size: 12px; flex: none; }
+.design-book .db-empty, .design-book .db-repo { margin: 0; font-weight: 700; color: var(--muted); }
+.design-book .db-repo { margin-top: 12px; font-size: 12px; }
