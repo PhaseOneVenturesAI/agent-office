@@ -1,3 +1,4 @@
+import { owner } from './support/cubby-keys.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -31,17 +32,20 @@ process.stdout.write(JSON.stringify({type:'result',session_id:${JSON.stringify(s
   const server = http.createServer(); const ws = new WebSocketServer({ server });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   const url = `http://127.0.0.1:${(server.address() as any).port}`;
-  const args = [url, '--token', token, '--cubbies', '--floor', 'floor', '--project', project, '--lead-provider', 'claude', '--lead-session', session];
+  const args = [url, '--token', token, '--cubbies', '--owner-key', owner.ownerKey, '--floor', 'floor', '--project', project, '--lead-provider', 'claude', '--lead-session', session];
   let connections = 0; const computerIds: string[] = []; const replies: string[] = []; const frames: string[][] = [];
   ws.on('connection', (socket, request) => {
     assert.equal(request.headers.authorization, `Bearer ${token}`);
     const number = ++connections; frames.push([]);
-    const binding = { cubbyId: 'c', floorId: 'floor', ownerId: 'o', connectionId: `connection${number}` };
-    const send = (value: any) => socket.send(JSON.stringify({ ...value, signature: relaySignature(cubbyKey(token), value) }));
+    const binding = { cubbyId: 'c', floorId: 'floor', ownerId: 'o', connectionId: `connection${number}`, computerId: '' };
+    const send = (value: any) => {
+      if (value.t === 'cubby.chat') value.ownerSig = owner.sign(value);
+      socket.send(JSON.stringify({ ...value, signature: relaySignature(cubbyKey(token), value) }));
+    };
     socket.on('message', (raw) => {
       const value = JSON.parse(raw.toString()); frames[number - 1].push(value.t);
       if (value.t === 'cubby.hello') {
-        computerIds.push(value.computerId); send({ t: 'cubby.ready', ...binding });
+        binding.computerId = value.computerId; computerIds.push(value.computerId); send({ t: 'cubby.ready', ...binding });
         send({ t: 'cubby.chat', ...binding, requestId: 'same', at: Date.now(), text: 'first owner chat' });
         if (number === 2) send({ t: 'cubby.chat', ...binding, requestId: 'second', at: Date.now(), text: 'second owner chat' });
       }

@@ -6,6 +6,8 @@ import type { Look } from '../../../shared/avatar';
 import { HAIR_COLOR_NAMES, HAIR_COLORS, HAIR_STYLES, SKIN_TONES, randomLook } from '../../../shared/avatar';
 import { AVATAR_COLORS } from '../../state/persist';
 import { h, openModal, type Modal } from '../../ui/dom';
+import { store } from '../../state';
+import { ownerDeviceKey, displayFingerprint, type OwnerDeviceKey } from './keys';
 import { Person } from '../../world/character';
 import { PROJECT_PLACEHOLDER, cleanLeadName, joinCommand } from './model';
 
@@ -103,7 +105,17 @@ export function joinBox(token: { token: string; floorId: string }): HTMLElement 
   const code = h('code.cb-cmd');
   const copy = h('button.btn.small', { type: 'button' }, 'Copy');
   let cloudflare = false;
-  const paint = () => (code.textContent = joinCommand({ origin: location.origin, token: token.token, floorId: token.floorId, project: project.value, cloudflare }));
+  let key: OwnerDeviceKey | undefined;
+  copy.disabled = true;
+  const fingerprint = h('p.cb-note', {}, 'Preparing this device’s owner key…');
+  const paint = () => {
+    code.textContent = key ? `${joinCommand({ origin: location.origin, token: token.token, floorId: token.floorId, project: project.value, cloudflare })} --owner-key ${key.publicKey}` : '';
+  };
+  void ownerDeviceKey(store.me.account?.name).then((value) => {
+    key = value; copy.disabled = false;
+    fingerprint.textContent = `Owner key fingerprint: ${displayFingerprint(key.fingerprint)}. Compare this with the fingerprint in your computer’s local owner key record. Only this browser can sign chat; keep its site data.`;
+    paint();
+  }).catch((error: Error) => { fingerprint.textContent = error.message; });
   void cloudflareAccess().then((on) => {
     cloudflare = on;
     paint();
@@ -122,6 +134,7 @@ export function joinBox(token: { token: string; floorId: string }): HTMLElement 
     h('p', {}, '🎟 Your cubby is ready. Run this on your computer, and leave it running:'),
     h('label', {}, 'Project folder on your computer', project),
     h('div.cb-command', {}, code, copy),
+    fingerprint,
     h('p.cb-note', {}, 'The token is shown only now. The folder stays on this page: the office never learns it. Stop join (or turn cubbies off) and your cubby goes grey.'),
   );
 }
@@ -134,6 +147,10 @@ export interface SetupDialog {
 
 /** Sets up the free cubby in `slot`: the lead's name and look, then (once the office answers) the join command. */
 export function openSetup(slot: number, send: (leadName: string, look: Look) => void): SetupDialog {
+  const account = store.me.account?.name;
+  const deviceKey = ownerDeviceKey(account);
+  // Surface failures when submitting, without an unhandled rejection while the picker is open.
+  void deviceKey.catch(() => {});
   const look: Look = randomLook();
   const placeholder = LEAD_NAMES[Math.floor(Math.random() * LEAD_NAMES.length)];
   const canvas = h('canvas', { 'aria-label': 'Your lead' }) as HTMLCanvasElement;
@@ -169,10 +186,18 @@ export function openSetup(slot: number, send: (leadName: string, look: Look) => 
 
   let modal: Modal | null = null;
   let sent = false;
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (sent) return;
     sent = true;
+    submit.disabled = true;
+    try {
+      await deviceKey;
+      if (store.me.account?.name !== account) throw new Error('Account changed. Reopen cubby setup.');
+      if (!form.isConnected) return;
+    } catch (error) {
+      status.textContent = (error as Error).message; sent = false; submit.disabled = false; return;
+    }
     const leadName = cleanLeadName(name.value) || placeholder;
     send(leadName, { ...look });
     submit.disabled = true;

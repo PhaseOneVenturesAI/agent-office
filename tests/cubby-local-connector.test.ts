@@ -1,3 +1,4 @@
+import { owner } from './support/cubby-keys.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CubbyConnector } from '../src/server/cubbies/local/connector.js';
@@ -5,13 +6,16 @@ import { cubbyKey, relaySignature } from '../src/server/cubbies/wire.js';
 import type { LocalConfig } from '../src/server/cubbies/local/config.js';
 import type { CubbyNodeFrame } from '../src/shared/protocol/cubbies.js';
 
-const config: LocalConfig = { floor: 'floor', project: '/repo', roots: ['/repo'], branches: new Map(), state: '/unused',
+const config: LocalConfig = { ownerKey: owner.ownerKey, floor: 'floor', project: '/repo', roots: ['/repo'], branches: new Map(), state: '/unused',
   computerId: 'computer', provider: 'claude', session: 'session', executable: 'claude', claudeHome: '/unused', fresh: false };
 const now = 1_800_000_000_000;
-const binding = { cubbyId: 'cubby', floorId: 'floor', ownerId: 'owner', connectionId: 'connection' };
+const binding = { cubbyId: 'cubby', floorId: 'floor', ownerId: 'owner', connectionId: 'connection', computerId: 'computer' };
 const sign = (frame: any) => JSON.stringify({ ...frame, signature: relaySignature(cubbyKey('token'), frame) });
 const ready = (extra = {}) => sign({ t: 'cubby.ready', ...binding, ...extra });
-const chat = (extra = {}) => sign({ t: 'cubby.chat', ...binding, requestId: 'request', at: now, text: 'owner chat', ...extra });
+const chat = (extra = {}) => {
+  const frame = { t: 'cubby.chat', ...binding, requestId: 'request', at: now, text: 'owner chat', ...extra };
+  return sign({ ...frame, ownerSig: owner.sign(frame) });
+};
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
 function fixture(t: any, custom?: (text: string, signal: AbortSignal) => Promise<string>) {

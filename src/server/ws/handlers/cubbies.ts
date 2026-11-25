@@ -23,7 +23,7 @@ export const cubbiesHandlers = {
   'cubbies.chat'(ctx, c, msg) {
     const floor = ctx.floorOf(c);
     if (!c.accountId || !floor) return ctx.warn(c, 'Only the cubby owner can talk to its lead');
-    try { ctx.cubbies.chat(floor.id, c.accountId, msg.id, msg.text); }
+    try { ctx.cubbies.chat(floor.id, c.accountId, msg.id, msg); }
     catch (e) { ctx.warn(c, (e as Error).message); }
   },
 } satisfies HandlerMap<CubbiesClientMsg>;

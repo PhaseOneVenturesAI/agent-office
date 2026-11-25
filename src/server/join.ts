@@ -31,6 +31,8 @@ Options:
   --name <name>   What to call this machine (default: its hostname)
   --cloudflare-access  Use an existing cloudflared user application-token cache
   --cubbies      Opt in to signed owner chat and project-scoped agent presence
+  --owner-key <key>  Required P-256 public key copied from your cubby setup window
+  --replace-owner-key  Locally authorize replacing the pinned owner device key
   --floor <id>   Cubby floor (requires --cubbies)
   --project <p>  Local repository/worktree root (requires --cubbies)
   --lead-provider claude|codex  Local provider selection (registry takes priority)
@@ -129,6 +131,8 @@ export async function joinCommand(argv: string[]): Promise<number> {
       else if (a === '--name') name = value();
       else if (a === '--cloudflare-access') cloudflareAccess = true;
       else if (a === '--cubbies') cubbies = true;
+      else if (a === '--owner-key') local.ownerKey = value();
+      else if (a === '--replace-owner-key') local.replaceOwnerKey = true;
       else if (a === '--floor') local.floor = value();
       else if (a === '--project') local.project = value();
       else if (a === '--lead-provider') local.provider = value();

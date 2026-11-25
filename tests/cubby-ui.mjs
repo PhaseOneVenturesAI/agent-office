@@ -8,6 +8,7 @@ import { createServer } from 'vite';
 import { chromium } from 'playwright-core';
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
+import { createPublicKey, verify } from 'node:crypto';
 
 const root = realpathSync(process.env.OFFICE_CUBBY_ROOT ?? process.cwd());
 const out = process.env.OFFICE_CUBBY_OUTPUT ?? '/tmp/agent-office-cubby-ui';
@@ -22,6 +23,8 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, de
 const errors = [];
 const sent = [];
 let socket = null;
+let ownerFingerprint = '';
+let publicKey = '';
 page.on('pageerror', (e) => errors.push(e.message));
 
 const look = { skin: 2, hair: 4, style: 1 };
@@ -39,7 +42,7 @@ const chat = [
   { id: 'c1', role: 'user', text: 'What is next?', at: 1 },
   { id: 'c2', role: 'assistant', text: 'Checkout fix lands first, then the cart polish. <img src=x onerror="window.__xss=1">', at: 2 },
 ];
-const interior = (lamp) => ({ computerName: 'MacBook Pro', leadName: 'Nova', look, agents, plan: ['Fix checkout bug', 'Cart screen polish', 'Review PR #512', 'Invoices, tasks 1-4'], needsYou: ['Approve the new cart screen?', 'Merge PR #512 after review?'], chat, observedAt: 1 });
+const interior = (lamp) => ({ computerId: 'fixture-computer', ownerFingerprint, computerName: 'MacBook Pro', leadName: 'Nova', look, agents, plan: ['Fix checkout bug', 'Cart screen polish', 'Review PR #512', 'Invoices, tasks 1-4'], needsYou: ['Approve the new cart screen?', 'Merge PR #512 after review?'], chat, observedAt: 1 });
 const cubbies = (lamp = 'working', extra = {}) => ({
   enabled: true,
   floorId: 'fixture',
@@ -59,6 +62,10 @@ const shot = async (name) => {
   for (const [width, height, suffix] of [[1440, 1000, 'desktop'], [390, 844, 'phone']]) {
     await page.setViewportSize({ width, height });
     await page.waitForTimeout(450);
+    if (name === 'owner-key-mismatch') {
+      const fits = await page.locator('.cb-main').evaluate((main) => main.scrollHeight <= main.clientHeight + 1);
+      assert.equal(fits, true, `key notice fits at ${width}px`);
+    }
     await page.screenshot({ path: `${out}/${name}-${suffix}.png` });
     if (name === 'chat' || name === 'setup') await page.locator(`.cubby-${name}`).screenshot({ path: `${out}/${name}-dialog-${suffix}.png` });
   }
@@ -85,6 +92,24 @@ try {
   });
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?3d=1`);
   await page.waitForFunction(() => window.__audit && window.__office?.net.up);
+  const keyEvidence = await page.evaluate(async () => {
+    const { ownerDeviceKey } = await import('/features/cubbies/keys.ts');
+    const first = await ownerDeviceKey('Jordan Fixture');
+    const reload = await import('/features/cubbies/keys.ts?reload');
+    const persisted = await reload.ownerDeviceKey('Jordan Fixture');
+    const other = await ownerDeviceKey('Alex Fixture');
+    const otherOffice = await ownerDeviceKey('Jordan Fixture', 'https://other-office.example');
+    const race = await Promise.all([ownerDeviceKey('Race Fixture'), reload.ownerDeviceKey('Race Fixture')]);
+    let exportBlocked = false;
+    try { await crypto.subtle.exportKey('pkcs8', persisted.privateKey); } catch { exportBlocked = true; }
+    return { publicKey: first.publicKey, fingerprint: first.fingerprint, persisted: first.publicKey === persisted.publicKey,
+      isolatedAccount: first.publicKey !== other.publicKey, isolatedOrigin: first.publicKey !== otherOffice.publicKey,
+      oneWinner: race[0].publicKey === race[1].publicKey, extractable: persisted.privateKey.extractable, exportBlocked };
+  });
+  assert.equal(keyEvidence.persisted, true); assert.equal(keyEvidence.isolatedAccount, true);
+  assert.equal(keyEvidence.isolatedOrigin, true); assert.equal(keyEvidence.oneWinner, true);
+  assert.equal(keyEvidence.extractable, false); assert.equal(keyEvidence.exportBlocked, true);
+  ownerFingerprint = keyEvidence.fingerprint; publicKey = keyEvidence.publicKey;
   const baseColliders = await page.evaluate(() => {
     const a = window.__audit, o = window.__office, s = o.store;
     s.floor = 'fixture'; s.you = 'fixture-self';
@@ -170,6 +195,9 @@ try {
   await shot('inside');
 
   // ---- The lead's window: chat only, text only. ----
+  await page.evaluate(() => { window.__office.player.view = 'first'; });
+  await page.mouse.click(700, 800);
+  await page.waitForFunction(() => window.__office.player.hasMouse);
   await page.evaluate(() => {
     const a = window.__audit;
     const lead = a.ctx.usables.lists().flat().find((it) => it.kind === 'cubbylead');
@@ -181,11 +209,33 @@ try {
   await page.fill('.cubby-chat textarea', 'Ship the checkout fix first');
   await page.keyboard.press('Enter');
   await page.waitForTimeout(150);
-  assert.deepEqual(sent.filter((m) => m.t === 'cubbies.chat'), [{ t: 'cubbies.chat', id: 'cub-me', text: 'Ship the checkout fix first' }]);
+  const firstChat = sent.filter((m) => m.t === 'cubbies.chat');
+  assert.equal(firstChat.length, 1);
+  assert.equal(firstChat[0].id, 'cub-me');
+  assert.equal(firstChat[0].text, 'Ship the checkout fix first');
+  assert.match(firstChat[0].ownerSig, /^[A-Za-z0-9_-]{86}$/);
   assert.equal(await page.locator('.cubby-chat .btn.close').count(), 1, 'the chat has its ✕');
   // Keep the injection assertion above, then use ordinary fixture copy for the review capture.
   await page.evaluate(() => { const s = window.__office.store; s.cubbies.cubbies[0].interior.chat[1].text = 'Checkout fix lands first, then the cart polish.'; s.emit('cubbies'); });
+  await page.waitForFunction(() => !document.querySelector('.cubby-chat textarea').disabled);
+  await page.fill('.cubby-chat textarea', 'Signed owner message 字');
+  await page.locator('.cubby-chat button[type="submit"]').click();
+  await page.waitForTimeout(100);
+  const signed = sent.filter((m) => m.t === 'cubbies.chat').at(-1);
+  assert.equal(signed.text, 'Signed owner message 字');
+  assert.equal(typeof signed.requestId, 'string'); assert.ok(Math.abs(Date.now() - signed.at) < 5000);
+  assert.equal(verify('sha256', Buffer.from(JSON.stringify(['agent-office/cubby-owner-chat/v1', 'cub-me', 'fixture', 'fixture-computer', signed.requestId, signed.at, signed.text])),
+    { key: createPublicKey({ key: Buffer.from(publicKey, 'base64url'), format: 'der', type: 'spki' }), dsaEncoding: 'ieee-p1363' }, Buffer.from(signed.ownerSig, 'base64url')), true);
   await shot('chat');
+  // A new browser's key cannot impersonate the pinned device, even if submit is forced.
+  await page.evaluate(() => { const s = window.__office.store; s.cubbies.cubbies[0].interior.ownerFingerprint = '0'.repeat(32); s.emit('cubbies'); });
+  assert.equal(await page.locator('.cubby-chat textarea').isDisabled(), true);
+  assert.match(await page.locator('.cubby-chat').innerText(), /device whose key was pinned.*--replace-owner-key/s);
+  const beforeMismatch = sent.filter((m) => m.t === 'cubbies.chat').length;
+  await page.locator('.cubby-chat form').evaluate((f) => { f.querySelector('textarea').value = 'must not send'; f.requestSubmit(); });
+  assert.equal(sent.filter((m) => m.t === 'cubbies.chat').length, beforeMismatch);
+  await shot('owner-key-mismatch');
+  await page.evaluate((fp) => { const s = window.__office.store; s.cubbies.cubbies[0].interior.ownerFingerprint = fp; s.emit('cubbies'); }, ownerFingerprint);
 
   // A helper's card from the roster; a direct session shows tool, branch and state only.
   await page.locator('.cb-roster button', { hasText: 'Local session' }).click();
@@ -197,6 +247,10 @@ try {
   await page.keyboard.press('Escape');
   await page.waitForTimeout(100);
   assert.equal(await page.locator('.modal').count(), 0, 'Esc closes them');
+  await page.waitForFunction(() => window.__office.player.hasMouse);
+  await page.evaluate(() => { const a = window.__audit; a.ctx.interactions.use(a.ctx.usables.lists().flat().find((it) => it.kind === 'cubbylead'), 'E', null); });
+  await page.locator('.cubby-chat .btn.close').click();
+  await page.waitForFunction(() => window.__office.player.hasMouse);
 
   // ---- Asleep: lamp grey, helpers 💤, chat can't send. ----
   push({ t: 'cubbies', state: cubbies('asleep') });
@@ -240,10 +294,10 @@ try {
   await page.waitForSelector('.cb-join');
   await page.waitForTimeout(150);
   let cmd = await page.locator('.cb-cmd').innerText();
-  assert.equal(cmd, `agent-office join ${new URL(page.url()).origin} --token ${FAKE_TOKEN} --cubbies --floor fixture --project '<local project path>' --cloudflare-access`);
+  assert.equal(cmd, `agent-office join ${new URL(page.url()).origin} --token ${FAKE_TOKEN} --cubbies --floor fixture --project '<local project path>' --cloudflare-access --owner-key ${publicKey}`);
   await page.fill('.cb-join input', '/Users/fixture/Projects/plimbo');
   cmd = await page.locator('.cb-cmd').innerText();
-  assert.match(cmd, /--project \/Users\/fixture\/Projects\/plimbo --cloudflare-access$/);
+  assert.match(cmd, /--project \/Users\/fixture\/Projects\/plimbo --cloudflare-access --owner-key [A-Za-z0-9_-]+$/);
   assert.equal(JSON.stringify(sent).includes('/Users/fixture/Projects'), false, 'the project folder never goes to the office');
   await shot('join');
   await page.keyboard.press('Escape');
@@ -256,7 +310,7 @@ try {
 
   assert.deepEqual(errors, []);
   assert.deepEqual(sent.filter((m) => /spawn|hire|resume|worker/.test(m.t)), []);
-  const report = { out, off, on, hints, asleep, sentTypes: [...new Set(sent.map((m) => m.t))], errors, browser: browser.version() };
+  const report = { out, keyEvidence, off, on, hints, asleep, sentTypes: [...new Set(sent.map((m) => m.t))], errors, browser: browser.version() };
   writeFileSync(`${out}/report.json`, JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report));
 } finally {

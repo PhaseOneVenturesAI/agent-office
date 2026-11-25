@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import type { Look } from '../../shared/avatar.js';
 import { sanitizeLook, lookFromSeed } from '../../shared/avatar.js';
-import type { CubbyBinding, CubbyChatLine, CubbyInterior, CubbiesState, CubbyRelayFrame } from '../../shared/protocol/cubbies.js';
+import type { CubbyBinding, CubbyChatLine, CubbyInterior, CubbiesState, CubbyRelayFrame, CubbyOwnerMessage } from '../../shared/protocol/cubbies.js';
 import type { Nodes, NodeExtension } from '../nodes.js';
 import { CubbyRecords, type CubbyRecord } from './records.js';
 import { relaySignature } from './wire.js';
@@ -53,17 +53,19 @@ export class Cubbies {
     if (previous) { this.live.delete(previous.id); this.nodes.revoke(previous.nodeId); }
     this.changed(); return { id: r.id, floorId, token: invite.token };
   }
-  chat(floorId: string, owner: string, cubbyId: string, text: unknown) {
+  chat(floorId: string, owner: string, cubbyId: string, message: CubbyOwnerMessage) {
     const r = this.records.rows.get(cubbyId), live = this.live.get(cubbyId);
     if (!this.enabled || !r || r.floorId !== floorId || r.owner !== owner || !this.accountName(owner)) throw Error('Only the owner can talk to this lead');
     if (!live?.admitted || !this.nodes.isOnline(r.nodeId)) throw Error('Your computer is asleep. Reconnect it to talk to your lead');
+    const { text, requestId, at, ownerSig } = message;
+    if (typeof requestId !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(requestId) || !Number.isSafeInteger(at) ||
+      typeof ownerSig !== 'string' || !/^[A-Za-z0-9_-]{86}$/.test(ownerSig)) throw Error('Send a message signed by your owner device');
     if (typeof text !== 'string' || !text.trim() || text.length > 8000) throw Error('Send a message between 1 and 8,000 characters');
     this.expire(live);
     if (live.pending) throw Error('Your lead is still replying. Check its local permission prompt if it needs you');
-    const requestId = id(), at = this.now();
-    const frame: CubbyRelayFrame = { t: 'cubby.chat', ...live.binding, requestId, at, text: short(text, 8000).trim(), signature: '' };
+    const frame: CubbyRelayFrame = { t: 'cubby.chat', ...live.binding, requestId, at, text, ownerSig, signature: '' };
     if (!this.send(r, frame)) throw Error('Your computer disconnected; your message was not queued');
-    live.pending = { id: requestId, at };
+    live.pending = { id: requestId, at: this.now() };
     this.line(live, { id: requestId, role: 'user', text: frame.text, at }); this.changed();
   }
   /** Node disconnects, expiry and revocation immediately clear the chat admission. */
@@ -98,12 +100,15 @@ export class Cubbies {
       if (typeof f.computerId !== 'string' || !/^[\w-]{8,128}$/.test(f.computerId) || (r.computerId && r.computerId !== f.computerId)) return true;
       if ([...this.records.rows.values()].some(other => other.id !== r.id && other.owner === owner && other.floorId === r.floorId && other.computerId === f.computerId)) return true;
       r.computerId = f.computerId; r.computerName = short(f.computerName, 60) || 'Your computer'; this.records.save();
-      const binding = { cubbyId: r.id, floorId: r.floorId, ownerId: owner, connectionId: id() };
-      const interior = this.live.get(r.id)?.interior ?? this.empty(r); interior.computerName = r.computerName; interior.error = undefined;
+      const binding = { cubbyId: r.id, floorId: r.floorId, ownerId: owner, connectionId: id(), computerId: r.computerId };
+      const interior = this.live.get(r.id)?.interior ?? this.empty(r); interior.computerName = r.computerName; interior.computerId = r.computerId; interior.ownerFingerprint = undefined; interior.error = undefined;
       this.live.set(r.id, { admitted: true, binding, interior }); this.send(r, { t: 'cubby.ready', ...binding, signature: '' });
     } else {
       const live = this.live.get(r.id); if (!live?.admitted) return true;
-      if (f.t === 'cubby.snapshot') {
+      if (f.t === 'cubby.owner-key') {
+        if (typeof f.fingerprint !== 'string' || !/^[0-9a-f]{32}$/.test(f.fingerprint)) return true;
+        live.interior.ownerFingerprint = f.fingerprint;
+      } else if (f.t === 'cubby.snapshot') {
         const next = snapshot(f, this.now());
         if (!next || next.observedAt < (live.interior.observedAt ?? 0)) return true;
         Object.assign(live.interior, { agents: next.agents, plan: next.plan, needsYou: next.needsYou, observedAt: next.observedAt, error: next.error });

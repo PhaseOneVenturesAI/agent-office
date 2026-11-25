@@ -10,6 +10,7 @@ import { CubbyConnector } from '../src/server/cubbies/local/connector.js';
 import { cubbyKey, relaySignature } from '../src/server/cubbies/wire.js';
 import type { LocalConfig } from '../src/server/cubbies/local/config.js';
 import type { CubbyAgent, CubbyNodeFrame } from '../src/shared/protocol/cubbies.js';
+import { owner } from './support/cubby-keys.js';
 
 const tmp = (name: string) => realpathSync(mkdtempSync(path.join(os.tmpdir(), name)));
 
@@ -91,7 +92,7 @@ test('the wake summary says who finished, started and needs you, and stays quiet
 
 test('the connector sends the wake summary once, on the first snapshot after it is bound again', async (t) => {
   const now = 1_800_000_000_000;
-  const config: LocalConfig = { floor: 'floor', project: '/repo', roots: ['/repo'], branches: new Map(), state: '/unused',
+  const config: LocalConfig = { ownerKey: owner.ownerKey, floor: 'floor', project: '/repo', roots: ['/repo'], branches: new Map(), state: '/unused',
     computerId: 'computer', provider: 'claude', session: 'session', executable: 'claude', claudeHome: '/unused', fresh: false };
   const sent: CubbyNodeFrame[] = [];
   const connector = new CubbyConnector(config, 'token', {
@@ -102,7 +103,7 @@ test('the connector sends the wake summary once, on the first snapshot after it 
   });
   t.after(() => connector.close());
   connector.connected((f) => sent.push(f));
-  const binding = { cubbyId: 'cubby', floorId: 'floor', ownerId: 'owner', connectionId: 'c1' };
+  const binding = { cubbyId: 'cubby', floorId: 'floor', computerId: 'computer', ownerId: 'owner', connectionId: 'c1' };
   const ready = { t: 'cubby.ready', ...binding };
   connector.receive(JSON.stringify({ ...ready, signature: relaySignature(cubbyKey('token'), ready as never) }));
   await new Promise((r) => setTimeout(r, 20));
