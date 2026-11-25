@@ -1,6 +1,7 @@
 import { ownedWorker } from './worker-access.js';
 // The Changes window at a desk: what a worker changed, and committing, discarding or opening a pull
 // request for it.
+import { agentCommitPrompt } from '../../changes.js';
 import { childEnv } from '../../workers.js';
 import type { ChangesClientMsg } from '../../../shared/protocol.js';
 import { repoOf, str } from '../../office/input.js';
@@ -34,9 +35,20 @@ export const changesHandlers = {
   'changes.commit'(ctx, c, msg) {
     const who = c.peer.name;
     const w = ownedWorker(ctx, c, msg.workerId, true);
+    if (!w) return;
+    const repo = repoOf(msg.repo);
+    // No message typed: the worker's agent writes its own — it knows what it changed. When it can't
+    // be asked (a shell, asleep or gone), the person who pressed the button types one instead.
+    if (typeof msg.message !== 'string') {
+      const where = w.info.kind === 'agent' ? w.floor.changes.commitWhere(w.wid, repo) : undefined;
+      const err = where ? w.floor.workers.prompt(w.wid, agentCommitPrompt(where), who) : 'no agent to ask';
+      if (err) ctx.sendTo(c, { t: 'changes.commitManual', workerId: w.wid, repo });
+      else ctx.sendTo(c, { t: 'toast', text: `🖊️ ${who} asked ${w.info.name} to commit its changes, message and all`, level: 'info' });
+      return;
+    }
     // Committed as whoever pressed it: their GitHub name and email, once they've signed in to it.
     const env = c.accountId ? ctx.signins.apply(c.accountId, childEnv(), [], 'github') : undefined;
-    if (w) void w.floor.changes.commit(w.wid, str(msg.message, 5000), who, env, repoOf(msg.repo)).then((err) => ctx.warn(c, err));
+    void w.floor.changes.commit(w.wid, str(msg.message, 5000), who, env, repo).then((err) => ctx.warn(c, err));
   },
   'changes.discard'(ctx, c, msg) {
     const who = c.peer.name;

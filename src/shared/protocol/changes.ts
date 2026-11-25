@@ -76,7 +76,12 @@ export type ChangesClientMsg =
   | { t: 'changes.watch'; workerId: string; repo?: string }
   | { t: 'changes.unwatch'; workerId: string; repo?: string }
   | { t: 'changes.diff'; workerId: string; path: string; repo?: string }
-  | { t: 'changes.commit'; workerId: string; message: string; repo?: string }
+  /**
+   * With a `message`, commits with it (the office runs git add -A && git commit as whoever asked).
+   * Without one, the worker's own agent is asked to review its changes and commit them, writing the
+   * message itself; when it can't be asked, the office answers `changes.commitManual`.
+   */
+  | { t: 'changes.commit'; workerId: string; message?: string; repo?: string }
   /** Without a path, throws away every uncommitted change in that checkout. */
   | { t: 'changes.discard'; workerId: string; path?: string; repo?: string }
   | { t: 'changes.pr'; workerId: string; title: string; body: string; repo?: string };
@@ -84,4 +89,6 @@ export type ChangesClientMsg =
 export type ChangesServerMsg =
   /** Sent to whoever watches that worker's changes, whenever they change. */
   | { t: 'changes'; state: ChangesState }
-  | { t: 'changes.diff'; workerId: string; repo?: string; path: string; diff: string; truncated: boolean; error?: string };
+  | { t: 'changes.diff'; workerId: string; repo?: string; path: string; diff: string; truncated: boolean; error?: string }
+  /** A message-less `changes.commit` the worker's agent couldn't take (a shell, asleep, gone): the person types the message instead. */
+  | { t: 'changes.commitManual'; workerId: string; repo?: string };

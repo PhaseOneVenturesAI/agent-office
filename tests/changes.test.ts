@@ -4,8 +4,11 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { Changes, insideCheckout, type ChangesTarget } from '../src/server/changes.js';
-import { changedImageType } from '../src/shared/protocol.js';
+import { agentCommitPrompt, Changes, insideCheckout, type ChangesTarget } from '../src/server/changes.js';
+import { changesHandlers } from '../src/server/ws/handlers/changes.js';
+import type { Ctx } from '../src/server/office/context.js';
+import type { Client } from '../src/server/office/client.js';
+import { changedImageType, type ChangesClientMsg, type ServerMsg, type WorkerInfo, type WorkerKind } from '../src/shared/protocol.js';
 
 /** A git repo with one committed picture, and a Changes that diffs it against HEAD. */
 function fixture(t: { after(fn: () => void): void }) {
@@ -90,4 +93,95 @@ test('a renamed picture shows its old name before and its new name after', async
   assert.ok(!('error' in old) && !('error' in now));
   assert.equal(old.body.toString('utf8'), 'old picture');
   assert.equal(now.body.toString('utf8'), 'old picture');
+});
+
+test('the commit-it-yourself prompt has the agent review, commit and write the message', () => {
+  const p = agentCommitPrompt('your working directory');
+  assert.match(p, /git status, git diff/);
+  assert.match(p, /git add -A && git commit/);
+  assert.match(p, /your working directory/);
+  assert.match(p, /commit message yourself/);
+  assert.match(p, /don't push/);
+});
+
+test('the commit-it-yourself prompt names the worker’s own checkout as where it works, another repository’s by path', (t) => {
+  const { dir, changes } = fixture(t);
+  assert.equal(changes.commitWhere('w1'), 'your working directory');
+  assert.equal(changes.commitWhere('w1', 'floor-api'), `the checkout at ${dir}`);
+  assert.equal(changes.commitWhere('nobody'), undefined);
+});
+
+/** A desk's Changes window pressing Commit, with the worker and its checkout faked. */
+function commitDesk(opts: { kind?: WorkerKind; promptError?: string } = {}) {
+  const sent: ServerMsg[] = [];
+  const warnings: string[] = [];
+  const prompts: { text: string; by?: string }[] = [];
+  const commits: { message: string; who: string; repo?: string }[] = [];
+  const info = { id: 'w1', kind: opts.kind ?? 'agent', provider: 'claude', name: 'Pixel', status: 'done' } as WorkerInfo;
+  const changes = {
+    commitWhere: (_id: string, repo?: string) => (repo ? 'the checkout at /workspace/api' : 'your working directory'),
+    commit: (_id: string, message: string, who: string, _env: unknown, repo?: string) => {
+      commits.push({ message, who, repo });
+      return Promise.resolve(undefined);
+    },
+  };
+  const workers = {
+    get: (id: string) => (id === info.id ? info : undefined),
+    ownerOf: () => undefined,
+    prompt: (_id: string, text: string, by?: string) => {
+      prompts.push({ text, by });
+      return opts.promptError;
+    },
+  };
+  const floor = { id: 'floor', workers, changes };
+  const ctx = {
+    workerFloor: () => floor,
+    floorOf: () => floor,
+    sendTo: (_c: unknown, msg: ServerMsg) => sent.push(msg),
+    warn: (_c: unknown, err: string | undefined) => {
+      if (err) warnings.push(err);
+    },
+  } as unknown as Ctx;
+  const client = { id: 'browser', accountId: undefined, peer: { name: 'Cody', floor: 'floor' } } as unknown as Client;
+  const commit = (msg: Extract<ChangesClientMsg, { t: 'changes.commit' }>) => changesHandlers['changes.commit'](ctx, client, msg);
+  return { sent, warnings, prompts, commits, commit };
+}
+
+test('Commit with no message asks the worker’s agent to commit, writing the message itself', () => {
+  const d = commitDesk();
+  d.commit({ t: 'changes.commit', workerId: 'w1' });
+  assert.equal(d.prompts.length, 1);
+  assert.match(d.prompts[0].text, /git add -A && git commit/);
+  assert.match(d.prompts[0].text, /your working directory/);
+  assert.equal(d.prompts[0].by, 'Cody');
+  assert.deepEqual(d.commits, []);
+  assert.deepEqual(d.sent.map((m) => m.t), ['toast']);
+});
+
+test('Commit falls back to the person typing the message when the agent can’t be asked', () => {
+  // A shell has no agent to ask.
+  const shell = commitDesk({ kind: 'shell' });
+  shell.commit({ t: 'changes.commit', workerId: 'w1' });
+  assert.deepEqual(shell.prompts, []);
+  assert.deepEqual(shell.sent, [{ t: 'changes.commitManual', workerId: 'w1', repo: undefined }]);
+  // Asleep or gone: the prompt is refused.
+  const asleep = commitDesk({ promptError: 'Worker is not running' });
+  asleep.commit({ t: 'changes.commit', workerId: 'w1' });
+  assert.equal(asleep.prompts.length, 1);
+  assert.deepEqual(asleep.sent.map((m) => m.t), ['changes.commitManual']);
+  assert.deepEqual(asleep.commits, []);
+  // The fallback names the repository the commit was for.
+  const repo = commitDesk({ kind: 'shell' });
+  repo.commit({ t: 'changes.commit', workerId: 'w1', repo: 'floor-api' });
+  assert.deepEqual(repo.sent, [{ t: 'changes.commitManual', workerId: 'w1', repo: 'floor-api' }]);
+});
+
+test('Commit with a typed message still commits as the person who pressed it, agent or not', async () => {
+  const d = commitDesk({ kind: 'shell' });
+  d.commit({ t: 'changes.commit', workerId: 'w1', message: 'Fix the flux capacitor' });
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(d.commits, [{ message: 'Fix the flux capacitor', who: 'Cody', repo: undefined }]);
+  assert.deepEqual(d.prompts, []);
+  assert.deepEqual(d.sent, []);
+  assert.deepEqual(d.warnings, []);
 });
