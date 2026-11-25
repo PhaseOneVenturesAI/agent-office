@@ -81,7 +81,7 @@ test('draft publication is bounded and cleaned at both connector and server boun
   const { snapshot } = await import('../src/server/cubbies/snapshot.js');
   assert.deepEqual(snapshot({ ...result, draft: raw }, result.observedAt)!.draft, draft);
   assert.deepEqual(snapshot({ ...result, draft: { decisions: [null, {}, 1], screens: [null, {}, { title: 'X', status: null }], brand: null } }, result.observedAt)!.draft,
-    { decisions: [], plan: [], screens: [], brand: { colors: [] } });
+    { ideas: [], decisions: [], plan: [], screens: [], brand: { colors: [] } });
 });
 
 test('draft files use the bounded no-follow reader; bad publications never forward file contents', async t => {

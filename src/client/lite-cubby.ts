@@ -51,4 +51,6 @@ export function installLiteCubby(net: Net) {
   store.on('cubbies', render);
   store.on('floor', render);
   render();
+  /** The lead chat for one of your cubbies (the Draft board's card points there to add this device). */
+  return { openChat: (id: string) => void openLeadChat(windows, id) };
 }

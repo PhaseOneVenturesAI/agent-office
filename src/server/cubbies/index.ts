@@ -1,4 +1,7 @@
-import { EMPTY_BOARDS, type DraftBoards } from '../../shared/protocol/drafts.js';
+import { DraftImages } from './design-images.js';
+import { boardFeedbackBytes, FEEDBACK_FULL } from '../drafts/feedback-budget.js';
+import { BOARD_TOO_BIG } from './publication.js';
+import { DRAFT_LIMITS, EMPTY_BOARDS, type DraftFeedbackMessage, type DraftBoards } from '../../shared/protocol/drafts.js';
 import { randomBytes } from 'node:crypto';
 import type { Look } from '../../shared/avatar.js';
 import { sanitizeLook, lookFromSeed } from '../../shared/avatar.js';
@@ -9,7 +12,7 @@ import { HALL_SLOTS } from '../../shared/cubbyhall.js';
 import { relaySignature } from './wire.js';
 import { devicesOf, short, snapshot } from './snapshot.js';
 import { CubbySharing, watcherInterior } from './sharing.js';
-interface Live { admitted: boolean; binding: CubbyBinding; interior: CubbyInterior; draft?: DraftBoards; pending?: { id: string; at: number }; asks?: Map<string, string>; }
+interface Live { admitted: boolean; binding: CubbyBinding; interior: CubbyInterior; draft?: DraftBoards; feedback?: Map<string, number>; pending?: { id: string; at: number }; asks?: Map<string, string>; }
 const id = () => randomBytes(12).toString('hex');
 
 /** No transcript files, provider credentials, collectors or process launchers on the server. */
@@ -17,6 +20,7 @@ export class Cubbies {
   readonly records: CubbyRecords;
   private live = new Map<string, Live>();
   private sharing: CubbySharing;
+  private images = new Map<string, DraftImages>();
   private deviceRequests = new Map<string, number[]>();
   constructor(dir: string, readonly enabled: boolean, private nodes: Nodes,
     private accountName: (id: string) => string | undefined, private floorExists: (id: string) => boolean,
@@ -84,7 +88,45 @@ export class Cubbies {
   draftBoards(id: string, owner: string): DraftBoards | undefined {
     const r = this.records.rows.get(id);
     if (!this.enabled || !r || r.owner !== owner || !this.accountName(owner) || this.draftOwner(r.floorId) !== owner) return;
-    return this.live.get(id)?.draft ?? EMPTY_BOARDS;
+    const boards = this.live.get(id)?.draft ?? EMPTY_BOARDS, images = this.images.get(r.floorId);
+    // Announce an image URL only after its final chunk is checked. The completion update then
+    // changes the owner view, so the browser never caches a premature failed image load.
+    const ready = <T extends DraftBoards['ideas'][number]>(card: T): T => {
+      if (!card.image || images?.get(card.image.hash)) return card;
+      const { image: _image, ...rest } = card; return rest as T;
+    };
+    return { ...boards, ideas: boards.ideas.map(ready), screens: boards.screens.map(ready) };
+  }
+  dropDraftImages(floorId: string): void { this.images.delete(floorId); }
+  draftImage(floorId: string, owner: string, hash: string) {
+    if (!this.enabled || !this.floorExists(floorId) || this.draftOwner(floorId) !== owner || !this.accountName(owner)) {
+      if (!this.floorExists(floorId) || this.draftOwner(floorId) === undefined) this.dropDraftImages(floorId);
+      return;
+    }
+    return this.images.get(floorId)?.get(hash);
+  }
+  feedback(floorId: string, owner: string, message: DraftFeedbackMessage) {
+    if (this.draftOwner(floorId) !== owner || !this.floorExists(floorId)) throw Error('No such draft');
+    const r = [...this.records.rows.values()].find(r => r.floorId === floorId && r.owner === owner && r.slot === 0);
+    if (!r) throw Error('Connect your computer to leave feedback');
+    const { live } = this.ownerLink(floorId, owner, r.id);
+    const { cardId, text, requestId, at, ownerSig } = message;
+    if (typeof cardId !== 'string' || !/^[\w-]{1,64}$/.test(cardId) ||
+      ![...live.draft?.ideas ?? [], ...live.draft?.screens ?? []].some(c => c.id === cardId) ||
+      typeof text !== 'string' || !text.trim() || text.length > DRAFT_LIMITS.feedbackText ||
+      typeof requestId !== 'string' || !/^[\w-]{1,128}$/.test(requestId) || !Number.isSafeInteger(at) ||
+      typeof ownerSig !== 'string' || !/^[A-Za-z0-9_-]{86}$/.test(ownerSig)) throw Error('Sign feedback for a current board card on your device');
+    if (live.draft && boardFeedbackBytes(live.draft) >= DRAFT_LIMITS.feedbackBytes) {
+      this.line(live, { id: id(), role: 'notice', text: FEEDBACK_FULL, at: this.now() });
+      this.changed();
+      throw Error(FEEDBACK_FULL);
+    }
+    const pending = live.feedback ??= new Map();
+    for (const [id, time] of pending) if (this.now() - time > 12 * 60_000) pending.delete(id);
+    if (pending.has(requestId) || pending.size >= 40) throw Error('Feedback already sent or too many notes awaiting replies');
+    const frame: CubbyRelayFrame = { t: 'cubby.feedback', ...live.binding, cardId, text, requestId, at, ownerSig, signature: '' };
+    pending.set(requestId, this.now());
+    if (!this.send(r, frame)) { pending.delete(requestId); throw Error('Your computer disconnected; feedback was not queued'); }
   }
   setup(floorId: string, owner: string, slot: number, name: string, look: Look) {
     if (!this.enabled || !this.floorExists(floorId) || !this.accountName(owner)) throw Error('Cubbies require your own account on an open project floor');
@@ -103,7 +145,7 @@ export class Cubbies {
       if (previous) this.records.rows.set(previous.id, previous); else this.records.rows.delete(r.id);
       this.nodes.revoke(invite.id); throw e;
     }
-    if (previous) { this.live.delete(previous.id); this.nodes.revoke(previous.nodeId); }
+    if (previous) { this.dropDraftImages(floorId); this.live.delete(previous.id); this.nodes.revoke(previous.nodeId); }
     this.changed(); return { id: r.id, floorId, token: invite.token };
   }
   chat(floorId: string, owner: string, cubbyId: string, message: CubbyOwnerMessage) {
@@ -154,6 +196,11 @@ export class Cubbies {
   }
   /** Node disconnects, expiry and revocation immediately clear the chat admission. */
   refresh() {
+    for (const floorId of this.images.keys()) {
+      const owner = this.draftOwner(floorId);
+      if (!this.floorExists(floorId) || owner === undefined || !this.accountName(owner) ||
+        ![...this.records.rows.values()].some(r => r.floorId === floorId && r.owner === owner)) this.dropDraftImages(floorId);
+    }
     for (const [key, live] of this.live) {
       this.expire(live);
       const r = this.records.rows.get(key);
@@ -199,6 +246,7 @@ export class Cubbies {
     const r = [...this.records.rows.values()].find(r => r.nodeId === nodeId && r.owner === owner && r.floorId === f.floorId);
     if (!r || !this.floorExists(r.floorId)) return true;
     if (f.t === 'cubby.hello') {
+      this.images.get(r.floorId)?.reconnect();
       if (typeof f.computerId !== 'string' || !/^[\w-]{8,128}$/.test(f.computerId) || (r.computerId && r.computerId !== f.computerId)) return true;
       if ([...this.records.rows.values()].some(other => other.id !== r.id && other.owner === owner && other.floorId === r.floorId && other.computerId === f.computerId)) return true;
       r.computerId = f.computerId; r.computerName = short(f.computerName, 60) || 'Your computer'; this.records.save();
@@ -209,18 +257,35 @@ export class Cubbies {
       live.admitted = this.send(r, { t: 'cubby.ready', ...binding, signature: '' });
     } else {
       const live = this.live.get(r.id); if (!live?.admitted) return true;
-      if (f.t === 'cubby.devices') {
+      if (f.t === 'cubby.design-image') {
+        if (this.draftOwner(r.floorId) !== owner) { this.dropDraftImages(r.floorId); return true; }
+        if (!this.images.get(r.floorId)?.accept(f)) return true;
+      } else if (f.t === 'cubby.devices') {
         const next = devicesOf(f, this.now());
         if (!next) return true;
         this.devices(live, next.devices, next.requests, next.note);
       } else if (f.t === 'cubby.snapshot') {
         const next = snapshot(f, this.now());
         if (!next || next.observedAt < (live.interior.observedAt ?? 0)) return true;
-        if (this.draftOwner(r.floorId) === owner && next.draft) live.draft = next.draft;
+        if (this.draftOwner(r.floorId) === owner) {
+          live.draft = next.draft ?? (next.error === BOARD_TOO_BIG ? live.draft : undefined) ?? EMPTY_BOARDS;
+          let images = this.images.get(r.floorId);
+          if (!images) this.images.set(r.floorId, images = new DraftImages());
+          images.boards(live.draft);
+        } else { live.draft = undefined; this.dropDraftImages(r.floorId); }
         Object.assign(live.interior, { agents: next.agents, plan: next.plan, needsYou: next.needsYou, observedAt: next.observedAt, error: next.error });
         if (next.wake) this.line(live, { id: id(), role: 'notice', text: `💤→☀️ ${next.wake}`, at: this.now() });
       } else if (f.t === 'cubby.reply') {
-        if (!live.pending || live.pending.id !== f.requestId || typeof f.text !== 'string') return true;
+        if (typeof f.text !== 'string') return true;
+        if (typeof f.requestId === 'string' && live.feedback?.has(f.requestId)) {
+          if (this.now() - live.feedback.get(f.requestId)! <= 12 * 60_000) {
+            this.line(live, { id: id(), role: f.error ? 'notice' : 'assistant', text: short(f.text, 12000), at: this.now() });
+            if (!f.error) live.feedback.delete(f.requestId);
+            this.changed();
+          }
+          return true;
+        }
+        if (!live.pending || live.pending.id !== f.requestId) return true;
         this.line(live, { id: id(), role: f.error ? 'notice' : 'assistant', text: short(f.text, 12000), at: this.now() }); live.pending = undefined;
       } else return true;
     }

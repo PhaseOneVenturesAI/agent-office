@@ -41,4 +41,10 @@ export const draftsHandlers = {
       ctx.sendTo(c, { t: 'drafts.kickoffFailed', floorId: msg.floorId, error: (error as Error).message });
     }
   },
+  'drafts.feedback'(ctx, c, msg) {
+    try {
+      if (!ctx.drafts.owns(msg.floorId, c.accountId)) throw Error('No such floor');
+      ctx.cubbies.feedback(msg.floorId, c.accountId!, msg);
+    } catch (error) { ctx.warn(c, (error as Error).message); }
+  },
 } satisfies HandlerMap<DraftsClientMsg>;

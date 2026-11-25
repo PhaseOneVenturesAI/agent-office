@@ -249,7 +249,8 @@ export async function joinCommand(argv: string[]): Promise<number> {
         retry = 0;
         socket.send(JSON.stringify(hello(nodeName)));
         connector?.connected((frame) => {
-          if (!ended && socket.readyState === WebSocket.OPEN && socket.bufferedAmount < 128 * 1024) socket.send(JSON.stringify(frame));
+          if (ended || socket.readyState !== WebSocket.OPEN || socket.bufferedAmount >= 128 * 1024) return false;
+          socket.send(JSON.stringify(frame)); return true;
         }, nodeName);
         out('✓ joined — this machine is on the office wall (☰ → 🛰️ Satellites). Leave this running; Ctrl-C leaves.');
         heartbeat = setInterval(() => socket.send(JSON.stringify({ t: 'ping' } satisfies NodeFrame)), HELLO_MS);

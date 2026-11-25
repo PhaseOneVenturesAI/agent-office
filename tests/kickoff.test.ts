@@ -77,14 +77,14 @@ test('kickoff commits and pushes boards, opens the same floor/cubby, persists la
   assert.equal(f.def.repo, undefined);
   assert.notEqual(f.git('rev-parse', 'HEAD'), before);
   assert.equal(f.git('log', '-1', '--format=%an <%ae>'), 'Agent Office <office@localhost>');
-  assert.deepEqual(f.git('ls-tree', '-r', '--name-only', 'HEAD').split('\n'), ['README.md', 'docs/BRAND.md', 'docs/BRIEF.md', 'docs/PLAN.md', 'docs/SCREENS.md']);
+  assert.deepEqual(f.git('ls-tree', '-r', '--name-only', 'HEAD').split('\n'), ['README.md', 'design/SCREENS.md', 'design/system.md', 'design/tokens.json', 'docs/BRIEF.md', 'docs/FEEDBACK.md', 'docs/PLAN.md']);
   const read = (file: string) => readFileSync(path.join(f.def.dir, file), 'utf8');
   assert.equal(read('README.md'), '# New Project\n\nA short promise\n');
   assert.match(read('docs/BRIEF.md'), /\$\(touch NEVER_EXECUTED\) \.\.\/outside/);
   assert.equal(existsSync(path.join(f.def.dir, 'NEVER_EXECUTED')), false);
   assert.match(read('docs/PLAN.md'), /Review the first screen/);
-  assert.match(read('docs/BRAND.md'), /Name: Project Brand[\s\S]*Tagline: A short promise[\s\S]*#aabbcc/);
-  assert.match(read('docs/SCREENS.md'), /Welcome — approved\n- Settings — review\n- Later — sketch/);
+  assert.match(read('design/system.md'), /Name: Project Brand[\s\S]*Tagline: A short promise[\s\S]*#aabbcc/);
+  assert.match(read('design/SCREENS.md'), /Welcome — approved\n- Settings — review\n- Later — sketch/);
   assert.equal(f.git('status', '--porcelain'), '');
   assert.equal(f.git('rev-parse', '--abbrev-ref', '@{upstream}'), 'origin/main');
   assert.equal(f.git('--git-dir', path.join(f.remote, 'new-project.git'), 'log', '-1', '--format=%H', 'main'), f.git('rev-parse', 'HEAD'));
@@ -204,6 +204,24 @@ test('a floor persistence failure rolls back the successful local push and launc
   assert.equal(new Drafts(f.dir, true, '', id => id, new Building(f.dir, f.dir), {}).records.rows.get(f.def.id)?.launched, undefined);
   f.building.launchDraft = launch;
   await f.kickoff(); assert.equal(f.def.draft, undefined);
+});
+
+test('binary document rollback restores exact bytes and permissions, removing only new folders', async t => {
+  const { documentTransaction } = await import('../src/server/drafts/documents.js');
+  const { statSync, chmodSync } = await import('node:fs');
+  const f = fixture(t), root = path.join(f.def.dir, 'design/screens'); mkdirSync(root, { recursive: true });
+  const existing = path.join(root, 'approved.png'), bytes = Buffer.from([0, 255, 128, 1]);
+  writeFileSync(existing, bytes); chmodSync(existing, 0o640);
+  const tx = documentTransaction(f.def.dir, { 'design/screens/approved.png': Buffer.from([1, 2]), 'docs/FEEDBACK.md': 'notes', 'design/system.md': 'design' });
+  tx.write(); tx.restore();
+  assert.deepEqual(readFileSync(existing), bytes); assert.equal(statSync(existing).mode & 0o777, 0o640);
+  assert.equal(existsSync(root), true); assert.equal(existsSync(path.join(f.def.dir, 'docs')), false);
+  assert.equal(existsSync(path.join(f.def.dir, 'design/system.md')), false);
+  rmSync(root, { recursive: true });
+  const outside = path.join(f.dir, 'outside'); mkdirSync(outside); symlinkSync(outside, root);
+  assert.throws(() => documentTransaction(f.def.dir, { 'design/screens/approved.png': bytes }), /regular directory/);
+  rmSync(root); writeFileSync(root, 'not a folder');
+  assert.throws(() => documentTransaction(f.def.dir, { 'design/screens/approved.png': bytes }), /regular directory/);
 });
 
 test('an owner taken off the project starters can no longer kick off', async t => {

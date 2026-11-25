@@ -98,13 +98,20 @@ export type CubbyNodeFrame =
   | { t: 'cubby.snapshot'; floorId: string; agents: CubbyAgent[]; plan: string[]; needsYou: string[]; observedAt: number; error?: string; wake?: string;
       /** On a draft floor: what the local `.agent-office/draft.json` says (see protocol/drafts.ts). */
       draft?: import('./drafts.js').DraftBoards }
-  | { t: 'cubby.reply'; floorId: string; requestId: string; text: string; error?: boolean };
+  | { t: 'cubby.reply'; floorId: string; requestId: string; text: string; error?: boolean }
+  /**
+   * One piece of a cleaned board image (step 5): `data` is base64, pieces arrive in order, and the office
+   * keeps the image only when the pieces add up to `hash` (SHA-256 hex) and the bytes are the `mime` they claim.
+   */
+  | { t: 'cubby.design-image'; floorId: string; hash: string; mime: 'image/png' | 'image/jpeg' | 'image/webp'; index: number; total: number; data: string };
 export interface CubbyBinding { cubbyId: string; floorId: string; ownerId: string; connectionId: string; computerId: string }
 export type CubbyRelayFrame =
   | ({ t: 'cubby.ready'; signature: string } & CubbyBinding)
   | ({ t: 'cubby.chat'; signature: string } & CubbyBinding & CubbyOwnerMessage)
   | ({ t: 'cubby.device-request'; signature: string; requestId: string; at: number; publicKey: string; label: string } & CubbyBinding)
-  | ({ t: 'cubby.device'; signature: string } & CubbyBinding & CubbyDeviceAction);
+  | ({ t: 'cubby.device'; signature: string } & CubbyBinding & CubbyDeviceAction)
+  /** The owner's note on a board card (step 5), checked against the trusted devices like chat. */
+  | ({ t: 'cubby.feedback'; signature: string } & CubbyBinding & import('./drafts.js').DraftFeedbackMessage);
 
 /**
  * What a trusted device signs to change who's trusted. `target` is the waiting device's public key for

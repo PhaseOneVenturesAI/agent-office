@@ -4,10 +4,38 @@
 // on the owner's own computer (the same outbound cubby connection as step 1); the office keeps only
 // the draft's name and what that connection last said.
 
-/** One approved or proposed screen, as its wall card shows it. Titles only: no images cross the wire. */
+/**
+ * The owner's note on a card (cubbies step 5), signed on a trusted device and saved on the owner's
+ * computer next to draft.json (`.agent-office/feedback.json`). The office only shows what the computer reports.
+ */
+export interface DraftFeedback { id: string; text: string; at: number }
+
+/**
+ * A design image on the board, as the owner's computer sent it: a PNG, JPEG or WebP file from the
+ * project's `.agent-office/design/`, checked by its contents and with its metadata (EXIF, GPS, XMP,
+ * comments) removed before it leaves the computer. `hash` is the SHA-256 (hex) of the cleaned bytes;
+ * the owner's page loads it from `/api/drafts/<floorId>/images/<hash>`, which only the owner may read.
+ */
+export interface DraftImage { hash: string; mime: 'image/png' | 'image/jpeg' | 'image/webp'; width: number; height: number }
+
+/** One approved or proposed screen, as its wall card shows it. */
 export interface DraftScreen {
+  /** Stable card id from draft.json (else made from the title). */
+  id: string;
   title: string;
   status: 'sketch' | 'review' | 'approved';
+  note?: string;
+  image?: DraftImage;
+  feedback: DraftFeedback[];
+}
+
+/** An idea card (step 5): the board where the project is worked out before screens. */
+export interface DraftIdea {
+  id: string;
+  title: string;
+  note?: string;
+  image?: DraftImage;
+  feedback: DraftFeedback[];
 }
 
 /** The brand wall (where the TV is on an open floor). */
@@ -20,6 +48,7 @@ export interface DraftBrand {
 
 /** What the owner's computer last said about the draft, from its local `.agent-office/draft.json`. */
 export interface DraftBoards {
+  ideas: DraftIdea[];
   decisions: string[];
   plan: string[];
   screens: DraftScreen[];
@@ -72,7 +101,9 @@ export type DraftsClientMsg =
   /** New project: makes a draft floor and rides you to it. */
   | { t: 'drafts.new'; name: string }
   /** Kick off (cubbies step 3): `confirm` must be the draft's name, typed again. */
-  | { t: 'drafts.kickoff'; floorId: string; confirm: string };
+  | { t: 'drafts.kickoff'; floorId: string; confirm: string }
+  /** Feedback on one card (step 5), signed by a device the owner's computer trusts (ownerFeedbackEncoding). */
+  | ({ t: 'drafts.feedback'; floorId: string } & DraftFeedbackMessage);
 
 export type DraftsServerMsg =
   | { t: 'drafts'; state: DraftsState }
@@ -95,4 +126,29 @@ export function cleanDraftName(s: unknown): string {
 }
 
 /** Empty boards, before the owner's computer has said anything. */
-export const EMPTY_BOARDS: DraftBoards = { decisions: [], plan: [], screens: [], brand: { colors: [] } };
+export const EMPTY_BOARDS: DraftBoards = { ideas: [], decisions: [], plan: [], screens: [], brand: { colors: [] } };
+
+/** A note on a card, as the owner's device signs it. */
+export interface DraftFeedbackMessage { cardId: string; text: string; requestId: string; at: number; ownerSig: string }
+export type DraftFeedbackPayload = { cubbyId: string; floorId: string; computerId: string } & Omit<DraftFeedbackMessage, 'ownerSig'>;
+export function ownerFeedbackEncoding(f: DraftFeedbackPayload): string {
+  return JSON.stringify(['agent-office/cubby-owner-feedback/v1', f.cubbyId, f.floorId, f.computerId, f.requestId, f.at, f.cardId, f.text]);
+}
+/** Limits on what a board carries (enforced on the computer and again at the office). */
+export const DRAFT_LIMITS = {
+  ideas: 16, screens: 24, feedbackPerCard: 20, feedbackText: 1000, note: 400,
+  /** Aggregate escaped UTF-8 text bytes plus 192 bytes per note (ID, timestamp and JSON). */
+  feedbackBytes: 16 * 1024, feedbackNoteOverhead: 192,
+  /** Images on one draft, and the largest one after cleaning. */
+  images: 16, imageBytes: 2 * 1024 * 1024, imagePixels: 16_000_000,
+  /** Base64 characters per image chunk frame (the node socket's frames stay well under 64 KB). */
+  chunk: 48 * 1024,
+} as const;
+/** The URL the owner's page loads a board image from. */
+export const draftImageUrl = (floorId: string, hash: string) => `/api/drafts/${encodeURIComponent(floorId)}/images/${hash}`;
+
+/** Bound decoded memory as well as encoded bytes, before any browser fetch or local transfer. */
+export function validDraftImageSize(width: number, height: number): boolean {
+  return Number.isSafeInteger(width) && Number.isSafeInteger(height) && width > 0 && height > 0 &&
+    width <= 16384 && height <= 16384 && width * height <= DRAFT_LIMITS.imagePixels;
+}

@@ -76,12 +76,49 @@ Press **E** at the studio table to use the existing cubby setup flow, slot `0`. 
 {
   "decisions": ["Keep the first release small"],
   "plan": ["Review the first screen"],
-  "screens": [{ "title": "Welcome", "status": "review" }],
+  "ideas": [{ "id": "first-visit", "title": "A calm first visit", "note": "One clear next step", "image": "design/idea.png" }],
+  "screens": [{ "id": "welcome", "title": "Welcome", "status": "review", "note": "Review the main action", "image": "design/welcome.webp" }],
   "brand": { "name": "Project", "tagline": "A short promise", "colors": ["#336699"] }
 }
 ```
 
-The connector reads only this explicit JSON file, at most 64 KiB, without following symlinks. Decisions and plan have at most 16 lines of 300 characters each; screens have at most 24 titles of 120 characters and status `sketch`, `review` or `approved`. Brand name and tagline are optional (80 and 200 characters); colors are at most six `#rrggbb` values. Text is cleaned to single lines and unknown fields are discarded. The server validates the same limits and keeps the last boards only in memory, visible only to the owner, including while the computer sleeps. Restarting the Office clears them until the connector republishes. Harness agents with role `designer` keep their builder seat and publish the designer marker used by the draft view.
+The connector reads this explicit JSON file (at most 64 KiB) without following symlinks. Decisions and plan have at most 16 lines of 300 characters each. Ideas have at most 16 cards; screens have at most 24 with status `sketch`, `review` or `approved`. Each card has a title (120 characters), optional note (400 characters), and a stable `id` of up to 64 letters, digits, underscores or hyphens. Omitted IDs are derived from titles; supply IDs to preserve feedback when renaming a card. Brand name and tagline are optional (80 and 200 characters); colors are at most six `#rrggbb` values. Text is cleaned and unknown fields are discarded. Harness agents with role `designer` keep their builder seat and publish the designer marker used by the draft view.
+
+Place design files in `<project>/.agent-office/design/` and reference them as `"image": "design/<file>"`. Only regular files beneath that folder are read: no symlinked files or folders, traversal paths or files larger than 2 MiB or images above 16 million pixels. Oversize images show as text cards. Up to 16 images are published per board. The file contents determine the type, regardless of extension: PNG, JPEG and still WebP are supported. The connector strips PNG ancillary metadata, JPEG APP1–APP15 and comments, and WebP EXIF, XMP and ICC profiles before calculating the SHA-256 hash and dimensions. Paths and original image bytes stay on the computer. Cleaned images travel in ordered chunks of at most 48 KiB of base64, retrying transport backpressure, and resend on reconnect or when removed bytes are referenced again.
+
+The office keeps boards and images in private memory only, including while the computer sleeps. Images are served only to the signed-in draft owner at `/api/drafts/<floorId>/images/<hash>` with `private, no-store`, `nosniff` and a restrictive content policy. Other accounts receive the same 404 as a missing image. Images disappear when removed from the latest board, when the cubby or floor is removed, or after successful kickoff. Restarting the office clears them until the connector republishes.
+
+### Card feedback
+
+The owner's device signs a note on an idea or screen card using its trusted owner key. The office relays it only to that draft's online computer. The computer verifies against all locally trusted devices, requires a timestamp within 60 seconds, rejects replays, and checks the card still exists in the current local board. Invalid signatures change nothing and produce a chat notice. Feedback never approves tools or changes local permissions.
+
+Accepted notes are written atomically with mode `0600` to `.agent-office/feedback.json`, shaped as `{ "<card-id>": [{ "id": "<request-id>", "text": "...", "at": 1800000000000 }] }`. Each card retains its latest 20 notes, each at most 1,000 characters. This file merges into the published boards.
+
+Across all idea and screen cards, feedback has a 16 KiB budget: the UTF-8 bytes of JSON-escaped note text plus 192 bytes per note for its maximum-length ID, timestamp and JSON envelope. The computer checks the existing total plus the incoming note before any write (including before the existing per-card retention step). A note that would exceed the budget changes no file and sends the owner’s chat: “The board's feedback is full. Moving or resolving notes on your computer frees room.” The office uses the same notice to refuse early when its current board is already at the budget. Move notes off the published board or resolve/remove them locally to free room; moving between cards on that same board does not reduce the total.
+
+If the lead is idle, it also receives `Feedback on <card title>: <text>` as a chat turn; a busy lead leaves the saved note for later. The owner's chat receives a notice either way.
+
+The 64 KiB snapshot frame limit still applies to the complete board and roster. The aggregate budget leaves room for all 16 ideas and 24 screens with maximum ASCII board text, 16 image references, and full cubby plan/Needs-you lists. It bounds the total note count as well as text: it cannot permit 800 maximum-ID notes at once. Maximum Unicode/escaped board text, a large roster, manually edited feedback or older oversized records can still exceed the frame cap. In that case the connector sends a small snapshot with “The board is too big to show; it is still saved on your computer” and a fresh roster (bounded separately if necessary), instead of dropping publication. Device presence continues. The office retains its last complete board and images while showing the error; after local cleanup, the complete board publishes again. Feedback is never trimmed to fit a snapshot. Kickoff continues exporting every note in the office’s last complete board; unpublishable local edits have not reached that snapshot.
+
+### Design board (cubbies step 5)
+
+On the owner's draft the north wall keeps **📝 Decisions**, **🗺️ Plan** and **🖼️ Screens**, and a **💡 Ideas** board covers the Services board on the east wall, beside the **🎨 Brand wall**. Ideas and Screens show cards three across and two down: each card's design image as a thumbnail (or its words when it has none, or its image won't load), its title, a screen's status chip and a 💬 count once it has feedback. With more than six, the last place says “+N more” and opens the first card that didn't fit; ‹ › in the card window step through the whole board.
+
+Aim at a card and the hint says **[E] Open <title>**. The card window shows the image large, the title, status and note, and every feedback note, newest last, with its time. Type in the box and press **Send feedback** or Enter (Shift+Enter is a new line). The note is signed with this browser's owner key over `["agent-office/cubby-owner-feedback/v1", cubbyId, floorId, computerId, requestId, at, cardId, text]`, the same way as chat. It shows as “Sending…” until the computer reports it back in the boards, and says so if the computer doesn't within 20 seconds. With the computer asleep, the box is shut. On a device the computer doesn't trust yet, the window says so and offers **💬 Open lead chat**, where **📱 Add this device** is. ✕ or Esc goes straight back to mouse-look.
+
+On `/lite`, **🧩 Draft board** appears on your own draft floor. It lists the ideas and screens with their thumbnails, and tapping one opens the same card window, feedback included.
+
+The page loads each image from `/api/drafts/<floorId>/images/<hash>` with its own session cookie, checks the 16-million-pixel limit before fetching, and keeps at most 24 decoded bitmaps by floor and hash in a least-recently-used cache. Eviction closes the bitmap; removing a card, leaving a draft or kicking it off closes its cached images and cancels pending loads. Images exist only on the owner's page and are never sent over the socket. `tests/design-board-ui.mjs` covers the wall, the card window, signing and the phone, using generated PNGs and no server.
+
+### PR #97 review worker status (2026-11-25)
+
+Owner: the Agent Office lead; implementation worker on `feat/cubbies-step-five-design-board-20261125`, based on `34a307e`. Current brief: Jonathan's 2026-11-25 finding-3 request and lead decision to use an aggregate feedback budget, with no snapshot trimming or chunked feedback transfer. Findings 1 and 2 remain intact. Finding 3 adds a 16 KiB aggregate budget, the same full-board notice on the computer and office, and visible overflow snapshots that retain roster/device updates and the last complete office board. The budget size is the worker's within-scope choice; 40 KiB would not leave enough room for maximum ASCII card metadata. The existing latest-20-per-card retention is unchanged.
+
+Verification: `npm run typecheck` passed; focused tests passed 37/37; `npm test` passed 940/942, with only the two known clone-recovery failures caused by denied `ps` (excluded by the worker brief). Six regression tests were added. The maximum ASCII board fixture, including the full feedback budget, is 60,098 bytes, leaving 5,438 bytes below the frame cap; kickoff exports every fixture note. `node tests/design-board-ui.mjs` and `node tests/drafts-ui.mjs` both passed with zero browser errors. Desktop and phone card screenshots were reviewed under `.paradev/shots-board`. The normal build hit the existing symlinked Vite-cache permission error; `npx vite build --configLoader runner` and `npm run build:server` passed. The size guard passed in the full suite; docs check found two existing Markdown files changed and no new Markdown. Logs are under `.paradev/finding3-*.log`. Startup harness health and other-worker process inspection are unverified because this environment denied them. Next step: the lead reviews and integrates this local finding-3 commit. No push, merge, release or deployment was performed.
+
+## Needs Jonathan
+
+None. The aggregate budget constrains the combined card/note maxima; the overflow fallback covers larger local board text.
 
 ### Kickoff
 
@@ -90,7 +127,17 @@ The draft's owner confirms its name again (trimmed, case-insensitive). Configure
 - `AGENT_OFFICE_KICKOFF_REMOTE=/absolute/folder`: local mode creates `<folder>/<slug>.git` with `git init --bare`, adds `origin`, and pushes `main`. Existing destinations are refused and left intact. Use this mode for tests and local acceptance; it does not contact GitHub.
 - `AGENT_OFFICE_KICKOFF_ORG=PhaseOneVenturesAI`: real org mode runs `gh repo create <org>/<slug> --private --source . --push` in the draft checkout, using the server's GitHub CLI sign-in. **This creates a private GitHub repository.** The local setting takes precedence when both are set. Invalid settings fail closed; neither set means `canKickoff: false` and a polite refusal with no changes.
 
-Kickoff snapshots the cubby's last boards, including those retained while its computer sleeps. It writes plain, bounded Markdown into the existing `<dataDir>/drafts/<id>` checkout: `README.md` (project name and tagline), `docs/BRIEF.md` (decisions), `docs/PLAN.md` (plan), `docs/SCREENS.md` (all screen titles and statuses, approved first), and `docs/BRAND.md` (brand name, tagline, colors). These five fixed paths are committed as Agent Office with hooks and commit signing disabled; board text never becomes a command or path. The checkout must be clean on `main` with no existing remotes. Concurrent kickoff attempts are refused.
+Kickoff snapshots the cubby's last boards and available images, including those retained while its computer sleeps. It writes these files in the existing `<dataDir>/drafts/<id>` checkout:
+
+- `README.md`: project name and tagline.
+- `docs/BRIEF.md`: decisions and idea cards with notes.
+- `docs/PLAN.md`: the plan.
+- `docs/FEEDBACK.md`: feedback on every idea and screen card.
+- `design/system.md` and `design/tokens.json`: brand name, tagline and color tokens.
+- `design/SCREENS.md`: every screen's status and note, approved first, with links to exported images.
+- `design/screens/<card-id>.<png|jpg|webp>`: cleaned bytes for each approved screen whose image is available in office memory. Unapproved screens and missing images produce no image file.
+
+These explicit paths are committed as Agent Office with hooks and commit signing disabled. Only validated card IDs become image filenames; board text never becomes a command. The transaction accepts binary files and refuses symlinked or non-directory parents and aliased files. The checkout must be clean on `main` with no existing remotes. Concurrent kickoff attempts are refused. A failure restores previous bytes, modes, Git state and newly created folders exactly; it keeps draft images available for retry. Successful kickoff drops the draft's image memory, and the public floor serves no draft image URLs.
 
 After the push and persistence succeed, the same floor becomes public, everyone receives the opening announcement, and its gong rings. Its elevator entry wears **New** for three days. `drafts.json` retains the kickoff timestamp, brand and approved screen titles for everyone's Design book and brand poster. The owner's slot-0 cubby keeps its identity and setup in the hall; its interior remains private to its owner and explicitly admitted watchers. A failed kickoff leaves the floor private, restores its previous files and commit, and removes any local bare repository made by that attempt. Org-mode failures do not delete GitHub repositories: if GitHub created one before a later failure, an operator must inspect it before retrying.
 

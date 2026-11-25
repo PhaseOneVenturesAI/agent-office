@@ -2,7 +2,7 @@
  * Draft floors (cubbies step 2): a project before its kickoff, seen only by its owner. While you're on
  * one of your own drafts (store.drafts.here) the floor's lights are down, its desks are under sheets,
  * one lamp hangs over a studio table where the whiteboard stood, the north boards are Decisions, Plan
- * and Screens, the TV wall is the Brand wall, and your lead greets you at the doors and then waits by
+ * and Screens, the east wall has the Ideas board (over Services) and the Brand wall (over the TV), and your lead greets you at the doors and then waits by
  * the table. Everywhere else, and for everyone else, nothing here shows, collides or answers E: each
  * thing it hides or turns off is put back exactly as it was when you leave.
  */
@@ -14,6 +14,7 @@ import { officeFill } from '../../world/sky';
 import type { Collider, Interactable } from '../../world/types';
 import type { Cubbies } from '../cubbies';
 import { leadColorIndex, toolName } from '../cubbies/model';
+import { wireDraftCards } from './board-cards';
 import { wireDesignBook } from './design';
 import { wireKickoff } from './kickoff';
 import { KICKOFF_KEY, kickoffOffer } from './kickoff-model';
@@ -42,10 +43,10 @@ export interface DraftsDeps {
   aimed(): unknown;
 }
 
-/** The office's things a draft turns off: the boards, the TV, the whiteboard, every desk in a pod and the board agents' kiosks. */
+/** The office's things a draft turns off: the boards (Services too, under the Ideas board), the TV, the whiteboard, every desk in a pod and the board agents' kiosks. */
 const PODDED = new Set(PODS.flatMap((p) => p.desks.map((d) => d.id)));
 function draftTurnsOff(it: Interactable): boolean {
-  if (it.kind === 'issues' || it.kind === 'queue' || it.kind === 'pulls' || it.kind === 'tv' || it.kind === 'whiteboard' || it.kind === 'station') return true;
+  if (it.kind === 'issues' || it.kind === 'queue' || it.kind === 'pulls' || it.kind === 'services' || it.kind === 'tv' || it.kind === 'whiteboard' || it.kind === 'station') return true;
   return it.kind === 'desk' && !!it.deskId && PODDED.has(it.deskId);
 }
 
@@ -172,7 +173,7 @@ export function installDrafts(ctx: Ctx, deps: DraftsDeps) {
     const it = cubbyOf()?.interior;
     const name = lead();
     scene.setLead(name, it?.look, leadColorIndex(it?.leadName ?? name));
-    scene.boards.sync(draft.boards);
+    scene.boards.sync(draft.boards, draft.id);
     syncPods();
     ctx.hint.invalidate();
   }
@@ -241,6 +242,7 @@ export function installDrafts(ctx: Ctx, deps: DraftsDeps) {
     },
   });
   wireDesignBook(ctx);
+  wireDraftCards(ctx, { boards: scene.boards, shown: () => shown, talk: (id) => deps.cubbies().talk(id) });
   const loft = new LoftLights(office.group, scene.group);
   ctx.usables.add({ usable: () => (shown ? [scene.table, scene.leadIt] : []), pickable: () => scene.group });
   ctx.ticks.add('others', (f) => {

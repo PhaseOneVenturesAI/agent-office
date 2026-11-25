@@ -3,13 +3,13 @@ import path from 'node:path';
 import type { DraftBoards, Launched } from '../../shared/protocol/drafts.js';
 import type { FloorDef } from '../building.js';
 import { cleanDraftBoards } from './boards.js';
-import { documentTransaction, kickoffDocuments } from './documents.js';
+import { documentTransaction, kickoffDocuments, type ImageLookup } from './documents.js';
 import { createOrgRemote, GIT_FLAGS, type KickoffRemote, type KickoffRunner } from './remote.js';
 
 /** One bounded transaction in the server-created draft checkout; never in the owner's project. */
 export async function kickoffProject(def: FloorDef, raw: DraftBoards, remote: KickoffRemote,
-  run: KickoffRunner, publish: (launched: Launched) => void): Promise<Launched> {
-  const boards = cleanDraftBoards(raw), documents = kickoffDocuments(def.name, boards);
+  run: KickoffRunner, publish: (launched: Launched) => void, images?: ImageLookup): Promise<Launched> {
+  const boards = cleanDraftBoards(raw), documents = kickoffDocuments(def.name, boards, images);
   const git = (args: string[]) => run('git', [...GIT_FLAGS, ...args], def.dir);
   let reason = 'Could not prepare the draft. Check its local files and try again.';
   let head: string | undefined, files: ReturnType<typeof documentTransaction> | undefined;

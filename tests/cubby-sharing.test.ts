@@ -272,7 +272,7 @@ test('lite welcome, floor entry and updates include owner interiors and private 
   assert.equal(lite.c.peer.lite, true); assert.equal(welcome.cubbies.cubbies[0].interior.leadName, 'Nova');
   assert.deepEqual(welcome.queue, f.floor.queue.state());
   const def = f.drafts.create('Private draft', 'alice'), floor = f.open(def), cubby = f.setup(def.id);
-  const boards = { decisions: ['Draft decision'], plan: ['Draft plan'], screens: [], brand: { colors: [] } };
+  const boards = { ideas: [], decisions: ['Draft decision'], plan: ['Draft plan'], screens: [], brand: { colors: [] } };
   cubby.snapshot({ draft: boards });
   const phone = f.client('alice', def.id, true), draftWelcome = last(phone, 'welcome');
   assert.equal(draftWelcome.floors.some((v: any) => v.id === def.id), true);

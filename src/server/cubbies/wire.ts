@@ -1,9 +1,10 @@
+import { ownerFeedbackEncoding, type DraftFeedbackPayload } from '../../shared/protocol/drafts.js';
 import { createHash, createHmac, createPublicKey, timingSafeEqual, verify } from 'node:crypto';
 import { deviceCode, ownerChatEncoding, ownerDeviceEncoding, type CubbyDevicePayload, type CubbyOwnerPayload, type CubbyRelayFrame } from '../../shared/protocol/cubbies.js';
 export const cubbyKey = (token: string) => createHash('sha256').update(token).digest('hex');
 export function relaySignature(key: string, frame: Omit<CubbyRelayFrame, 'signature'>): string {
   const f = frame as Record<string, unknown>;
-  return createHmac('sha256', key).update(JSON.stringify([f.t, f.cubbyId, f.floorId, f.ownerId, f.connectionId, f.computerId, f.requestId ?? null, f.at ?? null, f.text ?? null, f.ownerSig ?? null])).digest('hex');
+  return createHmac('sha256', key).update(JSON.stringify([f.t, f.cubbyId, f.floorId, f.ownerId, f.connectionId, f.computerId, f.requestId ?? null, f.at ?? null, f.text ?? null, f.ownerSig ?? null, ...(f.t === 'cubby.feedback' ? [f.cardId] : [])])).digest('hex');
 }
 export function verifyRelay(key: string, frame: CubbyRelayFrame): boolean {
   if (typeof frame.signature !== 'string' || !/^[0-9a-f]{64}$/.test(frame.signature)) return false;
@@ -42,4 +43,8 @@ export function verifyOwnerDevice(key: string, frame: CubbyDevicePayload & { own
 /** The code a device with this public key shows (the same digits as the browser works out for itself). */
 export function ownerDeviceCode(key: string): string {
   return deviceCode(createHash('sha256').update(Buffer.from(key, 'base64url')).digest());
+}
+
+export function verifyOwnerFeedback(key: string, frame: DraftFeedbackPayload & { ownerSig?: unknown }): boolean {
+  return verifySigned(key, ownerFeedbackEncoding(frame), frame.ownerSig);
 }
