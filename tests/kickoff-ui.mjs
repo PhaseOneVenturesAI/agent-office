@@ -66,7 +66,8 @@ try {
     let base = 0;
     let held = null;
     performance.now = () => (held ?? real() - base);
-    window.__hold = () => { held = performance.now(); };
+    // Held at an exact moment (`at`), so a busy machine can't make a check land later in the animation.
+    window.__hold = (at) => { held = at ?? performance.now(); };
     window.__go = () => { if (held !== null) { base = real() - held; held = null; } };
   });
   await page.route('**/api/**', (r) => r.fulfill({ contentType: 'application/json', body: '{}' }));
@@ -135,14 +136,18 @@ try {
   // ---- Before: the office's own floor, for comparing with after. ----
   push({ t: 'cubbies', state: { enabled: false, cubbies: [] } });
   push({ t: 'drafts', state: { enabled: true, canStart: true } });
-  await page.waitForTimeout(600);
+  // The lights at rest: the same intensity over a quarter of a second, not a fixed wait.
+  const hemiNow = () => page.evaluate(() => window.__audit.parts.stage.hemi.intensity);
+  const settle = async () => { for (let last = -1, i = 0; i < 80; i++) { const h = await hemiNow(); if (Math.abs(h - last) < 1e-4) return; last = h; await page.waitForTimeout(250); } };
+  await settle();
   const before = await state();
   assert.equal(before.shown, false);
   assert.equal(before.launched, false, 'no Design book or poster on a floor that was never kicked off');
 
   // ---- Your draft, with kickoff set up in this office. ----
   push({ t: 'drafts', state: { enabled: true, canStart: true, here, canKickoff: true } });
-  await page.waitForTimeout(1800);
+  await page.waitForFunction(() => !!window.__office.scene.getObjectByName('drafts')?.visible, null, { timeout: 15000, polling: 50 });
+  await settle();
   const draft = await state();
   assert.equal(draft.shown, true);
   assert.ok(draft.hemi < before.hemi * 0.4);
@@ -225,9 +230,11 @@ try {
   assert.equal(await page.locator('.modal').count(), 0, 'the panel closes as it kicks off');
   const at = () => page.evaluate(() => performance.now());
   const t0 = (await at()) - 100;
+  /** Freezes the kickoff's clock at exactly t0 + ms, then waits two frames so what's drawn is that moment. */
   const holdAt = async (ms) => {
     await page.waitForFunction((until) => performance.now() >= until, t0 + ms, { polling: 16 });
-    await page.evaluate(() => window.__hold());
+    await page.evaluate((at) => window.__hold(at), t0 + ms);
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
   };
   await holdAt(900);
   const early = await state();
@@ -244,7 +251,9 @@ try {
   // The office opens the hall with your cubby set up.
   push({ t: 'cubbies', state: { enabled: true, floorId: 'draft-1', setupAllowed: true, cubbies: [myCubby] } });
   push({ t: 'floors', floors: floors(true) });
-  await page.waitForFunction((until) => performance.now() >= until, t0 + 4200);
+  // Wait for the end state itself (every light back on, the hall open), not a fixed time.
+  await page.waitForFunction((target) => Math.abs(window.__audit.parts.stage.hemi.intensity - target) < 0.05 && window.__office.office.cubbyHall.on &&
+    window.__office.office.whiteboard.group.visible, before.hemi, { timeout: 20000, polling: 50 });
   const open = await state();
   assert.equal(open.whiteboard, true, 'the whiteboard is back');
   assert.deepEqual(open.offIds, before.offIds.filter((x) => x !== 'designbook:'), 'the boards, the TV and every desk are usable again');
