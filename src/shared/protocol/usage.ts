@@ -1,4 +1,4 @@
-// What workers spend: session usage, the office ledger and the Claude plan limits.
+// What workers spend: session usage, the office ledger and the providers' plan limits.
 
 /** Session usage. The persistent office ledger continues to cover Claude Code only. */
 export interface Usage {
@@ -63,9 +63,13 @@ export interface UsageState {
   pauseHiring: boolean;
 }
 
-/** One of the Claude plan's usage windows: the 5-hour session, the week, or a model's week. */
+/** The providers whose plan limits the office can read (see server/limits/). */
+export const LIMITS_PROVIDERS = ['claude', 'codex', 'kimi'] as const;
+export type LimitsProvider = (typeof LIMITS_PROVIDERS)[number];
+
+/** One of a plan's usage windows: the 5-hour session, the week, the month, or a model's week. */
 export interface PlanWindow {
-  /** e.g. "5h session", "Week", "Fable week". */
+  /** e.g. "5h session", "Week", "Month", "Fable week". */
   label: string;
   /** Percent of the window used, 0-100. */
   pct: number;
@@ -74,22 +78,25 @@ export interface PlanWindow {
 }
 
 /**
- * The Claude plan limits of the account the office's Claude workers run on, as Claude Code's
- * /usage shows them (see server/limits.ts). One account for the whole building.
+ * One provider's plan limits of the account its workers run on, as the provider's own CLI reports
+ * them (see server/limits/): Claude Code's /usage, Codex's account/rateLimits, Kimi's quota.
  */
 export interface PlanLimits {
-  /** 'pro', 'max', 'team', 'enterprise'…, when known. */
+  /** 'pro', 'max', 'plus', 'Ultra'…, when known. */
   plan?: string;
-  /** The 5-hour session first, then the week, then per-model weeks. Empty until first read, or when there is no plan. */
+  /** The 5-hour session first, then the week, then any others. Empty until first read, or when there is no plan. */
   windows: PlanWindow[];
   /** When the numbers were read (ms since epoch); 0 before the first read. */
   at: number;
 }
 
+/** The plan limits of every provider that can report them here, by provider. */
+export type LimitsByProvider = Partial<Record<LimitsProvider, PlanLimits>>;
+
 export type UsageClientMsg =
-  /** Read the Claude plan limits again now, instead of at the next poll. */
-  | { t: 'limits.refresh' };
+  /** Read the plan limits again now, instead of at the next poll: one provider's, or everyone's. */
+  | { t: 'limits.refresh'; provider?: LimitsProvider };
 
 export type UsageServerMsg =
   | { t: 'usage'; state: UsageState }
-  | { t: 'limits'; state: PlanLimits };
+  | { t: 'limits'; state: LimitsByProvider };

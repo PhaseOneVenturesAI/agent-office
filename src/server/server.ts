@@ -70,7 +70,7 @@ export async function startServer(cfg: Config, opts: StartOptions = {}) {
     ctx.building.shutdown(keep);
     ctx.ledger.flush();
     ctx.limits.close();
-    for (const a of ctx.accountLimits.values()) a.reader.close();
+    for (const a of ctx.accountLimits.values()) a.hub.close();
     ctx.signins.shutdown();
     ctx.nodes.close();
     ctx.deliveries.close();
