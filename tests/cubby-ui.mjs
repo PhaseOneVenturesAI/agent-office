@@ -224,9 +224,24 @@ try {
   assert.match(hints.free, /Free cubby.*E.*Set up/);
   assert.match(hints.direct, /Tool and branch/);
   // Inside your own cubby, from just in its door.
-  const mineAt = await page.evaluate(() => { const p = window.__audit.cubbies.rooms().get(0).place; return { x: p.x, z: p.z, depth: p.depth }; });
-  await stand(mineAt.x + mineAt.depth / 2 - 0.4, mineAt.z + 0.2, Math.PI / 2, -0.25, 'third');
+  const mineAt = await page.evaluate(() => { const p = window.__audit.cubbies.rooms().get(0).place; return { x: p.x, z: p.z, depth: p.depth, width: p.width }; });
+  // At eye height, the way a player stands.
+  // In the doorway, looking in: the whole room in view at eye height.
+  await stand(mineAt.x + mineAt.depth / 2 + 0.45, mineAt.z, Math.PI / 2, -0.2);
+  await page.waitForTimeout(300);
   await shot('inside');
+  // Never more than one helper's name tag and card at a time.
+  const tagged = await page.evaluate(() => {
+    const room = window.__audit.cubbies.rooms().get(0);
+    let n = 0;
+    for (const v of room.interior.views.values()) {
+      let on = false;
+      v.model?.root.traverse((o) => { if (o.isSprite && o.layers.isEnabled(0)) on = true; });
+      if (on) n++;
+    }
+    return n;
+  });
+  assert.ok(tagged <= 1, `at most one helper shows its tag (${tagged})`);
   await stand(mineAt.x + mineAt.depth / 2 + 1.0, mineAt.z + 0.1, Math.PI / 2, -0.12);
   await shot('inside-doorway');
   const cam = await page.evaluate(() => ({ x: window.__office.camera?.position.x ?? window.__audit.ctx.camera.position.x }));

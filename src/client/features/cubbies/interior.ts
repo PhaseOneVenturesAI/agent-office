@@ -299,18 +299,34 @@ export class Interior {
     });
   }
 
+  /**
+   * The one helper whose name tag and card show: the one you're aiming at, else the nearest one you're
+   * standing right by. Never more than one, so their labels can't pile up in a small room.
+   */
+  private focused(focus?: Focus) {
+    if (!focus) return undefined;
+    let best: (typeof this.views extends Map<string, infer V> ? V : never) | undefined;
+    let bestD = NEAR;
+    for (const v of this.views.values()) {
+      if (!v.model) continue;
+      if (focus.aimed && focus.aimed === v.model.root.userData.interact) return v;
+      const at = toFloor(this.place, v.spot.x, v.spot.z);
+      const d = Math.hypot(focus.x - at.x, focus.z - at.z);
+      if (d < bestD) { best = v; bestD = d; }
+    }
+    return best;
+  }
+
   update(dt: number, t: number, now: number, focus?: Focus) {
     if (this.asleep) this.laptop.shut(dt);
     else this.laptop.update(dt, undefined, 0);
     this.lead.update(dt, t, false, false);
+    const shown = this.focused(focus);
     for (const v of this.views.values()) {
       v.model?.update(dt, t);
       if (v.model) {
         shrinkTags(v.model.root);
-        // Only the helper you're looking at, or standing right by, shows its name tag and card.
-        const at = toFloor(this.place, v.spot.x, v.spot.z);
-        const near = !!focus && (focus.aimed === v.model.root.userData.interact || Math.hypot(focus.x - at.x, focus.z - at.z) < NEAR);
-        showTags(v.model.root, near);
+        showTags(v.model.root, v === shown);
       }
       if (v.spot.kind === 'machine') {
         const a = v.agent;
