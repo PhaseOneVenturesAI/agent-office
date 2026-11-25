@@ -27,6 +27,7 @@ import { rooftopHandlers } from './rooftop.js';
 import { servicesView, settingsHandlers } from './settings.js';
 import { signinsHandlers } from './signins.js';
 import { teamHandlers } from './team.js';
+import { tvHandlers, tvView } from './tv.js';
 import { usageHandlers } from './usage.js';
 import { whiteboardHandlers, whiteboardHooks, whiteboardView } from './whiteboard.js';
 import { jailView, workerHandlers, workerHooks, workersView } from './workers.js';
@@ -60,6 +61,7 @@ export const handlers: HandlerMap<ClientMsg> = {
   ...settingsHandlers,
   ...signinsHandlers,
   ...teamHandlers,
+  ...tvHandlers,
   ...usageHandlers,
   ...whiteboardHandlers,
   ...workerHandlers,
@@ -89,4 +91,5 @@ export const views: ViewPieces = {
   whiteboard: whiteboardView,
   meeting: meetingView,
   cabinet: cabinetView,
+  tv: tvView,
 };
