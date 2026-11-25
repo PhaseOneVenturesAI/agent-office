@@ -22,14 +22,14 @@ function cleanBoards(x: unknown): DraftBoards {
   if (!x || typeof x !== 'object') return { ...EMPTY_BOARDS, brand: { colors: [] } };
   const b = x as Partial<DraftBoards>;
   const screens = (Array.isArray(b.screens) ? b.screens : [])
-    .map((s) => ({ title: text(s?.title, 80), status: STATUSES.includes(s?.status) ? s.status : 'sketch' }) as DraftScreen)
+    .map((s) => ({ id: text(s?.id, 64) || text(s?.title, 64), title: text(s?.title, 80), status: STATUSES.includes(s?.status) ? s.status : 'sketch', feedback: [] }) as DraftScreen)
     .filter((s) => s.title)
     .slice(0, MAX_LINES);
   const brand = b.brand && typeof b.brand === 'object' ? b.brand : { colors: [] };
   const colors = (Array.isArray(brand.colors) ? brand.colors : []).filter((c): c is string => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c)).slice(0, 6);
   const name = text(brand.name, 60);
   const tagline = text(brand.tagline, 120);
-  return { decisions: lines(b.decisions), plan: lines(b.plan), screens, brand: { ...(name ? { name } : {}), ...(tagline ? { tagline } : {}), colors } };
+  return { ideas: [], decisions: lines(b.decisions), plan: lines(b.plan), screens, brand: { ...(name ? { name } : {}), ...(tagline ? { tagline } : {}), colors } };
 }
 
 function cleanHere(x: unknown): DraftView | undefined {
