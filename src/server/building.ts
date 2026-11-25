@@ -266,6 +266,19 @@ export class Building {
     return def;
   }
 
+  /** Save the public floor before changing the live definition shared by its services. */
+  launchDraft(id: string, repo?: string): FloorDef {
+    const def = this.defs.find(d => d.id === id);
+    if (!def?.draft) throw Error('No such draft floor');
+    const next = { ...def, repo };
+    delete next.draft;
+    writeFileSync(this.file + '.tmp', JSON.stringify(this.defs.map(d => d === def ? next : d), null, 2), { mode: 0o600 });
+    renameSync(this.file + '.tmp', this.file);
+    delete def.draft;
+    def.repo = repo;
+    return def;
+  }
+
   /** The office keeps its own data in this floor's checkout. */
   isLocal(id: string): boolean {
     return id === this.localId;

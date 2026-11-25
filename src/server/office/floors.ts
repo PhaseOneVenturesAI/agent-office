@@ -7,6 +7,7 @@ import { ROOF } from '../../shared/rooftop.js';
 import type { FloorInfo, ServerMsg } from '../../shared/protocol.js';
 import type { Ctx, FloorHelpers, FloorsOpen } from './context.js';
 import { SLOW_CLIENT_BYTES, type Client } from './client.js';
+import { NEW_BADGE_MS } from '../../shared/protocol/drafts.js';
 
 /** Finding floors, the elevator's list of them, and taking one off the building. */
 export function floorHelpers(ctx: Ctx): FloorHelpers {
@@ -20,10 +21,19 @@ export function floorHelpers(ctx: Ctx): FloorHelpers {
     for (const f of ctx.floors.values()) if (f.workers.get(workerId)) return f;
     return undefined;
   };
-  const floorInfos = (c: Pick<Client, 'accountId'> = {}): FloorInfo[] => [
-    ...[...ctx.floors.values()].map((f) => ({ ...f.info(), ...(f.def.draft ? { draft: true as const } : {}), ...(ctx.building.isLocal(f.id) ? { local: true } : {}) })),
-    ...ctx.building.pending().map((d) => ({ id: d.id, name: d.name, repo: d.repo, dir: d.dir, palette: d.palette, addedBy: d.addedBy, addedAt: d.addedAt, cloning: true, clone: ctx.building.cloneProgress(d.id), workers: 0, busy: 0, waiting: 0, people: 0, wing: 0 })),
-  ].filter(f => floorVisible(f.id, c));
+  let badgeTimer: NodeJS.Timeout | undefined;
+  const floorInfos = (c: Pick<Client, 'accountId'> = {}): FloorInfo[] => {
+    if (!badgeTimer && ctx.drafts) {
+      const expiry = Math.min(...[...ctx.floors.keys()].filter(id => ctx.drafts.isNew(id))
+        .map(id => ctx.drafts.records.rows.get(id)!.kickedOffAt! + NEW_BADGE_MS));
+      if (Number.isFinite(expiry)) badgeTimer = setTimeout(() => { badgeTimer = undefined; floorsChanged(); }, Math.max(1, expiry - Date.now()));
+      badgeTimer?.unref();
+    }
+    return [
+      ...[...ctx.floors.values()].map((f) => ({ ...f.info(), ...(f.def.draft ? { draft: true as const } : {}), ...(ctx.drafts?.isNew(f.id) ? { isNew: true as const } : {}), ...(ctx.building.isLocal(f.id) ? { local: true } : {}) })),
+      ...ctx.building.pending().map((d) => ({ id: d.id, name: d.name, repo: d.repo, dir: d.dir, palette: d.palette, addedBy: d.addedBy, addedAt: d.addedAt, cloning: true, clone: ctx.building.cloneProgress(d.id), workers: 0, busy: 0, waiting: 0, people: 0, wing: 0 })),
+    ].filter(f => floorVisible(f.id, c));
+  };
   // The elevator's counts change with every worker update; tell everyone at most a few times a second.
   const floorsSent = new WeakMap<Client, string>();
   let floorsTimer: NodeJS.Timeout | undefined;
@@ -73,6 +83,7 @@ export function floorHelpers(ctx: Ctx): FloorHelpers {
   };
 
   const closeFloor = (floor: Floor, who: string): Promise<string | undefined> => {
+    if (ctx.drafts?.isKicking(floor.id)) return Promise.resolve('Wait for kickoff to finish before removing this floor');
     const existing = closing.get(floor);
     if (existing) return existing;
     const task = removeFloor(floor, who);
@@ -81,7 +92,7 @@ export function floorHelpers(ctx: Ctx): FloorHelpers {
     return task;
   };
 
-  return { floorVisible, floorOf, workerFloor, floorInfos, floorsChanged, cancelFloorsChanged: () => clearTimeout(floorsTimer), arrivalFloor, closeFloor };
+  return { floorVisible, floorOf, workerFloor, floorInfos, floorsChanged, cancelFloorsChanged: () => { clearTimeout(floorsTimer); clearTimeout(badgeTimer); }, arrivalFloor, closeFloor };
 }
 
 /**
