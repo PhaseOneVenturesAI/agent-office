@@ -1,3 +1,7 @@
+import type { CubbiesClientMsg, CubbiesServerMsg } from './protocol/cubbies.js';
+import type { DraftsClientMsg, DraftsServerMsg } from './protocol/drafts.js';
+export * from './protocol/cubbies.js';
+export * from './protocol/drafts.js';
 // Wire protocol between browser and server. Every WebSocket frame is one JSON object.
 //
 // Each part of the office keeps its state types and its messages in ./protocol/<domain>.ts; this
@@ -48,6 +52,8 @@ export * from './protocol/usage.js';
 export * from './protocol/workers.js';
 
 export type ClientMsg =
+  | CubbiesClientMsg
+  | DraftsClientMsg
   | DeliveryClientMsg
   | ConversationClientMsg
   | HandoffClientMsg
@@ -80,6 +86,8 @@ export type ClientMsg =
   | DogClientMsg;
 
 export type ServerMsg =
+  | CubbiesServerMsg
+  | DraftsServerMsg
   | DeliveryServerMsg
   | ConversationServerMsg
   | HandoffServerMsg

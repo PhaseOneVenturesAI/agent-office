@@ -9,7 +9,7 @@ import { readBody, sameOrigin, send } from '../util.js';
 export const projectContextRoute: Route = {
   path: '/api/project-context', auth: 'session',
   async handle(ctx, { req, res, url, session }) {
-    const floor = floorParam(ctx, url);
+    const floor = floorParam(ctx, url, session);
     if (!floor) return send(res, 404, { error: 'No such project floor.' });
     const me = ctx.meOf(session.account?.id);
     try {

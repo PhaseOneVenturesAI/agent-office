@@ -1,0 +1,12 @@
+/* Sharing a cubby: the owner's answer to a knock, and Send a task to the floor (ui-share.ts). */
+.modal.cubby-knock { width: min(440px, 100%); }
+.cubby-knock .body p { margin: 0 0 10px; font-weight: 800; font-size: 15px; overflow-wrap: anywhere; }
+.cubby-knock .body p.cb-note { font-size: 12px; margin: 0; }
+.cubby-knock footer, .cubby-task footer { display: flex; justify-content: flex-end; gap: 8px; }
+.modal.cubby-task { width: min(560px, 100%); }
+.cubby-task .body { display: flex; flex-direction: column; gap: 12px; }
+.cubby-task label { display: flex; flex-direction: column; gap: 6px; font-weight: 900; font-size: 13px; }
+.cubby-task label > span { display: flex; justify-content: space-between; }
+.cubby-task .cb-count { color: var(--muted); font-weight: 700; font-variant-numeric: tabular-nums; }
+.cubby-task textarea { resize: vertical; min-height: 110px; }
+.cubby-task .cb-task-note { color: var(--ink); background: var(--paper-2); border: 2px solid var(--ink); border-radius: 10px; padding: 8px 12px; font-size: 13px; }

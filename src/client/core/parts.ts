@@ -26,6 +26,7 @@ import type { installCarrying } from '../features/carrying';
 import type { installCars } from '../features/cars';
 import type { installClimbing } from '../features/climbing';
 import type { installCoffee } from '../features/coffee';
+import type { installCubbies } from '../features/cubbies';
 import type { installDog } from '../features/dog';
 import type { installEmotes } from '../features/emotes';
 import type { installGolf } from '../features/golf';
@@ -117,6 +118,7 @@ export interface Parts {
   bookshelf: Made<typeof installBookshelf>;
   bar: Made<typeof installBar>;
   coffee: Made<typeof installCoffee>;
+  cubbies: Made<typeof installCubbies>;
   smoking: Made<typeof installSmoke>;
   hoops: Made<typeof installBasketball>;
   cards: Made<typeof installCarrying>;

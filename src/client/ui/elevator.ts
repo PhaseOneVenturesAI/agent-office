@@ -6,6 +6,7 @@ import type { Net } from '../net';
 import { store } from '../state';
 import { h, openModal, timeAgo, toast, type Modal } from './dom';
 import { confirmDialog } from './prompt';
+import { openNewProject } from '../features/drafts/ui-new';
 
 // The elevator's panel: a button for every floor (every project), and "add a project", which clones
 // one of the repositories the office's gh login can see and makes it a new floor. The first time
@@ -130,15 +131,17 @@ export function openElevator(opts: ElevatorOptions): void {
       stats.push(h('span', { title: 'Workers at desks' }, `💻 ${f.workers}`));
       if (f.people) stats.push(h('span', { title: 'People on this floor' }, `🧑 ${f.people}`));
     }
+    // One of your drafts (only ever in your own list): dark, with its dim lamp, until kickoff.
+    const draft = f.draft === true;
     const btn = h(
       'button.floor-btn',
-      { type: 'button', class: here ? 'here' : '', disabled: f.cloning || here, title: here ? "You're on this floor" : f.cloning ? 'Still being cloned' : `Ride ${mine ? 'back up ' : ''}to ${f.name}` },
-      h('span.floor-no', { style: `background:${p.trim}` }, String(i + 1)),
+      { type: 'button', class: [here ? 'here' : '', draft ? 'draft' : ''].filter(Boolean).join(' '), disabled: f.cloning || here, title: here ? "You're on this floor" : f.cloning ? 'Still being cloned' : `Ride ${mine ? 'back up ' : ''}to ${f.name}` },
+      h('span.floor-no', { style: `background:${draft ? '#ffd166' : p.trim}` }, draft ? h('span.draft-lamp', { 'aria-hidden': 'true' }, '💡') : String(i + 1)),
       h(
         'span.floor-text',
         {},
-        h('span.floor-name', {}, f.name, here ? h('span.here-tag', {}, 'you are here') : mine ? h('span.here-tag', {}, 'your floor') : null),
-        h('span.floor-sub', {}, [f.repo ?? f.dir, f.cloning ? f.clone?.detail : ''].filter(Boolean).join(' · ')),
+        h('span.floor-name', {}, f.name, draft ? h('span.draft-tag', {}, 'draft') : null, f.isNew && !draft ? h('span.new-tag', { title: 'Just kicked off' }, 'New') : null, here ? h('span.here-tag', {}, 'you are here') : mine ? h('span.here-tag', {}, 'your floor') : null),
+        h('span.floor-sub', {}, draft ? 'Only you · lights off until kickoff' : [f.repo ?? f.dir, f.cloning ? f.clone?.detail : ''].filter(Boolean).join(' · ')),
         f.cloning ? cloneBar(f.clone) : null,
       ),
       h('span.floor-stats', {}, ...stats.flatMap((s, j) => (j ? [' ', s] : [s]))),
@@ -384,6 +387,14 @@ export function openElevator(opts: ElevatorOptions): void {
     net.send({ t: 'floor.repos', refresh: true });
   });
 
+  // New project: only for the people the office lets start one (store.drafts.canStart).
+  const newProject = h('button.btn.new-project', { type: 'button' }, '✨ New project');
+  newProject.addEventListener('click', () => {
+    modal.close();
+    openNewProject(net);
+  });
+  const showNewProject = () => newProject.classList.toggle('hidden', !store.drafts.canStart);
+  showNewProject();
   const intro = setup
     ? h(
         'p.intro',
@@ -398,9 +409,9 @@ export function openElevator(opts: ElevatorOptions): void {
     { role: 'dialog', 'aria-label': 'Elevator' },
     h('header', {}, h('h2', {}, setup ? '🏢 Welcome to Agent Office' : '🛗 Elevator'), close),
     h('div.body', {}, intro, floorsEl, addEl),
-    h('footer', {}, h('span.grow', {}, setup ? 'Your office, one floor per project · Esc to look around first' : 'Pick a floor · Esc to stay here'), addBtn),
+    h('footer', {}, newProject, h('span.grow', {}, setup ? 'Your office, one floor per project · Esc to look around first' : 'Pick a floor · Esc to stay here'), addBtn),
   );
-  const unsubs = [store.on('floors', () => (checkAdding(), renderFloors(), renderAdd())), store.on('repos', renderAdd), store.on('projectsDir', () => (editDir(false), renderAdd())), store.on('floor', renderFloors), store.on('peers', renderFloors), store.on('me', () => (renderFloors(), renderAdd()))];
+  const unsubs = [store.on('floors', () => (checkAdding(), renderFloors(), renderAdd())), store.on('repos', renderAdd), store.on('projectsDir', () => (editDir(false), renderAdd())), store.on('floor', renderFloors), store.on('peers', renderFloors), store.on('me', () => (renderFloors(), renderAdd())), store.on('drafts', showNewProject)];
   const modal = openModal(el, {
     doing: '🛗 at the elevator',
     // A stray click shouldn't lose the first-run panel; ✕ and Esc still close it.

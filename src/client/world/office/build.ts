@@ -15,6 +15,8 @@ import { green, tee } from '../../features/golf/world';
 import { stack } from '../stack';
 import { tower } from '../tower';
 import { hoop } from '../../features/basketball/world';
+import { cubbyHall } from '../../features/cubbies/hall';
+import { launched } from '../../features/drafts/launched';
 import { kitchen } from '../kitchen';
 import { signs } from '../desksigns';
 import type { Collider, DeskView, Interactable, Office, OfficeHandles } from '../types';
@@ -59,10 +61,12 @@ function floorPlan() {
     jukebox,
     cabinet,
     bookshelf,
+    launched,
     kitchen,
     plants,
     lamps,
     wing,
+    cubbyHall,
     signs,
     loft,
     meetingRoom,

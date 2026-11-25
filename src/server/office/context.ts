@@ -10,6 +10,8 @@ import type { Deploys } from '../deploys.js';
 import type { Costwall } from '../costwall.js';
 import type { Hygiene } from '../hygiene.js';
 import type { Deliveries } from '../delivery/index.js';
+import type { Drafts } from '../drafts/index.js';
+import type { Cubbies } from '../cubbies/index.js';
 import type { Nodes } from '../nodes.js';
 import type { CloudflareAccess } from '../cloudflare.js';
 import type { ModelCatalogue } from '../models.js';
@@ -77,6 +79,8 @@ export interface BuildingServices {
   costwall: Costwall;
   /** The team's joined computers (☰ → 🛰️ Satellites). */
   nodes: Nodes;
+  cubbies: Cubbies;
+  drafts: Drafts;
   deliveries: Deliveries;
   /** Cloudflare Access sign-in, when the office runs behind it (see server/cloudflare.ts). */
   cloudflare?: CloudflareAccess;
@@ -130,13 +134,14 @@ export interface FloorHelpers {
   floorOf(c: Client): Floor | undefined;
   /** The floor a worker sits on. Worker ids are unique across the building. */
   workerFloor(workerId: string): Floor | undefined;
-  floorInfos(): FloorInfo[];
+  floorVisible(id: string, c: Pick<Client, 'accountId'>): boolean;
+  floorInfos(c?: Pick<Client, 'accountId'>): FloorInfo[];
   /** The elevator's counts change with every worker update; tell everyone at most a few times a second. */
   floorsChanged(): void;
   /** Drops a `floorsChanged` still waiting to go out (the office is closing). */
   cancelFloorsChanged(): void;
   /** Where someone arriving goes: the floor they asked for, else the first one there is. */
-  arrivalFloor(wanted: string | null): Floor | undefined;
+  arrivalFloor(wanted: string | null, c?: Pick<Client, 'accountId'>): Floor | undefined;
   /**
    * Stops and takes `floor` off the building: everyone on it rides the elevator to
    * the next floor, or out to the lobby if it was the last (the roof goes with it), and its workers stop.
