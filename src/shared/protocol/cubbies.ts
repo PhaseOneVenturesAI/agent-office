@@ -19,7 +19,10 @@ export interface CubbyChatLine { id: string; role: 'user' | 'assistant' | 'notic
 export interface CubbyInterior {
   computerName: string;
   computerId?: string;
-  ownerFingerprint?: string;
+  /** Owner only: the devices the computer trusts to talk to its lead (public fingerprints and names only). */
+  ownerDevices?: CubbyDevice[];
+  /** Owner only: devices asking to be trusted, each with the code it shows on its own screen. */
+  deviceRequests?: CubbyDeviceRequest[];
   leadName: string;
   look: Look;
   agents: CubbyAgent[];
@@ -49,11 +52,26 @@ export interface CubbyInfo {
 }
 /** Someone at a cubby's door or inside it as a watcher: their account and display name. */
 export interface CubbyPerson { accountId: string; name: string }
+/** One device the cubby's computer trusts: its key's fingerprint (32 hex), the name it asked with and when it was added. */
+export interface CubbyDevice { fingerprint: string; label: string; addedAt: number }
+/**
+ * A device asking to be trusted, with its public key. The approving device works the code out from that
+ * key itself (deviceCode), so it matches what the asking device shows only if nobody swapped the key on
+ * the way, and its signature names that exact key.
+ */
+export interface CubbyDeviceRequest { requestId: string; label: string; publicKey: string; at: number }
+/** Most devices one cubby trusts, and most waiting to be approved. */
+export const MAX_OWNER_DEVICES = 8;
+export const MAX_DEVICE_REQUESTS = 4;
 export interface CubbiesState { enabled: boolean; floorId?: string; cubbies: CubbyInfo[]; setupAllowed: boolean }
 export type CubbiesClientMsg =
   | { t: 'cubbies.get' }
   | { t: 'cubbies.setup'; slot: number; leadName: string; look: Look }
   | ({ t: 'cubbies.chat'; id: string } & CubbyOwnerMessage)
+  /** From a device that isn't trusted yet: asks the computer to trust its public key. */
+  | { t: 'cubbies.addDevice'; id: string; publicKey: string; label: string }
+  /** From a trusted device: approve or deny a waiting device, or remove a trusted one (signed by that trusted device). */
+  | ({ t: 'cubbies.device'; id: string } & CubbyDeviceAction)
   /** E at someone else's door: ask to watch and listen (cubbies step 4). */
   | { t: 'cubbies.knock'; id: string }
   /** The owner answers a knock (allow) or sends a watcher out (allow false). */
@@ -75,7 +93,8 @@ export type CubbiesServerMsg =
 /** Bound to one authenticated satellite and a locally chosen project folder. */
 export type CubbyNodeFrame =
   | { t: 'cubby.hello'; floorId: string; computerId: string; computerName: string }
-  | { t: 'cubby.owner-key'; floorId: string; fingerprint: string }
+  /** The devices the computer trusts now and the ones waiting; `note` says what just changed. */
+  | { t: 'cubby.devices'; floorId: string; devices: CubbyDevice[]; requests: CubbyDeviceRequest[]; note?: string }
   | { t: 'cubby.snapshot'; floorId: string; agents: CubbyAgent[]; plan: string[]; needsYou: string[]; observedAt: number; error?: string; wake?: string;
       /** On a draft floor: what the local `.agent-office/draft.json` says (see protocol/drafts.ts). */
       draft?: import('./drafts.js').DraftBoards }
@@ -83,7 +102,25 @@ export type CubbyNodeFrame =
 export interface CubbyBinding { cubbyId: string; floorId: string; ownerId: string; connectionId: string; computerId: string }
 export type CubbyRelayFrame =
   | ({ t: 'cubby.ready'; signature: string } & CubbyBinding)
-  | ({ t: 'cubby.chat'; signature: string } & CubbyBinding & CubbyOwnerMessage);
+  | ({ t: 'cubby.chat'; signature: string } & CubbyBinding & CubbyOwnerMessage)
+  | ({ t: 'cubby.device-request'; signature: string; requestId: string; at: number; publicKey: string; label: string } & CubbyBinding)
+  | ({ t: 'cubby.device'; signature: string } & CubbyBinding & CubbyDeviceAction);
+
+/**
+ * What a trusted device signs to change who's trusted. `target` is the waiting device's public key for
+ * add and deny, or a trusted device's fingerprint for revoke.
+ */
+export interface CubbyDeviceAction { action: 'add' | 'deny' | 'revoke'; target: string; requestId: string; at: number; ownerSig: string }
+export type CubbyDevicePayload = Pick<CubbyBinding, 'cubbyId' | 'floorId' | 'computerId'> & Omit<CubbyDeviceAction, 'ownerSig'>;
+export function ownerDeviceEncoding(f: CubbyDevicePayload): string {
+  return JSON.stringify(['agent-office/cubby-owner-device/v1', f.cubbyId, f.floorId, f.computerId, f.requestId, f.at, f.action, f.target]);
+}
+/** The six-digit code a device shows for its key: from the first bytes of SHA-256 over its public key (SPKI). */
+export function deviceCode(digest: Uint8Array): string {
+  const n = ((digest[0] << 24) >>> 0) + (digest[1] << 16) + (digest[2] << 8) + digest[3];
+  const s = String(n % 1_000_000).padStart(6, '0');
+  return `${s.slice(0, 3)} ${s.slice(3)}`;
+}
 
 export interface CubbyOwnerMessage { text: string; requestId: string; at: number; ownerSig: string }
 export type CubbyOwnerPayload = Pick<CubbyBinding, 'cubbyId' | 'floorId' | 'computerId'> & Omit<CubbyOwnerMessage, 'ownerSig'>;

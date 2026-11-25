@@ -2,12 +2,12 @@ import { EMPTY_BOARDS, type DraftBoards } from '../../shared/protocol/drafts.js'
 import { randomBytes } from 'node:crypto';
 import type { Look } from '../../shared/avatar.js';
 import { sanitizeLook, lookFromSeed } from '../../shared/avatar.js';
-import type { CubbyBinding, CubbyChatLine, CubbyInterior, CubbiesState, CubbyRelayFrame, CubbyOwnerMessage } from '../../shared/protocol/cubbies.js';
+import type { CubbyBinding, CubbyChatLine, CubbyDeviceAction, CubbyInterior, CubbiesState, CubbyRelayFrame, CubbyOwnerMessage } from '../../shared/protocol/cubbies.js';
 import type { Nodes, NodeExtension } from '../nodes.js';
 import { CubbyRecords, type CubbyRecord } from './records.js';
 import { HALL_SLOTS } from '../../shared/cubbyhall.js';
 import { relaySignature } from './wire.js';
-import { short, snapshot } from './snapshot.js';
+import { devicesOf, short, snapshot } from './snapshot.js';
 import { CubbySharing, watcherInterior } from './sharing.js';
 interface Live { admitted: boolean; binding: CubbyBinding; interior: CubbyInterior; draft?: DraftBoards; pending?: { id: string; at: number }; }
 const id = () => randomBytes(12).toString('hex');
@@ -120,6 +120,28 @@ export class Cubbies {
     live.pending = { id: requestId, at: this.now() };
     this.line(live, { id: requestId, role: 'user', text: frame.text, at }); this.changed();
   }
+  /** From a device that isn't trusted yet: ask the owner's computer to trust its key. Only the computer decides. */
+  addDevice(floorId: string, owner: string, cubbyId: string, publicKey: unknown, label: unknown) {
+    const { r, live } = this.ownerLink(floorId, owner, cubbyId);
+    if (typeof publicKey !== 'string' || !/^[A-Za-z0-9_-]{100,160}$/.test(publicKey)) throw Error('This device’s key is not valid');
+    const frame: CubbyRelayFrame = { t: 'cubby.device-request', ...live.binding, requestId: id(), at: this.now(), publicKey, label: short(label, 40) || 'Device', signature: '' };
+    if (!this.send(r, frame)) throw Error('Your computer disconnected; try again when it’s back');
+  }
+  /** A trusted device approves, denies or removes a device. Its signature is checked on the computer, not here. */
+  device(floorId: string, owner: string, cubbyId: string, a: Partial<CubbyDeviceAction>) {
+    const { r, live } = this.ownerLink(floorId, owner, cubbyId);
+    if (!['add', 'deny', 'revoke'].includes(a.action as string) || typeof a.target !== 'string' || a.target.length > 200 ||
+      typeof a.requestId !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(a.requestId) || !Number.isSafeInteger(a.at) ||
+      typeof a.ownerSig !== 'string' || !/^[A-Za-z0-9_-]{86}$/.test(a.ownerSig)) throw Error('Sign the change on a device your computer trusts');
+    const frame: CubbyRelayFrame = { t: 'cubby.device', ...live.binding, action: a.action as CubbyDeviceAction['action'], target: a.target, requestId: a.requestId, at: a.at!, ownerSig: a.ownerSig, signature: '' };
+    if (!this.send(r, frame)) throw Error('Your computer disconnected; try again when it’s back');
+  }
+  private ownerLink(floorId: string, owner: string, cubbyId: string) {
+    const r = this.records.rows.get(cubbyId), live = this.live.get(cubbyId);
+    if (!this.enabled || !r || r.floorId !== floorId || r.owner !== owner || !this.accountName(owner)) throw Error('Only the cubby’s owner can add or remove its devices');
+    if (!live?.admitted || !this.nodes.isOnline(r.nodeId)) throw Error('Your computer is asleep. Devices are added on it, so wake it first');
+    return { r, live };
+  }
   /** Node disconnects, expiry and revocation immediately clear the chat admission. */
   refresh() {
     for (const [key, live] of this.live) {
@@ -154,13 +176,15 @@ export class Cubbies {
       if ([...this.records.rows.values()].some(other => other.id !== r.id && other.owner === owner && other.floorId === r.floorId && other.computerId === f.computerId)) return true;
       r.computerId = f.computerId; r.computerName = short(f.computerName, 60) || 'Your computer'; this.records.save();
       const binding = { cubbyId: r.id, floorId: r.floorId, ownerId: owner, connectionId: id(), computerId: r.computerId };
-      const interior = this.live.get(r.id)?.interior ?? this.empty(r); interior.computerName = r.computerName; interior.computerId = r.computerId; interior.ownerFingerprint = undefined; interior.error = undefined;
+      const interior = this.live.get(r.id)?.interior ?? this.empty(r); interior.computerName = r.computerName; interior.computerId = r.computerId; interior.ownerDevices = interior.deviceRequests = undefined; interior.error = undefined;
       this.live.set(r.id, { admitted: true, binding, interior, draft: this.live.get(r.id)?.draft }); this.send(r, { t: 'cubby.ready', ...binding, signature: '' });
     } else {
       const live = this.live.get(r.id); if (!live?.admitted) return true;
-      if (f.t === 'cubby.owner-key') {
-        if (typeof f.fingerprint !== 'string' || !/^[0-9a-f]{32}$/.test(f.fingerprint)) return true;
-        live.interior.ownerFingerprint = f.fingerprint;
+      if (f.t === 'cubby.devices') {
+        const next = devicesOf(f, this.now());
+        if (!next) return true;
+        live.interior.ownerDevices = next.devices; live.interior.deviceRequests = next.requests;
+        if (next.note) this.line(live, { id: id(), role: 'notice', text: next.note, at: this.now() });
       } else if (f.t === 'cubby.snapshot') {
         const next = snapshot(f, this.now());
         if (!next || next.observedAt < (live.interior.observedAt ?? 0)) return true;

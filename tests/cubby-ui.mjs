@@ -8,7 +8,7 @@ import { createServer } from 'vite';
 import { chromium } from 'playwright-core';
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
-import { createPublicKey, verify } from 'node:crypto';
+import { createHash, createPublicKey, generateKeyPairSync, verify } from 'node:crypto';
 
 const root = realpathSync(process.env.OFFICE_CUBBY_ROOT ?? process.cwd());
 const out = process.env.OFFICE_CUBBY_OUTPUT ?? '/tmp/agent-office-cubby-ui';
@@ -42,7 +42,9 @@ const chat = [
   { id: 'c1', role: 'user', text: 'What is next?', at: 1 },
   { id: 'c2', role: 'assistant', text: 'Checkout fix lands first, then the cart polish. <img src=x onerror="window.__xss=1">', at: 2 },
 ];
-const interior = (lamp) => ({ computerId: 'fixture-computer', ownerFingerprint, computerName: 'Mac mini', leadName: 'Nova', look, agents, plan: ['Fix checkout bug', 'Cart screen polish', 'Review PR #512', 'Invoices, tasks 1-4'], needsYou: ['Approve the new cart screen?', 'Merge PR #512 after review?'], chat, observedAt: 1 });
+/** The six-digit code for a key, as deviceCode works it out (protocol/cubbies.ts). */
+const codeOf = (key) => { const d = createHash('sha256').update(Buffer.from(key, 'base64url')).digest(); const v = String(d.readUInt32BE(0) % 1_000_000).padStart(6, '0'); return `${v.slice(0, 3)} ${v.slice(3)}`; };
+const interior = (lamp) => ({ computerId: 'fixture-computer', ownerDevices: [{ fingerprint: ownerFingerprint, label: 'Mac', addedAt: 1 }], deviceRequests: [], computerName: 'Mac mini', leadName: 'Nova', look, agents, plan: ['Fix checkout bug', 'Cart screen polish', 'Review PR #512', 'Invoices, tasks 1-4'], needsYou: ['Approve the new cart screen?', 'Merge PR #512 after review?'], chat, observedAt: 1 });
 const cubbies = (lamp = 'working', extra = {}) => ({
   enabled: true,
   floorId: 'fixture',
@@ -284,15 +286,43 @@ try {
   assert.equal(verify('sha256', Buffer.from(JSON.stringify(['agent-office/cubby-owner-chat/v1', 'cub-me', 'fixture', 'fixture-computer', signed.requestId, signed.at, signed.text])),
     { key: createPublicKey({ key: Buffer.from(publicKey, 'base64url'), format: 'der', type: 'spki' }), dsaEncoding: 'ieee-p1363' }, Buffer.from(signed.ownerSig, 'base64url')), true);
   await shot('chat');
-  // A new browser's key cannot impersonate the pinned device, even if submit is forced.
-  await page.evaluate(() => { const s = window.__office.store; s.cubbies.cubbies[0].interior.ownerFingerprint = '0'.repeat(32); s.emit('cubbies'); });
+  // A device the computer doesn't trust yet can't send, even if submit is forced: it asks to be added.
+  const setDevices = (devices, requests = []) => page.evaluate(([d, r]) => { const s = window.__office.store; Object.assign(s.cubbies.cubbies[0].interior, { ownerDevices: d, deviceRequests: r }); s.emit('cubbies'); }, [devices, requests]);
+  await setDevices([{ fingerprint: '0'.repeat(32), label: 'Mac', addedAt: 1 }]);
   assert.equal(await page.locator('.cubby-chat textarea').isDisabled(), true);
-  assert.match(await page.locator('.cubby-chat').innerText(), /device whose key was pinned.*--replace-owner-key/s);
+  assert.match(await page.locator('.cubby-chat').innerText(), /can't talk to Nova yet/);
   const beforeMismatch = sent.filter((m) => m.t === 'cubbies.chat').length;
   await page.locator('.cubby-chat form').evaluate((f) => { f.querySelector('textarea').value = 'must not send'; f.requestSubmit(); });
   assert.equal(sent.filter((m) => m.t === 'cubbies.chat').length, beforeMismatch);
-  await shot('owner-key-mismatch');
-  await page.evaluate((fp) => { const s = window.__office.store; s.cubbies.cubbies[0].interior.ownerFingerprint = fp; s.emit('cubbies'); }, ownerFingerprint);
+  await page.locator('.cb-device-add').click();
+  await page.waitForTimeout(100);
+  const asked = sent.filter((m) => m.t === 'cubbies.addDevice').at(-1);
+  assert.equal(asked.publicKey, publicKey); assert.equal(asked.id, 'cub-me'); assert.equal(typeof asked.label, 'string');
+  const myCode = codeOf(publicKey);
+  assert.match(await page.locator('.cb-device-ask').innerText(), new RegExp(`Waiting for approval.*${myCode}`));
+  await shot('device-asking');
+  // Back on a trusted device: another device asks. The code here is worked out from its key, not taken from the server.
+  const phone = generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).publicKey.export({ format: 'der', type: 'spki' }).toString('base64url');
+  await setDevices([{ fingerprint: ownerFingerprint, label: 'Mac', addedAt: 1 }], [{ requestId: 'q1', label: 'iPhone', publicKey: phone, at: Date.now() }]);
+  await page.waitForSelector('.cb-device-request b');
+  assert.equal(await page.locator('.cb-device-request b').innerText(), codeOf(phone));
+  assert.equal(await page.locator('.cubby-chat textarea').isDisabled(), false);
+  await shot('device-approve');
+  await page.locator('.cb-device-request button', { hasText: 'Approve' }).click();
+  await page.waitForTimeout(200);
+  const approve = sent.filter((m) => m.t === 'cubbies.device').at(-1);
+  assert.equal(approve.action, 'add'); assert.equal(approve.target, phone);
+  assert.equal(verify('sha256', Buffer.from(JSON.stringify(['agent-office/cubby-owner-device/v1', 'cub-me', 'fixture', 'fixture-computer', approve.requestId, approve.at, 'add', phone])),
+    { key: createPublicKey({ key: Buffer.from(publicKey, 'base64url'), format: 'der', type: 'spki' }), dsaEncoding: 'ieee-p1363' }, Buffer.from(approve.ownerSig, 'base64url')), true);
+  await setDevices([{ fingerprint: ownerFingerprint, label: 'Mac', addedAt: 1 }, { fingerprint: 'b'.repeat(32), label: 'iPhone', addedAt: Date.now() }]);
+  await page.locator('.cb-device-list summary').click();
+  assert.match(await page.locator('.cb-device-list').innerText(), /Mac \(this device\)[\s\S]*iPhone/);
+  await shot('device-list');
+  await page.locator('.cb-device-remove[title="Remove iPhone"]').click();
+  await page.waitForTimeout(200);
+  const removed = sent.filter((m) => m.t === 'cubbies.device').at(-1);
+  assert.equal(removed.action, 'revoke'); assert.equal(removed.target, 'b'.repeat(32));
+  await setDevices([{ fingerprint: ownerFingerprint, label: 'Mac', addedAt: 1 }]);
 
   // A helper's card from the roster; a direct session shows tool, branch and state only.
   await page.locator('.cb-roster button', { hasText: 'Codex session' }).click();

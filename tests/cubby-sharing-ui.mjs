@@ -38,7 +38,7 @@ const chat = [
   { id: 'c2', role: 'assistant', text: 'Checkout fix lands first, then the cart polish.', at: 2 },
 ];
 let ownerFingerprint = '';
-const mineInterior = () => ({ computerId: 'fixture-computer', ownerFingerprint, computerName: 'Mac mini', leadName: 'Nova', look, agents, plan: ['Fix checkout bug', 'Cart screen polish', 'Review PR #512'], needsYou: ['Approve the new cart screen?', 'Merge PR #512 after review?'], chat, observedAt: 1 });
+const mineInterior = () => ({ computerId: 'fixture-computer', ownerDevices: [{ fingerprint: ownerFingerprint, label: 'Mac', addedAt: 1 }], deviceRequests: [], computerName: 'Mac mini', leadName: 'Nova', look, agents, plan: ['Fix checkout bug', 'Cart screen polish', 'Review PR #512'], needsYou: ['Approve the new cart screen?', 'Merge PR #512 after review?'], chat, observedAt: 1 });
 const alexInterior = { computerName: 'Alex’s MacBook', leadName: 'Atlas', look: { skin: 1, hair: 1, style: 2 }, agents: [agents[1], agents[3]], plan: ['Search results page'], needsYou: [], chat: [{ id: 'a1', role: 'user', text: 'Start on the search page', at: 1 }, { id: 'a2', role: 'assistant', text: 'On it: the builder has the branch.', at: 2 }], observedAt: 1 };
 const state = ({ watching = false, watchers = [], knocking = [] } = {}) => ({
   enabled: true,

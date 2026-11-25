@@ -29,6 +29,14 @@ export const cubbiesHandlers = {
     try { ctx.cubbies.chat(floor.id, c.accountId, msg.id, msg); }
     catch (e) { ctx.warn(c, (e as Error).message); }
   },
+  'cubbies.addDevice'(ctx, c, msg) {
+    try { ctx.cubbies.addDevice(signedInFloor(ctx, c).id, c.accountId!, msg.id, msg.publicKey, msg.label); }
+    catch (e) { ctx.warn(c, (e as Error).message); }
+  },
+  'cubbies.device'(ctx, c, msg) {
+    try { ctx.cubbies.device(signedInFloor(ctx, c).id, c.accountId!, msg.id, msg); }
+    catch (e) { ctx.warn(c, (e as Error).message); }
+  },
   'cubbies.knock'(ctx, c, msg) {
     try {
       const floor = signedInFloor(ctx, c);

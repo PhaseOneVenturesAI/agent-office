@@ -75,7 +75,7 @@ function fixture(t: any, enabled = true) {
     const ws = socket(); nodes.attach(ws as any, invite.token);
     ws.frame({ t: 'hello', host: 'private-host', providers: [] });
     ws.frame({ t: 'cubby.hello', floorId, computerId: 'private-computer-id', computerName: 'Alice laptop' });
-    ws.frame({ t: 'cubby.owner-key', floorId, fingerprint: 'f'.repeat(32) });
+    ws.frame({ t: 'cubby.devices', floorId, devices: [{ fingerprint: 'f'.repeat(32), label: 'Mac', addedAt: 1 }], requests: [] });
     const snapshot = (extra = {}) => ws.frame({ t: 'cubby.snapshot', floorId, observedAt: now,
       agents: [{ id: 'helper', role: 'builder', tool: 'claude', task: 'Private task', branch: 'private', status: 'working' }],
       plan: ['Private plan'], needsYou: ['Private decision'], ...extra });
@@ -106,7 +106,7 @@ test('knock and admission share a read-only interior, never owner setup details 
   assert.deepEqual(watching.interior.plan, ['Private plan']);
   assert.equal(watching.interior.agents[0].task, 'Private task');
   for (const field of ['watchers', 'knocking']) assert.equal(field in watching, false);
-  for (const field of ['computerId', 'ownerFingerprint']) assert.equal(field in watching.interior, false);
+  for (const field of ['computerId', 'ownerDevices', 'deviceRequests']) assert.equal(field in watching.interior, false);
   assert.deepEqual(f.alice.view()[0].watchers, [{ accountId: 'bob', name: 'Bob' }]);
   assert.deepEqual(f.alice.view()[0].knocking, []);
   for (const [msg, error] of [
@@ -175,7 +175,7 @@ test('admin role grants no interior or admission authority; admins must knock an
   f.admin.send({ t: 'cubbies.admit', id: f.cubby!.id, accountId: 'admin', allow: true });
   assert.match(last(f.admin, 'toast').text, /Only the cubby owner/);
   f.knock(f.admin); f.admit(true, f.admin); assert.equal(f.admin.view()[0].watching, true);
-  assert.equal(f.admin.view()[0].interior!.ownerFingerprint, undefined);
+  assert.equal(f.admin.view()[0].interior!.ownerDevices, undefined);
 });
 
 test('knocks require a signed-in non-owner on the same floor and an online cubby', t => {

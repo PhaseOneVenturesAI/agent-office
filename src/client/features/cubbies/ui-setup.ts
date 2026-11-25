@@ -114,7 +114,7 @@ export function joinBox(token: { token: string; floorId: string }): HTMLElement 
   };
   void ownerDeviceKey(store.me.account?.name).then((value) => {
     key = value; copy.disabled = false;
-    fingerprint.textContent = `Owner key fingerprint: ${displayFingerprint(key.fingerprint)}. Compare this with the fingerprint in your computer’s local owner key record. Only this browser can sign chat; keep its site data.`;
+    fingerprint.textContent = `Owner key fingerprint: ${displayFingerprint(key.fingerprint)}. Compare this with the fingerprint in your computer’s local owner key record. This browser signs chat; add your other devices later from the lead chat (Add this device).`;
     paint();
   }).catch((error: Error) => { fingerprint.textContent = error.message; });
   void cloudflareAccess().then((on) => {

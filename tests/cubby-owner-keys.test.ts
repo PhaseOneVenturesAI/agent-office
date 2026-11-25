@@ -36,7 +36,7 @@ test('pinned owner signature delivers exact text and reports only its public fin
   const f = fixture(t);
   f.connector.receive(transport(chat())); await tick();
   assert.deepEqual(f.delivered, [payload.text]);
-  assert.ok(f.sent.some((m) => m.t === 'cubby.owner-key' && m.fingerprint === ownerFingerprint(owner.ownerKey)));
+  assert.ok(f.sent.some((m) => m.t === 'cubby.devices' && m.devices.length === 1 && m.devices[0].fingerprint === ownerFingerprint(owner.ownerKey)));
 });
 
 test('compromised relay with token/HMAC cannot mint owner chat or poison replay IDs', async (t) => {
@@ -80,7 +80,7 @@ test('WebCrypto non-extractable P-256 browser signature interoperates with the l
   const pair = await webcrypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign', 'verify']);
   await assert.rejects(webcrypto.subtle.exportKey('pkcs8', pair.privateKey));
   const publicKey = Buffer.from(await webcrypto.subtle.exportKey('spki', pair.publicKey)).toString('base64url');
-  const ownerSig = await signOwnerChat({ privateKey: pair.privateKey as CryptoKey, publicKey, fingerprint: ownerFingerprint(publicKey) }, payload);
+  const ownerSig = await signOwnerChat({ privateKey: pair.privateKey as CryptoKey, publicKey, fingerprint: ownerFingerprint(publicKey), code: '' }, payload);
   assert.equal(verifyOwner(publicKey, { ...payload, ownerSig }), true);
   assert.throws(() => ownerPublicKey(publicKey + '='), /owner-key/);
   const wrongCurve = generateKeyPairSync('ec', { namedCurve: 'secp384r1' }).publicKey.export({ format: 'der', type: 'spki' }).toString('base64url');
@@ -100,15 +100,15 @@ test('local join pins 0600 key, refuses a different key, and only local replacem
   persistSelection(initial);
   const pin = path.join(initial.state, readdirSync(initial.state).find((file) => file.startsWith('owner-'))!);
   assert.equal(statSync(pin).mode & 0o777, 0o600);
-  assert.equal(JSON.parse(readFileSync(pin, 'utf8')).ownerKey, owner.ownerKey);
+  assert.deepEqual(JSON.parse(readFileSync(pin, 'utf8')).devices.map((d: any) => d.key), [owner.ownerKey]);
   await configure({ ...options, ownerKey: owner.ownerKey }, home, execute);
   const other = testOwnerKey();
   await assert.rejects(configure({ ...options, ownerKey: other.ownerKey }, home, execute), /--replace-owner-key/);
   assert.throws(() => persistSelection({ ...initial, ownerKey: other.ownerKey }), /--replace-owner-key/, 'recheck under local project lock');
-  assert.equal(JSON.parse(readFileSync(pin, 'utf8')).ownerKey, owner.ownerKey);
+  assert.deepEqual(JSON.parse(readFileSync(pin, 'utf8')).devices.map((d: any) => d.key), [owner.ownerKey]);
   const replacement = await configure({ ...options, ownerKey: other.ownerKey, replaceOwnerKey: true }, home, execute);
   persistSelection(replacement);
-  assert.equal(JSON.parse(readFileSync(pin, 'utf8')).ownerKey, other.ownerKey);
+  assert.deepEqual(JSON.parse(readFileSync(pin, 'utf8')).devices.map((d: any) => d.key), [other.ownerKey]);
   assert.equal(statSync(pin).mode & 0o777, 0o600);
   await assert.rejects(configure({ ...options, ownerKey: owner.ownerKey }, home, execute), /--replace-owner-key/);
 });

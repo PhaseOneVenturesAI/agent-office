@@ -74,6 +74,8 @@ export function installCubbies(ctx: Ctx, deps: CubbiesDeps = { aimed: () => null
     onChange: (fn) => store.on('cubbies', fn),
     sendChat: (id, message) => send({ t: 'cubbies.chat', id, ...message }),
     sendOut: (id, accountId) => send({ t: 'cubbies.admit', id, accountId, allow: false }),
+    addDevice: (id, publicKey, label) => send({ t: 'cubbies.addDevice', id, publicKey, label }),
+    device: (id, action) => send({ t: 'cubbies.device', id, ...action }),
   };
 
   /** Whether the cubbies are there to see and use right now. */

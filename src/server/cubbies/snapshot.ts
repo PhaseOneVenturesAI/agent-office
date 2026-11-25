@@ -1,5 +1,5 @@
 import { cleanDraftBoards } from '../drafts/boards.js';
-import type { CubbyAgent, CubbyNodeFrame } from '../../shared/protocol/cubbies.js';
+import { MAX_DEVICE_REQUESTS, MAX_OWNER_DEVICES, type CubbyAgent, type CubbyDevice, type CubbyDeviceRequest, type CubbyNodeFrame } from '../../shared/protocol/cubbies.js';
 const roles = new Set(['lead', 'builder', 'reviewer', 'factory', 'paradev', 'direct']);
 const statuses = new Set(['idle', 'working', 'needs-you', 'unknown']);
 export const short = (v: unknown, max: number) => typeof v === 'string' ? v.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '').slice(0, max) : '';
@@ -15,4 +15,22 @@ export function snapshot(raw: Record<string, unknown>, now: number): Extract<Cub
       ...(a.role === 'factory' && typeof a.deadlineAt === 'number' && Number.isFinite(a.deadlineAt) ? { deadlineAt: a.deadlineAt } : {}) });
   }
   return { ...(raw.draft !== undefined ? { draft: cleanDraftBoards(raw.draft) } : {}), t: 'cubby.snapshot', floorId: short(raw.floorId, 128), agents, observedAt: raw.observedAt, plan: lines(raw.plan), needsYou: lines(raw.needsYou), ...(typeof raw.error === 'string' ? { error: short(raw.error, 400) } : {}), ...(typeof raw.wake === 'string' && raw.wake.trim() ? { wake: short(raw.wake, 600) } : {}) };
+}
+
+/** The trusted devices and waiting requests a computer reports: bounded, plain fields only. */
+export function devicesOf(raw: Record<string, unknown>, now: number) {
+  if (!Array.isArray(raw.devices) || !raw.devices.length || raw.devices.length > MAX_OWNER_DEVICES ||
+    !Array.isArray(raw.requests) || raw.requests.length > MAX_DEVICE_REQUESTS) return;
+  const devices: CubbyDevice[] = [];
+  for (const d of raw.devices) {
+    if (!d || typeof d.fingerprint !== 'string' || !/^[0-9a-f]{32}$/.test(d.fingerprint) || !Number.isSafeInteger(d.addedAt)) return;
+    devices.push({ fingerprint: d.fingerprint, label: short(d.label, 40) || 'Device', addedAt: d.addedAt });
+  }
+  const requests: CubbyDeviceRequest[] = [];
+  for (const q of raw.requests) {
+    if (!q || typeof q.requestId !== 'string' || !/^[\w-]{1,128}$/.test(q.requestId) || typeof q.publicKey !== 'string' || !/^[A-Za-z0-9_-]{100,160}$/.test(q.publicKey) ||
+      !Number.isSafeInteger(q.at) || Math.abs(now - q.at) > 15 * 60_000) return;
+    requests.push({ requestId: q.requestId, label: short(q.label, 40) || 'Device', publicKey: q.publicKey, at: q.at });
+  }
+  return { devices, requests, note: typeof raw.note === 'string' && raw.note.trim() ? short(raw.note, 400) : undefined };
 }

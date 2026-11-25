@@ -1,7 +1,8 @@
 import './chat.css';
-import type { CubbyAgent, CubbyInfo, CubbyOwnerMessage } from '../../../shared/protocol/cubbies';
+import type { CubbyAgent, CubbyDeviceAction, CubbyInfo, CubbyOwnerMessage } from '../../../shared/protocol/cubbies';
 import { store } from '../../state';
-import { ownerDeviceKey, signOwnerChat, displayFingerprint, type OwnerDeviceKey } from './keys';
+import { ownerDeviceKey, signOwnerChat, type OwnerDeviceKey } from './keys';
+import { deviceSection, deviceTrusted } from './devices';
 import { h, openModal } from '../../ui/dom';
 import { STATUS_TEXT, ROLE_LABEL, clip, deadlineText, agentCard, helperName } from './text';
 
@@ -19,6 +20,10 @@ export interface CubbyWindows {
   sendChat(id: string, message: CubbyOwnerMessage): void;
   /** The owner sends a watcher out (cubbies.admit allow false). */
   sendOut?(id: string, accountId: string): void;
+  /** This device asks the computer to trust it (devices.ts). */
+  addDevice?(id: string, publicKey: string, label: string): void;
+  /** A trusted device's signed approve, deny or remove. */
+  device?(id: string, action: CubbyDeviceAction): void;
 }
 
 /** What a cubby's chat shows you: yours to talk in, someone else's you're watching, or nothing (gone). */
@@ -64,6 +69,8 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string): { close(): void 
   let closed = false;
   const keyNote = h('p.cb-note', { 'aria-live': 'polite' });
   note.after(keyNote);
+  const devices = deviceSection(w.addDevice && w.device ? { addDevice: w.addDevice, device: w.device } : undefined, cubbyId, () => store.floor ?? undefined);
+  keyNote.after(devices.el);
   let lines = '';
   let wasWatching = false;
   const paint = () => {
@@ -77,6 +84,7 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string): { close(): void 
       note.style.display = '';
       form.style.display = 'none';
       keyNote.textContent = '';
+      devices.paint(undefined, undefined, paint);
       text.disabled = send.disabled = true;
       return;
     }
@@ -93,19 +101,20 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string): { close(): void 
       text.disabled = send.disabled = true;
       form.style.display = 'none';
       keyNote.textContent = '';
+      devices.paint(undefined, undefined, paint);
       note.style.display = '';
       note.textContent = watchingNote(c.ownerName, it.leadName);
       note.classList.remove('asleep');
       note.classList.add('watch');
     } else {
       note.classList.remove('watch');
-      const keyMatches = !!deviceKey && deviceKey.fingerprint === it.ownerFingerprint;
+      const keyMatches = deviceTrusted(c, deviceKey);
       const sameAccount = store.me.account?.name === account;
       text.disabled = send.disabled = asleep || !keyMatches || !sameAccount || signing || !it.computerId;
       form.style.display = note.style.display = keyMatches && sameAccount ? '' : 'none';
       keyNote.textContent = !sameAccount ? 'Account changed. Close and reopen this chat.' : keyError || (!deviceKey ? 'Preparing this device’s owner key…' :
-        keyMatches ? `Owner key: ${displayFingerprint(deviceKey.fingerprint)}` :
-        `This cubby only accepts messages from the device whose key was pinned. ${it.ownerFingerprint ? 'This browser has a different key.' : 'Waiting for the computer’s pinned key.'} To re-pin: stop join locally, open Set up at your offline cubby in this browser, compare fingerprints, then run its command on your computer with --replace-owner-key.`);
+        !it.ownerDevices ? `Waiting for ${clip(it.computerName, 32)} to say which devices it trusts.` : '');
+      devices.paint(sameAccount && !keyError ? c : undefined, deviceKey, paint);
       text.placeholder = asleep ? '' : `Message ${lead}…`;
       note.textContent = asleep ? `💤 ${clip(it.computerName, 32)} is asleep. ${lead} can't hear you until it wakes.` : 'Chat only: tools, commands and approvals stay on your computer.';
       note.classList.toggle('asleep', asleep);
@@ -149,14 +158,14 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string): { close(): void 
     const floorId = store.floor;
     const computerId = c?.interior?.computerId;
     if (!body || !floorId || !computerId || chatMode(c) !== 'owner' || c.lamp === 'asleep' || signing ||
-      !deviceKey || deviceKey.fingerprint !== c.interior?.ownerFingerprint || store.me.account?.name !== account) return;
+      !deviceKey || !deviceTrusted(c, deviceKey) || store.me.account?.name !== account) return;
     signing = true; paint();
     try {
       const message = { text: body.slice(0, MAX_CHAT), requestId: crypto.randomUUID(), at: Date.now() };
       const ownerSig = await signOwnerChat(deviceKey, { ...message, cubbyId, floorId, computerId });
       const current = w.cubby(cubbyId);
       if (closed || store.floor !== floorId || store.me.account?.name !== account || !current?.mine ||
-        current.lamp === 'asleep' || current.interior?.computerId !== computerId || current.interior.ownerFingerprint !== deviceKey.fingerprint) return;
+        current.lamp === 'asleep' || current.interior?.computerId !== computerId || !deviceTrusted(current, deviceKey)) return;
       w.sendChat(cubbyId, { ...message, ownerSig });
       text.value = '';
     } catch { keyError = 'Could not sign this message. Reopen chat and check browser storage.'; }

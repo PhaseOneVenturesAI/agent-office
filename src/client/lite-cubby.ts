@@ -29,6 +29,8 @@ export function installLiteCubby(net: Net) {
     onChange: (fn) => store.on('cubbies', fn),
     sendChat: (id, message) => net.send({ t: 'cubbies.chat', id, ...message }),
     sendOut: (id, accountId) => net.send({ t: 'cubbies.admit', id, accountId, allow: false }),
+    addDevice: (id, publicKey, label) => net.send({ t: 'cubbies.addDevice', id, publicKey, label }),
+    device: (id, action) => net.send({ t: 'cubbies.device', id, ...action }),
   };
   const render = () => {
     const c = store.cubbies.enabled ? liteCubby(store.cubbies.cubbies) : undefined;
