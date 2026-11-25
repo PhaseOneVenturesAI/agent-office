@@ -70,19 +70,19 @@ function pumpkinSpots(): Spot[] {
   }
   spots.push([BALCONY.minX + 0.75, G, BALCONY.maxZ - 0.2, 0.36, FACE.south], [BALCONY.maxX - 0.75, G, BALCONY.maxZ - 0.2, 0.36, FACE.south]);
   // Among the graves.
-  spots.push([-22.4, G, -2.2, 0.32, FACE.east], [-22.6, G, 4.6, 0.26, FACE.east], [-24.6, G, 1.3, 0.3, FACE.east]);
+  spots.push([-24.4, G, -2.2, 0.32, FACE.east], [-24.6, G, 4.6, 0.26, FACE.east], [-26.6, G, 1.3, 0.3, FACE.east]);
   return spots;
 }
 
-/** Where the gravestones stand, on the lawn west of the office, facing its windows. */
+/** Where the gravestones stand, on the lawn west of the office (clear of the cubby hall), facing its windows. */
 const GRAVES: [x: number, z: number, kind: number][] = [
-  [-23.2, -3.4, 0],
-  [-23.4, -0.4, 1],
-  [-23.1, 2.8, 2],
-  [-23.3, 6, 0],
-  [-25.8, -1.8, 2],
-  [-25.9, 1.4, 1],
-  [-25.7, 4.5, 0],
+  [-25.2, -3.4, 0],
+  [-25.4, -0.4, 1],
+  [-25.1, 2.8, 2],
+  [-25.3, 6, 0],
+  [-27.8, -1.8, 2],
+  [-27.9, 1.4, 1],
+  [-27.7, 4.5, 0],
 ];
 
 /** Where the snowmen stand, out front and round the side. */
@@ -90,7 +90,7 @@ const SNOWMEN: [x: number, z: number, rotY: number][] = [
   [-14, 18.6, 0.2],
   [13, 19.2, -0.3],
   [25.5, 6, -Math.PI / 2 + 0.3],
-  [-23.5, 2, Math.PI / 2],
+  [-26.5, 2, Math.PI / 2],
 ];
 
 /** The big tree out front, on the lot by the sidewalk. */

@@ -250,7 +250,7 @@ try {
   await stand(mineAt.x + mineAt.depth / 2 + 1.0, mineAt.z + 0.1, Math.PI / 2, -0.12);
   await shot('inside-doorway');
   const cam = await page.evaluate(() => ({ x: window.__office.camera?.position.x ?? window.__audit.ctx.camera.position.x }));
-  assert.ok(cam.x > -22 && cam.x < -18.3, `the camera keeps inside the hall (${JSON.stringify(cam)})`);
+  assert.ok(cam.x > -23.6 && cam.x < -18.3, `the camera keeps inside the hall (${JSON.stringify(cam)})`);
   await stand(mineAt.x + mineAt.depth / 2 - 0.25, mineAt.z + 0.1, Math.PI / 2, -0.22);
 
   // ---- The lead's window: chat only, text only. ----
