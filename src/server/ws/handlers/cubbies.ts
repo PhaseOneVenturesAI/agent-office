@@ -28,4 +28,9 @@ export const cubbiesHandlers = {
     try { ctx.cubbies.chat(floor.id, c.accountId, msg.id, msg); }
     catch (e) { ctx.warn(c, (e as Error).message); }
   },
+  // Cubbies step 4 placeholders: off until the sharing module lands.
+  'cubbies.knock'(ctx, c) { ctx.warn(c, 'Knocking is not switched on yet'); },
+  'cubbies.admit'(ctx, c) { ctx.warn(c, 'Knocking is not switched on yet'); },
+  'cubbies.leave'() {},
+  'cubbies.sendTask'(ctx, c) { ctx.warn(c, 'Sending tasks to the floor is not switched on yet'); },
 } satisfies HandlerMap<CubbiesClientMsg>;
