@@ -10,6 +10,8 @@ import { changedImageType, type ChangedFile, type ChangeStatus, type ChangesStat
 // the file list whenever it changes. Diffs of single files are fetched on demand.
 
 const POLL_MS = 2000;
+/** How long the office waits for the commit a worker's agent was asked to make (see agentCommitPrompt) before handing the commit back to the person who asked. */
+export const COMMIT_ASK_MS = 3 * 60_000;
 const MAX_FILES = 400;
 const MAX_DIFF = 200_000;
 /** Untracked files bigger than this aren't read to count their lines. */
@@ -54,6 +56,15 @@ interface Watch {
   /** The last state without its timestamp, to send only real changes. */
   lastKey?: string;
   busy?: string;
+  /** An agent that was asked to commit (see agentCommitPrompt): the office is waiting for its commit. */
+  wait?: CommitWait;
+}
+
+/** A commit an agent was asked to make (see agentCommitPrompt): `head` is HEAD when it was asked; the wait settles with the new commit's subject, or undefined when none lands in time. */
+interface CommitWait {
+  head: Promise<string | undefined>;
+  timer: NodeJS.Timeout;
+  done: (subject: string | undefined) => void;
 }
 
 class GitError extends Error {}
@@ -188,6 +199,7 @@ export class Changes {
     /** An open pull request whose head is that branch, from the PR board. */
     private openPull: (branch: string) => { number: number; url: string } | undefined,
     private events: ChangesEvents,
+    private pollMs = POLL_MS, // tests shorten it
   ) {
     if (baseBranch === 'HEAD') this.baseBranch = undefined;
   }
@@ -196,7 +208,7 @@ export class Changes {
     const key = watchKey(workerId, repo);
     const w = this.entry(workerId, repo);
     // An entry an action made (see action()) has no timer yet.
-    w.timer ??= setInterval(() => void this.poll(key), POLL_MS);
+    w.timer ??= setInterval(() => void this.poll(key), this.pollMs);
     w.clients.add(clientId);
     if (w.last) this.events.state(w.last, [clientId]);
     void this.poll(key, true);
@@ -301,6 +313,25 @@ export class Changes {
     });
   }
 
+  /** Waits for the commit a worker's agent was just asked to make (see agentCommitPrompt): its subject once a new HEAD lands in the checkout, undefined when none does within `timeoutMs`. Rides on the watch's own polling. */
+  async confirmCommit(workerId: string, repo: string | undefined, timeoutMs = COMMIT_ASK_MS): Promise<string | undefined> {
+    const t = this.target(workerId, repo);
+    if (!t) return undefined;
+    const key = watchKey(workerId, repo);
+    const w = this.entry(workerId, repo);
+    w.timer ??= setInterval(() => void this.poll(key), this.pollMs);
+    return new Promise((resolve) => {
+      // A newer ask replaces one still being waited on.
+      this.endWait(w, undefined);
+      const wait: CommitWait = {
+        head: gitMaybe(['rev-parse', '--verify', '--quiet', 'HEAD'], t.cwd),
+        timer: setTimeout(() => void this.checkWait(key, w, t, true), timeoutMs),
+        done: resolve,
+      };
+      w.wait = wait;
+    });
+  }
+
   /** Throws away uncommitted changes: one file's, or every one in the checkout. */
   async discard(workerId: string, filePath: string | undefined, who: string, repo?: string): Promise<string | undefined> {
     return this.action(workerId, repo, 'Discarding…', async (t, w) => {
@@ -351,14 +382,35 @@ export class Changes {
     if (!w) return;
     clearInterval(w.timer);
     this.watches.delete(key);
+    this.endWait(w, undefined);
+  }
+
+  /** Settles the wait for an agent's commit, if one is on: its subject when it landed, else undefined. */
+  private endWait(w: Watch, subject: string | undefined) {
+    const wait = w.wait;
+    if (!wait) return;
+    w.wait = undefined;
+    clearTimeout(wait.timer);
+    wait.done(subject);
+  }
+
+  /** Settles the wait when a new HEAD shows in the checkout; `last` is the timeout's final look, settling it with undefined when none did. */
+  private async checkWait(key: string, w: Watch, t: ChangesTarget, last = false) {
+    const wait = w.wait;
+    if (!wait) return;
+    const head = await gitMaybe(['rev-parse', '--verify', '--quiet', 'HEAD'], t.cwd);
+    if (head && head !== (await wait.head)) this.endWait(w, (await gitMaybe(['log', '-1', '--format=%s'], t.cwd)) ?? '');
+    else if (last) this.endWait(w, undefined);
+    else return;
+    if (!w.clients.size && !w.busy) this.drop(key);
   }
 
   private unwatchKey(key: string, clientId: string) {
     const w = this.watches.get(key);
     if (!w) return;
     w.clients.delete(clientId);
-    // Keep the entry while an action runs, so its outcome still reaches whoever asked for it.
-    if (!w.clients.size && !w.busy) this.drop(key);
+    // Keep the entry while an action or an agent's commit runs, so its outcome still reaches whoever asked for it.
+    if (!w.clients.size && !w.busy && !w.wait) this.drop(key);
   }
 
   /** The watch on a worker's checkout, made when there is none yet. */
@@ -397,24 +449,25 @@ export class Changes {
     w.busy = undefined;
     w.lastKey = undefined; // the next poll always reaches the watchers, to clear the busy state
     await this.poll(key, true);
-    if (!w.clients.size) this.drop(key);
+    if (!w.clients.size && !w.wait) this.drop(key);
     return error;
   }
 
   private async poll(key: string, now = false) {
     const w = this.watches.get(key);
-    if (!w || w.polling || (!now && !w.clients.size)) return;
+    if (!w || w.polling || (!now && !w.clients.size && !w.wait)) return;
     w.polling = true;
     try {
       const t = this.target(w.workerId, w.repo);
       const state = t ? await this.compute(w, t) : errorState(w, '', 'No such worker');
       if (w.busy) state.busy = w.busy;
-      const key = JSON.stringify({ ...state, at: 0 });
-      if (key !== w.lastKey) {
-        w.lastKey = key;
+      const stateKey = JSON.stringify({ ...state, at: 0 });
+      if (stateKey !== w.lastKey) {
+        w.lastKey = stateKey;
         this.push(w, state);
       }
       w.last = state;
+      if (t && w.wait) await this.checkWait(key, w, t);
     } finally {
       w.polling = false;
     }

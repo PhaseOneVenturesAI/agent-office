@@ -41,8 +41,22 @@ export const changesHandlers = {
     if (typeof msg.message !== 'string') {
       const where = w.info.kind === 'agent' ? w.floor.changes.commitWhere(w.wid, repo) : undefined;
       const err = where ? w.floor.workers.prompt(w.wid, agentCommitPrompt(where), who) : 'no agent to ask';
-      if (err) ctx.sendTo(c, { t: 'changes.commitManual', workerId: w.wid, repo });
-      else ctx.sendTo(c, { t: 'toast', text: `🖊️ ${who} asked ${w.info.name} to commit its changes, message and all`, level: 'info' });
+      if (err) {
+        ctx.sendTo(c, { t: 'changes.commitManual', workerId: w.wid, repo });
+        return;
+      }
+      ctx.sendTo(c, { t: 'toast', text: `🖊️ ${who} asked ${w.info.name} to commit its changes, message and all`, level: 'info' });
+      // The ask alone doesn't commit anything: the agent may acknowledge it and never run git. Wait
+      // for the commit to land in its checkout, and hand the button back to the person when it doesn't.
+      void w.floor.changes.confirmCommit(w.wid, repo).then((subject) => {
+        if (subject === undefined) {
+          ctx.sendTo(c, { t: 'toast', text: `⚠️ ${w.info.name} hasn't committed its changes — you can type the message and commit them yourself`, level: 'warn' });
+          ctx.sendTo(c, { t: 'changes.commitManual', workerId: w.wid, repo });
+        } else {
+          const short = subject.length > 60 ? `${subject.slice(0, 59)}…` : subject;
+          ctx.sendTo(c, { t: 'toast', text: `✅ ${w.info.name} committed “${short}”`, level: 'info' });
+        }
+      });
       return;
     }
     // Committed as whoever pressed it: their GitHub name and email, once they've signed in to it.
