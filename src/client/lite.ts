@@ -33,6 +33,7 @@ import { repoChoices } from './shared/hiring';
 // The tab title counts the workers waiting on someone, on every floor, as the 3D office's does.
 import { renderTitle } from './shared/title';
 import { installLiteCubby } from './lite-cubby';
+import { installLiteBoard } from './lite-board';
 
 // Sent here because this browser can't draw the 3D office (see noWebGL in core/scene.ts).
 if (new URLSearchParams(location.search).get('why') === 'webgl') {
@@ -331,7 +332,7 @@ $('btn-nodes').addEventListener('click', () => openNodes(net));
 $('btn-context').addEventListener('click', () => openProjectContext(net));
 $('btn-queue').addEventListener('click', () => openQueue(net, { openTerminal: openWorker }));
 $('btn-new').addEventListener('click', () => sendToWorker('✨ New task'));
-installLiteCubby(net);
+installLiteBoard(net, installLiteCubby(net).openChat);
 
 function renderNav() {
   const count = (id: string, n: number) => ($(id).querySelector('.n')!.textContent = n ? String(n) : '');
