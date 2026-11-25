@@ -89,10 +89,11 @@ export function createServices(ctx: Ctx): BuildingServices {
 
   // The satellites: the team's own computers, joined with `agent-office join` (☰ → 🛰️
   // Satellites). The office keeps only each join token's hash; the wall follows the hellos
-  // and heartbeats.
+  // and heartbeats. Each browser gets its own wall: a private machine shows only for the
+  // account that invited it and for admins.
   const deliveries = new Deliveries();
   const nodes = new Nodes(cfg.dataDir, () => {
-    for (const c of clients.values()) ctx.sendTo(c, { t: 'nodes', state: nodes.state() });
+    for (const c of clients.values()) ctx.sendTo(c, { t: 'nodes', state: nodes.state({ id: c.accountId, admin: ctx.meOf(c.accountId).admin }) });
   });
 
   // Behind Cloudflare Access, its edge login is the front door (see cloudflare.ts): no office

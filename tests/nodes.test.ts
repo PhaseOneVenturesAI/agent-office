@@ -5,6 +5,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Nodes } from '../src/server/nodes.js';
+import { nodesHandlers } from '../src/server/ws/handlers/nodes.js';
 
 function setup() {
   const dir = mkdtempSync(path.join(tmpdir(), 'agent-office-nodes-'));
@@ -83,6 +84,98 @@ test('a wrong token is refused, and revoke takes the node off the wall', () => {
     assert.equal(ws.closed, 4000, 'the online machine was disconnected');
     assert.equal(nodes.state().nodes.length, 0);
     assert.equal(nodes.known(invite.token), false, 'the token dies with the invite');
+  } finally {
+    cleanup();
+  }
+});
+
+test('a private machine shows only for its inviter and the admins', () => {
+  const { nodes, cleanup } = setup();
+  try {
+    nodes.invite('shared box');
+    const priv = nodes.invite('my laptop', 'private', 'acct-ivan');
+    assert.deepEqual(nodes.state().nodes.map((n) => n.name), ['shared box'], 'no viewer: the public wall only');
+    assert.deepEqual(nodes.state({ id: 'acct-keven' }).nodes.map((n) => n.name), ['shared box'], 'someone else doesn’t see it');
+    assert.deepEqual(
+      nodes.state({ id: 'acct-ivan' }).nodes.map((n) => n.name).sort(),
+      ['my laptop', 'shared box'],
+      'its inviter does',
+    );
+    const adminView = nodes.state({ id: 'acct-keven', admin: true }).nodes;
+    assert.equal(adminView.length, 2, 'an admin sees it, marked');
+    const info = adminView.find((n) => n.id === priv.id)!;
+    assert.equal(info.visibility, 'private');
+    assert.equal(info.owner, 'acct-ivan');
+  } finally {
+    cleanup();
+  }
+});
+
+test('an admin rename survives the machine saying hello again, and a restart', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'agent-office-nodes-'));
+  try {
+    const first = new Nodes(dir, () => {});
+    const invite = first.invite();
+    assert.equal(first.rename('nope', 'Build box'), false, 'no such machine');
+    assert.equal(first.rename(invite.id, '   '), false, 'an empty name is refused');
+
+    const ws = fakeWs();
+    first.attach(ws as any, invite.token);
+    ws.emit('message', Buffer.from(JSON.stringify({ ...hello, name: 'ivan-mac' })));
+    assert.equal(first.state().nodes[0].name, 'ivan-mac', 'the hello names it at first');
+    assert.equal(first.rename(invite.id, 'Build box'), true);
+    ws.emit('close');
+
+    const again = fakeWs();
+    first.attach(again as any, invite.token);
+    again.emit('message', Buffer.from(JSON.stringify({ ...hello, name: 'ivan-mac' })));
+    assert.equal(first.state().nodes[0].name, 'Build box', 'the hello no longer overwrites the rename');
+    first.close();
+
+    const second = new Nodes(dir, () => {});
+    assert.equal(second.state().nodes[0].name, 'Build box', 'the rename survives a restart');
+    const third = fakeWs();
+    second.attach(third as any, invite.token);
+    third.emit('message', Buffer.from(JSON.stringify({ ...hello, name: 'ivan-mac' })));
+    assert.equal(second.state().nodes[0].name, 'Build box', 'even after a restart');
+    second.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('only an admin can rename, invite with a visibility, or remove', () => {
+  const { nodes, cleanup } = setup();
+  try {
+    const invite = nodes.invite('box');
+    const sent: any[] = [];
+    const warns: string[] = [];
+    const ctxAs = (admin: boolean) =>
+      ({
+        meOf: () => ({ admin }),
+        warn: (_c: any, w: string) => warns.push(w),
+        sendTo: (_c: any, m: any) => sent.push(m),
+        nodes,
+      }) as any;
+    const client = { accountId: 'acct-ivan' } as any;
+
+    nodesHandlers['nodes.rename'](ctxAs(false), client, { t: 'nodes.rename', id: invite.id, name: 'Nope' });
+    assert.equal(nodes.state().nodes[0].name, 'box', 'a non-admin rename changes nothing');
+    assert.equal(warns.length, 1);
+
+    nodesHandlers['nodes.rename'](ctxAs(true), client, { t: 'nodes.rename', id: invite.id, name: 'Renamed' });
+    assert.equal(nodes.state().nodes[0].name, 'Renamed');
+    nodesHandlers['nodes.rename'](ctxAs(true), client, { t: 'nodes.rename', id: invite.id, name: '   ' });
+    assert.equal(nodes.state().nodes[0].name, 'Renamed', 'an empty name is refused');
+
+    nodesHandlers['nodes.invite'](ctxAs(true), client, { t: 'nodes.invite', name: 'secret', visibility: 'private' });
+    const tokenMsg = sent.find((m) => m.t === 'nodes.token');
+    const priv = nodes.state({ admin: true }).nodes.find((n) => n.id === tokenMsg.id)!;
+    assert.equal(priv.visibility, 'private');
+    assert.equal(priv.owner, 'acct-ivan', 'the inviter’s account owns it');
+
+    nodesHandlers['nodes.revoke'](ctxAs(true), client, { t: 'nodes.revoke', id: tokenMsg.id });
+    assert.equal(nodes.state({ admin: true }).nodes.some((n) => n.id === tokenMsg.id), false, 'remove works for a private machine');
   } finally {
     cleanup();
   }

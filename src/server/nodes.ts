@@ -11,7 +11,13 @@ import path from 'node:path';
 import type { WebSocket } from 'ws';
 import type { AgentProvider } from '../shared/providers.js';
 import { isAgentProvider } from '../shared/providers.js';
-import type { NodeInfo, NodesState } from '../shared/protocol.js';
+import type { NodeInfo, NodesState, NodeVisibility } from '../shared/protocol.js';
+
+/** Who's asking for the wall: private machines show only for their inviter and the admins. */
+export interface NodeViewer {
+  id?: string;
+  admin?: boolean;
+}
 
 /** What a satellite sends: the hello first, then heartbeats. */
 export type NodeFrame =
@@ -26,11 +32,16 @@ const hash = (token: string) => createHash('sha256').update(token).digest('hex')
 
 interface SavedNode {
   id: string;
-  /** The invite's label, when one was given; the hello's name wins while it's here. */
+  /** The invite's label or an admin's rename; the hello's name wins until a rename pins one. */
   name: string;
   /** sha256 of the join token; the token itself is only ever shown once, at invite time. */
   token: string;
   joinedAt: number;
+  visibility: NodeVisibility;
+  /** The account that invited it, when the office has accounts. */
+  owner?: string;
+  /** An admin renamed it: the machine's next hello no longer overwrites the name. */
+  custom?: boolean;
 }
 
 interface LiveNode extends SavedNode {
@@ -55,13 +66,16 @@ export class Nodes {
     this.sweeper.unref?.();
   }
 
-  state(): NodesState {
+  state(viewer: NodeViewer = {}): NodesState {
     const nodes = [...this.nodes.values()]
+      .filter((n) => n.visibility === 'everyone' || viewer.admin || (!!viewer.id && n.owner === viewer.id))
       .map((n): NodeInfo => {
         const online = !!n.ws && Date.now() - n.lastSeen < STALE_MS;
         return {
           id: n.id,
-          name: n.hello?.name || n.name || n.hello?.host || n.id,
+          name: (n.custom ? n.name : n.hello?.name || n.name) || n.hello?.host || n.id,
+          visibility: n.visibility,
+          ...(n.owner ? { owner: n.owner } : {}),
           host: n.hello?.host ?? '',
           platform: n.hello?.platform ?? '',
           cpus: n.hello?.cpus ?? 0,
@@ -78,14 +92,26 @@ export class Nodes {
   }
 
   /** Mints a join token; the node exists from here, the token is answered with and forgotten. */
-  invite(name?: string): { id: string; name: string; token: string } {
+  invite(name?: string, visibility: NodeVisibility = 'everyone', owner?: string): { id: string; name: string; token: string } {
     const id = randomBytes(4).toString('hex');
     const token = `ao_node_${randomBytes(24).toString('hex')}`;
     const label = (name ?? '').trim().slice(0, 60);
-    this.nodes.set(id, { id, name: label, token: hash(token), joinedAt: Date.now(), lastSeen: 0 });
+    this.nodes.set(id, { id, name: label, token: hash(token), joinedAt: Date.now(), visibility, ...(owner ? { owner } : {}), lastSeen: 0 });
     this.save();
     this.onChange();
     return { id, name: label || id, token };
+  }
+
+  /** Calls a node something else; the rename pins the name, so the machine's next hello keeps it. */
+  rename(id: string, name: string): boolean {
+    const n = this.nodes.get(id);
+    const label = name.trim().slice(0, 60);
+    if (!n || !label) return false;
+    n.name = label;
+    n.custom = true;
+    this.save();
+    this.onChange();
+    return true;
   }
 
   /** Takes a node off the office; an online one is disconnected first. */
@@ -155,7 +181,7 @@ export class Nodes {
           providers: (Array.isArray(frame.providers) ? frame.providers : []).filter(isAgentProvider) as AgentProvider[],
           ...(typeof frame.version === 'string' ? { version: frame.version.slice(0, 30) } : {}),
         };
-        if (node.hello.name) {
+        if (node.hello.name && !node.custom) {
           node.name = node.hello.name;
           this.save();
         }
@@ -211,7 +237,16 @@ export class Nodes {
       const saved = JSON.parse(readFileSync(this.file, 'utf8'));
       for (const n of Array.isArray(saved?.nodes) ? saved.nodes : []) {
         if (!n || typeof n.id !== 'string' || typeof n.token !== 'string') continue;
-        this.nodes.set(n.id, { id: n.id, name: typeof n.name === 'string' ? n.name : '', token: n.token, joinedAt: Number(n.joinedAt) || Date.now(), lastSeen: 0 });
+        this.nodes.set(n.id, {
+          id: n.id,
+          name: typeof n.name === 'string' ? n.name : '',
+          token: n.token,
+          joinedAt: Number(n.joinedAt) || Date.now(),
+          visibility: n.visibility === 'private' ? 'private' : 'everyone',
+          ...(typeof n.owner === 'string' && n.owner ? { owner: n.owner } : {}),
+          ...(n.custom ? { custom: true } : {}),
+          lastSeen: 0,
+        });
       }
     } catch {
       // corrupt file: start fresh
@@ -221,7 +256,15 @@ export class Nodes {
   private save() {
     try {
       mkdirSync(path.dirname(this.file), { recursive: true });
-      const nodes: SavedNode[] = [...this.nodes.values()].map(({ id, name, token, joinedAt }) => ({ id, name, token, joinedAt }));
+      const nodes: SavedNode[] = [...this.nodes.values()].map(({ id, name, token, joinedAt, visibility, owner, custom }) => ({
+        id,
+        name,
+        token,
+        joinedAt,
+        visibility,
+        ...(owner ? { owner } : {}),
+        ...(custom ? { custom } : {}),
+      }));
       writeFileSync(this.file, JSON.stringify({ nodes }, null, 2), { mode: 0o600 });
     } catch {
       // disk issues shouldn't take the office down

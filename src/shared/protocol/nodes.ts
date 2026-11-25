@@ -5,11 +5,18 @@
 
 import type { AgentProvider } from '../providers.js';
 
+/** Who a machine is on the wall for: the whole team, or only its inviter and the admins. */
+export type NodeVisibility = 'everyone' | 'private';
+
 /** One joined computer, as its last hello described it. */
 export interface NodeInfo {
   id: string;
-  /** What to call it: the invite's name, else the machine's hostname. */
+  /** What to call it: an admin's rename, else the invite's name, else the machine's hostname. */
   name: string;
+  /** Everyone sees it (the default), or only the account that invited it and the admins. */
+  visibility: NodeVisibility;
+  /** The account that invited it, when it was invited by a signed-in admin. */
+  owner?: string;
   /** The machine's own hostname. */
   host: string;
   /** e.g. "macOS arm64", "Linux x64". */
@@ -35,7 +42,9 @@ export type NodesClientMsg =
   /** The wall, whenever it changes and when asked. */
   | { t: 'nodes.get' }
   /** Mint a join token for one more machine (admins only); the answer is nodes.token, shown once. */
-  | { t: 'nodes.invite'; name?: string }
+  | { t: 'nodes.invite'; name?: string; visibility?: NodeVisibility }
+  /** Call a machine something else (admins only); the new name outlives the machine's next hello. */
+  | { t: 'nodes.rename'; id: string; name: string }
   /** Take a machine off the office (admins only); an online one is disconnected. */
   | { t: 'nodes.revoke'; id: string };
 
