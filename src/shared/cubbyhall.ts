@@ -11,14 +11,14 @@ import { EXIT_DOOR, EXIT_STAIRS, FLOOR, WALL_T, type Opening } from './layout.js
 
 /** The hall inside its walls: x from its outer west wall to the old west wall's outer face. */
 export const CUBBY_HALL = {
-  minX: -22,
+  minX: -23.6,
   maxX: FLOOR.minX - WALL_T,
   minZ: FLOOR.minZ,
   maxZ: 5.3,
 } as const;
 
-/** How wide the corridor along the old west wall is, and how thick the partitions between cubbies. */
-export const HALL_CORRIDOR = 1.2;
+/** How wide the corridor along the old west wall is (2.4 m, widened from 1.2: Jonathan, 2026-11-25), and how thick the partitions between cubbies. */
+export const HALL_CORRIDOR = 2.4;
 export const HALL_PARTITION = 0.1;
 /** How tall the partitions between cubbies are (the glass fronts are FRONT_HEIGHT, 2.7). */
 export const PARTITION_HEIGHT = 3.2;
