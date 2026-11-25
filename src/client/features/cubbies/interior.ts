@@ -14,6 +14,7 @@ import { Person, Worker } from '../../world/character';
 import { textSprite } from '../../world/toon';
 import type { Collider } from '../../world/types';
 import { Laptop } from '../workers/laptop';
+import { focusedOf, showTags, type Focus } from './focus';
 import { OVERFLOW_BAG_SCALE, agentCard, clip, colliderOf, deadlineText, furniture, toFloor, layoutAgents, layoutKey, usableAt, workerStatus, type CubbyIt, type CubbyPlacement, type Spot } from './model';
 import { CREAM, FONT, Face, INK, beanbag, builderDesk, disposeTree, factoryMachine, fitText, lamp, simpleDesk, wallScreen } from './props';
 
@@ -304,21 +305,8 @@ export class Interior {
    * standing right by that's in front of you. Never more than one, so their labels can't pile up in a small room.
    */
   private focused(focus?: Focus) {
-    if (!focus) return undefined;
-    let best: (typeof this.views extends Map<string, infer V> ? V : never) | undefined;
-    let bestD = NEAR;
-    for (const v of this.views.values()) {
-      if (!v.model) continue;
-      if (focus.aimed && focus.aimed === v.model.root.userData.interact) return v;
-      const at = toFloor(this.place, v.spot.x, v.spot.z);
-      const dx = at.x - focus.x;
-      const dz = at.z - focus.z;
-      const d = Math.hypot(dx, dz);
-      // Only one roughly in front of you: one off to the side would put its tag half off the screen.
-      const ahead = d > 0 && (-Math.sin(focus.yaw) * dx - Math.cos(focus.yaw) * dz) / d > IN_FRONT;
-      if (ahead && d < bestD) { best = v; bestD = d; }
-    }
-    return best;
+    const all = [...this.views.values()].filter((v) => v.model);
+    return focusedOf(all.map((v) => ({ item: v, ...toFloor(this.place, v.spot.x, v.spot.z), interact: v.model!.root.userData.interact })), focus);
   }
 
   update(dt: number, t: number, now: number, focus?: Focus) {
@@ -382,16 +370,4 @@ function shrinkTags(root: THREE.Object3D) {
   });
 }
 
-/** Where you are, and what you're aiming at, for deciding whose name tag shows. */
-export interface Focus { x: number; z: number; aimed: unknown; /** Which way you're looking (0 is -z, π/2 is -x). */ yaw: number }
-/** How far round from straight ahead a helper can be for its tag to show without aiming (cos 30°). */
-const IN_FRONT = Math.cos(Math.PI / 6);
-/** How close you stand to a helper for its tag to show without aiming at it. */
-const NEAR = 1.1;
-/** The layer a hidden tag is drawn on: no camera looks at it. */
-const HIDDEN_LAYER = 31;
-function showTags(root: THREE.Object3D, show: boolean) {
-  root.traverse((o) => {
-    if ((o as THREE.Sprite).isSprite) o.layers.set(show ? 0 : HIDDEN_LAYER);
-  });
-}
+export type { Focus } from './focus';
