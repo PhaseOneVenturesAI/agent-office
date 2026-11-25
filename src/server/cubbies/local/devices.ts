@@ -3,7 +3,7 @@
 // only, in the project's cubby state (0600), and the office never decides it:
 // - the first device is pinned here at join (--owner-key), as before;
 // - a new device makes its own non-extractable key and asks; the computer keeps the request and shows
-//   a six-digit code worked out from that key, which the new device shows on its own screen too;
+//   a 16-character code (80 bits) worked out from that key, which the new device shows on its own screen too;
 // - one of the trusted devices approves it with its own signature (or the owner runs
 //   `agent-office cubby devices approve <code>` here). A server that swaps in its own key can't make the
 //   codes match, and it can't sign an approval, so it can't add a device;

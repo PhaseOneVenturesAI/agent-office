@@ -59,7 +59,7 @@ test('a new device asks, a trusted device approves that exact key, and then the 
   assert.match(asked.note!, new RegExp(ownerDeviceCode(phone.ownerKey)));
   // The approving browser works the code out from the key itself; it matches what the computer shows.
   assert.equal(await codeOfKey(phone.ownerKey), ownerDeviceCode(phone.ownerKey));
-  assert.match(ownerDeviceCode(phone.ownerKey), /^\d{3} \d{3}$/);
+  assert.match(ownerDeviceCode(phone.ownerKey), /^[0-9A-HJKMNP-TV-Z]{4}( [0-9A-HJKMNP-TV-Z]{4}){3}$/);
   f.act(owner, 'add', phone.ownerKey);
   assert.deepEqual(f.devices().devices.map((d) => d.label), ['Mac', 'iPhone']);
   assert.deepEqual(f.devices().requests, []);
@@ -144,4 +144,14 @@ test('the office keeps only bounded, plain device fields from the computer', () 
   for (const bad of [{ devices: [], requests: [] }, { devices: [{ fingerprint: 'x', addedAt: 1 }], requests: [] },
     { devices: Array(MAX_OWNER_DEVICES + 1).fill({ fingerprint: 'a'.repeat(32), addedAt: 1 }), requests: [] },
     { devices: [{ fingerprint: 'a'.repeat(32), addedAt: 1 }], requests: [{ requestId: 'r', publicKey: 'short', at: now }] }]) assert.equal(devicesOf(bad, now), undefined);
+});
+
+test('a device code is 80 bits of the key hash, so a swapped key can’t be searched to match it', async () => {
+  const { deviceCode, normalizeDeviceCode } = await import('../src/shared/protocol/cubbies.js');
+  // 0x00…: all zero bits; 0xff…: all ones; a known pattern checks the bit order across byte edges.
+  assert.equal(deviceCode(new Uint8Array(32)), '0000 0000 0000 0000');
+  assert.equal(deviceCode(new Uint8Array(32).fill(0xff)), 'ZZZZ ZZZZ ZZZZ ZZZZ');
+  assert.equal(deviceCode(Uint8Array.from([0x08, 0x86, 0x42, 0x98, 0xe8, 0x4a, 0x96, 0xc6, 0xb9, 0xf0, ...new Array(22).fill(0)])), '1234 5678 9ABC DEFG');
+  assert.equal(normalizeDeviceCode('1234-5678 9abc defg'), normalizeDeviceCode('1234 5678 9ABC DEFG'));
+  assert.equal(normalizeDeviceCode('O0 Il'), '0011');
 });

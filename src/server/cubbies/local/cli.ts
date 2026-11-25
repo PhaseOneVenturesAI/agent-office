@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { canonical, run } from './io.js';
+import { normalizeDeviceCode } from '../../../shared/protocol/cubbies.js';
 import { waitForMessage, writeReply } from './bridge.js';
 import { change, fileStore, pinnedFloors, readPins } from './devices.js';
 
@@ -102,7 +103,7 @@ function devicesCommand(state: string, words: string[], floorOpt?: string): numb
   if (!arg || !['approve', 'deny', 'revoke'].includes(what)) { console.log(HELP); return 2; }
   let target: string | undefined;
   if (what === 'revoke') target = pins.find((p) => p.fingerprint === arg.replace(/-/g, '').toLowerCase())?.fingerprint ?? arg;
-  else target = store.waiting().find((w) => w.code.replace(' ', '') === arg.replace(/\s/g, ''))?.key;
+  else target = store.waiting().find((w) => normalizeDeviceCode(w.code) === normalizeDeviceCode(arg))?.key;
   if (!target) { console.error(`agent-office cubby devices: no device is asking with code ${arg}`); return 1; }
   const done = change(store, what === 'approve' ? 'add' : what as 'deny' | 'revoke', target, Date.now());
   if (done.error) { console.error(`agent-office cubby devices: ${done.error}`); return 1; }

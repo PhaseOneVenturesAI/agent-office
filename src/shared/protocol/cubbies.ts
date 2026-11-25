@@ -122,11 +122,25 @@ export type CubbyDevicePayload = Pick<CubbyBinding, 'cubbyId' | 'floorId' | 'com
 export function ownerDeviceEncoding(f: CubbyDevicePayload): string {
   return JSON.stringify(['agent-office/cubby-owner-device/v1', f.cubbyId, f.floorId, f.computerId, f.requestId, f.at, f.action, f.target]);
 }
-/** The six-digit code a device shows for its key: from the first bytes of SHA-256 over its public key (SPKI). */
+const CODE_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+/**
+ * The code a device shows for its key: the first 80 bits of SHA-256 over its public key (SPKI), as 16
+ * Crockford base32 characters in four groups ("7QK2 M9XD 4TFA H3PZ"). 80 bits so that a server that
+ * swaps in its own key can't search for one whose code matches the real device's (a six-digit code
+ * falls to a million tries).
+ */
 export function deviceCode(digest: Uint8Array): string {
-  const n = ((digest[0] << 24) >>> 0) + (digest[1] << 16) + (digest[2] << 8) + digest[3];
-  const s = String(n % 1_000_000).padStart(6, '0');
-  return `${s.slice(0, 3)} ${s.slice(3)}`;
+  let out = '';
+  for (let i = 0; i < 16; i++) {
+    const bit = i * 5, byte = bit >> 3, shift = bit & 7;
+    const word = (digest[byte] << 8) | (digest[byte + 1] ?? 0);
+    out += CODE_ALPHABET[(word >> (11 - shift)) & 31];
+  }
+  return out.match(/.{4}/g)!.join(' ');
+}
+/** A typed code, as deviceCode writes it: spaces and dashes dropped, case and look-alikes (O, I, L) folded. */
+export function normalizeDeviceCode(code: string): string {
+  return code.toUpperCase().replace(/[\s-]/g, '').replace(/O/g, '0').replace(/[IL]/g, '1');
 }
 
 export interface CubbyOwnerMessage { text: string; requestId: string; at: number; ownerSig: string }
