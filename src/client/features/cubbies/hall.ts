@@ -39,6 +39,36 @@ declare module '../../world/types' {
   }
 }
 
+const HALL_LAMP = 7;
+
+/**
+ * A warm, light lining over the old west wall's outside face where the corridor runs along it, so the
+ * corridor reads as an inside hallway rather than the building's dark exterior. It leaves the windows
+ * and the doorway open.
+ */
+function corridorLining(d: number, midZ: number): THREE.Group {
+  const g = new THREE.Group();
+  const mat = toon('#efe4d2');
+  const x = CUBBY_HALL.maxX - 0.012;
+  const z0 = midZ - d / 2, z1 = midZ + d / 2;
+  const holes = [...WINDOWS.filter(w => w.wall === 'west'), CUBBY_DOORWAY]
+    .map(o => ({ a: o.u - o.width / 2, b: o.u + o.width / 2, y0: o.y0, y1: o.y1 }))
+    .filter(o => o.b > z0 && o.a < z1).sort((p, q) => p.a - q.a);
+  const piece = (a: number, b: number, y0: number, y1: number) => {
+    if (b - a < 0.01 || y1 - y0 < 0.01) return;
+    g.add(mesh(new THREE.PlaneGeometry(b - a, y1 - y0).rotateY(-Math.PI / 2), mat, x, (y0 + y1) / 2, (a + b) / 2, false));
+  };
+  let at = z0;
+  for (const o of holes) {
+    piece(at, Math.max(at, o.a), 0, WALL_HEIGHT);
+    piece(Math.max(at, o.a), Math.min(z1, o.b), 0, o.y0);
+    piece(Math.max(at, o.a), Math.min(z1, o.b), o.y1, WALL_HEIGHT);
+    at = Math.max(at, o.b);
+  }
+  piece(at, z1, 0, WALL_HEIGHT);
+  return g;
+}
+
 /** The bit of west wall where the doorway goes, standing while the hall's shut: like exitPlug in shell.ts. */
 function doorwayPlug(looks: Looks): { group: THREE.Group; collider: Collider } {
   const o = CUBBY_DOORWAY;
@@ -169,7 +199,12 @@ function buildHall(looks: Looks, planks: THREE.Material, ceiling: THREE.Material
     lamp.scale.setScalar(0.6);
     lamp.position.set((HALL_FRONT_X + H.maxX) / 2, 4.4, z);
     group.add(lamp);
+    // Real warm light from the corridor lamps, so the hall isn't a dark slot (no shadows: cheap on phones).
+    const light = new THREE.PointLight('#ffe2b8', HALL_LAMP, 9, 1.6);
+    light.position.set((HALL_FRONT_X + H.maxX) / 2, 3.6, z);
+    group.add(light);
   }
+  group.add(corridorLining(d, midZ));
 
   // The dark sign pill over the doorway, on the office side; and its twin over it in the corridor.
   for (const side of [1, -1]) {
