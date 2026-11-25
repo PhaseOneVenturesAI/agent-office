@@ -31,6 +31,16 @@
 .queue-title a { color: inherit; text-decoration: none; }
 .queue-title a:hover { text-decoration: underline; }
 .queue-meta { font-size: 12px; font-weight: 700; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The task's prompt behind a disclosure: the collapsed row peeks at its first line, and opening it
+   shows the full text, wrapped and selectable so it can be copied. */
+.queue-details { margin-top: 2px; }
+.queue-details summary { display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; color: var(--muted); cursor: pointer; list-style: none; }
+.queue-details summary::-webkit-details-marker { display: none; }
+.queue-details summary::before { content: '▸'; flex: none; font-size: 10px; }
+.queue-details[open] summary::before { content: '▾'; }
+.queue-details summary:hover { color: var(--ink); }
+.queue-details .peek { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queue-prompt { margin: 6px 0 2px; padding: 8px 10px; border: 2px solid var(--ink); border-radius: 10px; background: var(--paper-2); color: var(--ink); font: 13px/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; max-height: 220px; overflow-y: auto; }
 .queue-actions { display: flex; gap: 4px; flex: none; }
 .queue-actions .btn { padding: 3px 9px; font-size: 13px; text-decoration: none; color: inherit; }
 .queue-limit { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 800; color: var(--muted); white-space: nowrap; }
