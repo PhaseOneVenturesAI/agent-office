@@ -15,7 +15,8 @@ import { Upgrader } from '../upgrade.js';
 import { Services } from '../services.js';
 import { ImageProxy } from '../decor.js';
 import { Ledger } from '../usage.js';
-import { PlanLimitsReader } from '../limits.js';
+import { LimitsHub } from '../limits/index.js';
+import { LIMITS_PROVIDERS } from '../../shared/protocol.js';
 import { Webhook } from '../webhook.js';
 import { Machine } from '../machine.js';
 import type { Floor } from '../floor.js';
@@ -55,13 +56,14 @@ export function createServices(ctx: Ctx): BuildingServices {
   );
 
   const claudeBin = configuredProvider(cfg.agentCmd) === 'claude' ? resolveCommand(cfg.agentCmd) : resolveCommand('claude');
+  const codexBin = resolveCommand('codex');
   // Everyone with an account runs on their own Claude, Kimi, Codex and GitHub sign-ins (see signins.ts).
   // On the shared password, with no accounts, the office's own are used, as they always were.
   const signins = new SignIns(
     cfg.dataDir,
     claudeBin,
     resolveCommand('kimi'),
-    resolveCommand('codex'),
+    codexBin,
     resolveCommand('gh'),
     childEnv,
     (id) => accounts.get(id)?.role === 'admin',
@@ -100,37 +102,40 @@ export function createServices(ctx: Ctx): BuildingServices {
   // password is needed, and each verified email gets an account of its own.
   const cloudflare = cfg.cfAccess ? new CloudflareAccess(cfg.cfAccess.team, cfg.cfAccess.aud, new Set(cfg.cfAccess.admins)) : undefined;
 
-  // The Claude plan's 5-hour and weekly limits, for the meter under the workers: the office's own
-  // plan, and each account's own once it runs on a Claude sign-in of its own.
-  const limits = new PlanLimitsReader(
-    claudeBin,
-    childEnv(),
-    () => [...clients.values()].some((c) => limitsOf(c) === limits),
-    (state) => {
+  // The plan limits of every provider that can report them (Claude's 5-hour session and week,
+  // Codex's, Kimi's), for the meter under the workers: the office's own plans, and each account's
+  // own once it runs on sign-ins of its own.
+  const limits = new LimitsHub({
+    claude: claudeBin,
+    codex: codexBin,
+    envFor: () => childEnv(),
+    wanted: () => [...clients.values()].some((c) => limitsOf(c) === limits),
+    onChange: (state) => {
       for (const c of clients.values()) if (limitsOf(c) === limits) ctx.sendTo(c, { t: 'limits', state });
     },
-  );
-  const accountLimits = new Map<string, { key: string; reader: PlanLimitsReader }>();
-  /** Whose plan `c` sees: their own, on an account with its own Claude sign-in; else the office's. */
-  const limitsOf = (c: Client): PlanLimitsReader => {
+  });
+  const accountLimits = new Map<string, { key: string; hub: LimitsHub }>();
+  /** Whose plans `c` sees: their own, on an account with sign-ins of its own; else the office's. */
+  const limitsOf = (c: Client): LimitsHub => {
     const id = c.accountId;
-    const key = id && signins.claudeKey(id);
-    if (!id || !key) return limits;
+    if (!id) return limits;
+    const key = LIMITS_PROVIDERS.map((k) => signins.planKey(id, k) ?? '-').join('|');
     let a = accountLimits.get(id);
     if (a?.key !== key) {
-      a?.reader.close();
-      const reader = new PlanLimitsReader(
-        claudeBin,
-        signins.apply(id, childEnv(), [], 'claude'),
-        () => [...clients.values()].some((o) => o.accountId === id),
-        (state) => {
+      a?.hub.close();
+      const hub = new LimitsHub({
+        claude: claudeBin,
+        codex: codexBin,
+        envFor: (kind) => signins.apply(id, childEnv(), [], kind),
+        wanted: () => [...clients.values()].some((o) => o.accountId === id),
+        onChange: (state) => {
           for (const o of clients.values()) if (o.accountId === id) ctx.sendTo(o, { t: 'limits', state });
         },
-      );
-      a = { key, reader };
+      });
+      a = { key, hub };
       accountLimits.set(id, a);
     }
-    return a.reader;
+    return a.hub;
   };
 
   // Slack / Discord pings for workers that need input or finish (set from ⚙️ Settings or --webhook).
