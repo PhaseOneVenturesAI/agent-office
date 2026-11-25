@@ -10,7 +10,7 @@ import type { AgentChoice, MeetingRequest, WorkerInfo } from '../src/shared/prot
 import { MEETING_PATTERNS, MEETING_PATTERN_IDS, fixedRounds, isMeetingPattern } from '../src/shared/meetings.js';
 import { PROMPTS, type PromptId } from '../src/shared/prompts.js';
 
-function fixture(opts: { git?: boolean; rewritten?: Partial<Record<PromptId, string>>; officeDefault?: AgentChoice } = {}) {
+function fixture(opts: { git?: boolean; rewritten?: Partial<Record<PromptId, string>>; officeDefault?: AgentChoice; commitAskMs?: number } = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), 'office-meeting-'));
   const dataDir = path.join(dir, '.agent-office');
   mkdirSync(dataDir, { recursive: true });
@@ -68,7 +68,7 @@ function fixture(opts: { git?: boolean; rewritten?: Partial<Record<PromptId, str
       return `https://github.com/o/r/pull/${pr}#pullrequestreview-1`;
     },
     prompt: (id) => opts.rewritten?.[id] ?? PROMPTS[id].text,
-  });
+  }, { commitAskMs: opts.commitAskMs ?? 250 });
   const cwd = () => {
     const wt = room.state().current?.worktree;
     return wt ? path.join(dir, wt.path) : dir;
@@ -284,6 +284,59 @@ test('in a git project the output is committed on the meeting branch, which outl
   assert.equal(git('rev-parse', '--abbrev-ref', m.worktree!.branch), m.worktree!.branch);
   assert.equal(f.room.state().current, null);
   assert.match(f.room.state().past[0].summary, /Debate · 2 rounds · 0 tokens · \$0\.00 · ✅ docs\/decision\.md on office\/meeting-pick-a-cache-/);
+});
+
+test('the commit message is the one the meeting writes, with the meeting named under it', async (t) => {
+  const f = fixture({ git: true }); t.after(() => f.close());
+  assert.equal(f.start({ rounds: 2, output: 'docs/decision.md', title: 'Pick a cache' }), undefined);
+  for (const i of [0, 1, 2]) f.take(i);
+  f.take(0, '# Redis\n');
+  const m0 = f.room.state().current!;
+  // Before committing, the office asks the head of the table for the commit message.
+  const ask = f.prompts.at(-1)!;
+  assert.equal(ask.id, m0.seats[0].workerId);
+  assert.match(ask.text, /commit message/);
+  assert.match(ask.text, /Pick a cache/);
+  const file = path.join(f.cwd(), m0.notes!, 'commit-message.txt');
+  assert.ok(ask.text.includes(file));
+  writeFileSync(file, 'Decide on Redis as the cache\n\nThe debate weighed Redis against Memcached and picked Redis for its data structures.\n');
+  for (let i = 0; i < 100 && !f.room.state().current!.commit; i++) await new Promise((r) => setTimeout(r, 20));
+  const m = f.room.state().current!;
+  assert.ok(m.commit);
+  const git = (...args: string[]) => execFileSync('git', args, { cwd: f.dir, encoding: 'utf8' }).trim();
+  const message = git('log', '-1', '--format=%B', m.worktree!.branch);
+  assert.match(message, /^Decide on Redis as the cache\n\nThe debate weighed Redis against Memcached/);
+  assert.match(message, /Debate meeting in Agent Office, called by Ada\. Output: docs\/decision\.md/);
+  // The message file stays out of the commit, with the rest of the notes.
+  assert.equal(git('show', '--name-only', '--format=', m.worktree!.branch), 'docs/decision.md');
+});
+
+test('when no agent answers, the office commits with its own message so the work is never left uncommitted', async (t) => {
+  const f = fixture({ git: true }); t.after(() => f.close());
+  assert.equal(f.start({ rounds: 2, output: 'docs/decision.md', title: 'Pick a cache' }), undefined);
+  for (const i of [0, 1, 2]) f.take(i);
+  f.take(0, '# Redis\n');
+  assert.match(f.prompts.at(-1)!.text, /commit message/);
+  // Nobody writes the file: after the wait, the office's own message it is.
+  for (let i = 0; i < 100 && !f.room.state().current!.commit; i++) await new Promise((r) => setTimeout(r, 20));
+  const m = f.room.state().current!;
+  assert.ok(m.commit);
+  const git = (...args: string[]) => execFileSync('git', args, { cwd: f.dir, encoding: 'utf8' }).trim();
+  assert.equal(git('log', '-1', '--format=%B', m.worktree!.branch), 'Pick a cache\n\nDebate meeting in Agent Office, called by Ada. Output: docs/decision.md');
+
+  // A worker that can't be asked at all doesn't hold the commit up for the wait.
+  const g = fixture({ git: true, commitAskMs: 60_000 }); t.after(() => g.close());
+  const manager = (g.room as any).workers as MeetingWorkers;
+  const prompt = manager.prompt.bind(manager);
+  manager.prompt = (id, text, by) => (text.includes('commit message') ? 'no such worker' : prompt(id, text, by));
+  assert.equal(g.start({ rounds: 2, output: 'docs/decision.md', title: 'Pick a cache' }), undefined);
+  for (const i of [0, 1, 2]) g.take(i);
+  g.take(0, '# Redis\n');
+  for (let i = 0; i < 100 && !g.room.state().current!.commit; i++) await new Promise((r) => setTimeout(r, 20));
+  const n = g.room.state().current!;
+  assert.ok(n.commit);
+  const gitg = (...args: string[]) => execFileSync('git', args, { cwd: g.dir, encoding: 'utf8' }).trim();
+  assert.equal(gitg('log', '-1', '--format=%B', n.worktree!.branch), 'Pick a cache\n\nDebate meeting in Agent Office, called by Ada. Output: docs/decision.md');
 });
 
 test('Pi meetings retain the chosen model and thinking level for every seat', (t) => {
