@@ -1,5 +1,5 @@
 import './nodes.css';
-import type { NodeInfo } from '../../shared/protocol';
+import type { NodeInfo, NodeVisibility } from '../../shared/protocol';
 import type { Net } from '../net';
 import { store } from '../state';
 import { h, openModal, timeAgo } from './dom';
@@ -22,6 +22,9 @@ function card(net: Net, n: NodeInfo, admin: boolean) {
       {},
       h(`span.nd-dot.${n.online ? 'on' : 'off'}`, { title: n.online ? 'online now' : 'offline' }),
       n.name,
+      n.visibility === 'private'
+        ? h('span.nd-private', { title: 'Private: only whoever invited it and the admins can see this machine' }, '🔒 private')
+        : '',
       n.host && n.host !== n.name ? h('span.nd-host', {}, ` · ${n.host}`) : '',
       h('span.grow'),
       h('span.nd-seen', {}, n.online ? 'online' : n.lastSeen ? `seen ${timeAgo(n.lastSeen)}` : 'never here'),
@@ -34,13 +37,45 @@ function card(net: Net, n: NodeInfo, admin: boolean) {
     el.append(h('p.nd-spec', {}, 'no agent CLIs on its PATH'));
   }
   if (admin) {
+    const rename = h('button.btn.small', { type: 'button', title: 'Call this machine something else — the new name sticks, even when the machine says hello again' }, 'Rename');
+    rename.addEventListener('click', () => {
+      const name = prompt(`A new name for ${n.name}:`, n.name);
+      if (name?.trim()) net.send({ t: 'nodes.rename', id: n.id, name: name.trim() });
+    });
     const revoke = h('button.btn.small', { type: 'button', title: 'Take this machine off the office — its join token stops working' }, 'Remove');
     revoke.addEventListener('click', () => {
       if (confirm(`Remove ${n.name} from the office? Its join token stops working.`)) net.send({ t: 'nodes.revoke', id: n.id });
     });
-    el.append(h('div.nd-actions', {}, revoke));
+    el.append(h('div.nd-actions', {}, rename, revoke));
   }
   return el;
+}
+
+/** The invite form: a name, and whether the whole team sees the machine or only its inviter and the admins. */
+function inviteForm(net: Net, done: () => void) {
+  const name = h('input', { type: 'text', placeholder: 'A name for the machine (optional — its hostname works too)', maxLength: '60' });
+  const choice = (value: NodeVisibility, label: string, hint: string, checked = false) =>
+    h('label.nd-choice', {}, h('input', { type: 'radio', name: 'nd-vis', value, ...(checked ? { checked: true } : {}) }), h('span', {}, h('b', {}, label), ` — ${hint}`));
+  const form = h(
+    'form.nd-form',
+    {},
+    name,
+    choice('everyone', '🌍 Everyone', 'the whole team sees it on the wall', true),
+    choice('private', '🔒 Private', 'only you and the admins see it'),
+    h(
+      'div.nd-actions',
+      {},
+      h('button.btn.small', { type: 'submit' }, '🎟 Create invite'),
+      h('button.btn.small', { type: 'button', onclick: done }, 'Cancel'),
+    ),
+  );
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const visibility = (form.querySelector('input[name="nd-vis"]:checked') as HTMLInputElement | null)?.value === 'private' ? 'private' : 'everyone';
+    net.send({ t: 'nodes.invite', ...(name.value.trim() ? { name: name.value.trim() } : {}), visibility });
+    done();
+  });
+  return form;
 }
 
 /** The join command for a fresh token, with a copy button; the token is never shown again. */
@@ -64,7 +99,8 @@ function inviteBox(origin: string, name: string, token: string) {
 /**
  * 🛰️ Satellites: the team's own computers, joined with `agent-office join`, on one wall — who's
  * here, what each machine could run, and who's gone quiet. Admins mint join tokens here (see
- * server/nodes.ts).
+ * server/nodes.ts), picking whether a machine is everyone's or private to them and the admins,
+ * and can rename or remove any machine.
  */
 export function openNodes(net: Net) {
   const list = h('div.nd-list');
@@ -85,8 +121,8 @@ export function openNodes(net: Net) {
     if (store.me.admin) {
       const invite = h('button.btn.small', { type: 'button' }, '🎟 Invite a machine');
       invite.addEventListener('click', () => {
-        const name = prompt('A name for the machine (optional — its hostname works too):') ?? '';
-        net.send({ t: 'nodes.invite', ...(name.trim() ? { name: name.trim() } : {}) });
+        inviteSlot.replaceChildren(inviteForm(net, () => inviteSlot.replaceChildren()));
+        inviteSlot.querySelector('input')?.focus();
       });
       list.append(h('div.nd-actions', {}, invite));
     }
