@@ -1,4 +1,4 @@
-import { BEANBAGS, BOARDS, DESKS, ELEVATOR, ELEVATOR_CAR, EXIT_DOOR, FLOOR, MEETING_SEATS, SEATING, STATIONS, STATION_AGENT, WALL_HEIGHT, WING_DESKS, seatHere, seatPlace, type DeskDef, type SeatDef, type SeatPlace, type StationKind } from '../layout.js';
+import { BEANBAGS, BOARDS, DESKS, ELEVATOR, ELEVATOR_CAR, EXIT_DOOR, FLOOR, MEETING_SEATS, SEATING, STATIONS, STATION_AGENT, STATION_KINDS, WALL_HEIGHT, WING_DESKS, seatHere, seatPlace, type DeskDef, type SeatDef, type SeatPlace, type StationKind } from '../layout.js';
 import type { Circle, Rect } from '../nav.js';
 import { planAirlock, wallOpenings } from './airlock.js';
 import { CASTLE } from './castle.js';
@@ -24,7 +24,18 @@ const STYLE_PROPS: Record<MapStyle, { kinds: Readonly<Record<string, string>>; f
   station: { kinds: STATION_PROP_KINDS, footprint: stationFootprint, top: stationTop },
 };
 
-const STATION_KINDS: readonly StationKind[] = ['issues', 'pulls', 'queue'];
+/** The keys a map made before the leads names its lecterns by: each lead takes the old board agent's place. */
+const OLD_STATION_KEYS: Record<string, StationKind> = { issues: 'product', queue: 'development', pulls: 'marketing' };
+
+/** `config` with its lecterns named by the leads, for a map written when they were the Issues, Queue and PR agents. */
+function renameOldStations(config: MapConfig): MapConfig {
+  const at: unknown = config.stations;
+  if (!isObj(at) || !Object.keys(at).some((k) => k in OLD_STATION_KEYS)) return config;
+  const stations: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(at)) if (!(k in OLD_STATION_KEYS)) stations[k] = v;
+  for (const [k, v] of Object.entries(at)) if (k in OLD_STATION_KEYS && !(OLD_STATION_KEYS[k] in stations)) stations[OLD_STATION_KEYS[k]] = v;
+  return { ...config, stations: stations as MapConfig['stations'] };
+}
 /** How far in from a table's edge a seat's place setting is; the worker sits 0.85 out from it (see deskSeat), on the bench. */
 const PLACE_IN = 0.35;
 /** How far out from a table's edge the middle of the bench down that side is. */
@@ -108,7 +119,7 @@ export function mergeConfig<T>(base: T, over: unknown): T {
  * most a few deep). `known` finds a map by id: the built-in ones and the other custom ones.
  */
 export function resolveConfig(config: MapConfig, known: (id: string) => MapConfig | undefined): MapConfig {
-  let out: MapConfig = config;
+  let out: MapConfig = renameOldStations(config);
   const seen = new Set([config.id]);
   for (let parent = config.extends; parent; ) {
     if (seen.has(parent)) throw new MapError(`it extends itself (through ${parent})`);
@@ -116,7 +127,7 @@ export function resolveConfig(config: MapConfig, known: (id: string) => MapConfi
     seen.add(parent);
     const base = known(parent);
     if (!base) throw new MapError(parent === OFFICE_MAP ? 'the office is built in code, so a map can’t extend it: extend "castle" instead' : `it extends "${parent}", which there’s no map called`);
-    out = mergeConfig(base, { ...out, extends: base.extends });
+    out = mergeConfig(renameOldStations(base), { ...out, extends: base.extends });
     parent = base.extends;
   }
   return { ...out, extends: config.extends };
@@ -214,7 +225,7 @@ export function planMap(input: unknown): MapPlan {
   const overflow: DeskDef[] = named.slice(MAP_DESKS.length).map((d, i) => ({ ...d, id: BEANBAGS[i].id }));
 
   // The board agents' lecterns.
-  if (!isObj(c.stations)) throw new MapError('it needs stations: where the Issues, PR and Queue agents stand');
+  if (!isObj(c.stations)) throw new MapError('it needs stations: where the Product, Development and Marketing leads stand');
   const stations: DeskDef[] = STATION_KINDS.map((kind) => {
     const p = place(c.stations[kind], `stations.${kind}`);
     const def = { id: `station-${kind}`, station: kind, x: p.x, z: p.z, rotY: p.rotY, label: STATION_AGENT[kind].name };

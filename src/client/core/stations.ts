@@ -1,4 +1,4 @@
-/** The board agents: what each is for, and the ones waiting by their boards before anyone has asked them anything. */
+/** The leads (board agents): what each is for, and the ones waiting by their boards before anyone has asked them anything. */
 import { STATION_AGENT, type StationKind } from '../../shared/layout';
 import { Worker } from '../world/character';
 import type { DeskView } from '../world/types';
@@ -7,9 +7,9 @@ import { noOutline } from './outline';
 
 /** What each board agent is for: its board's icon, what it offers on the card over its head, and an example ask. */
 export const STATION_INFO: Record<StationKind, { icon: string; offer: string; does: string; example: string }> = {
-  issues: { icon: '📌', offer: 'Ask me about issues', does: 'I file, find, triage, label and close them', example: 'File an issue: the dog walks straight through the jukebox' },
-  pulls: { icon: '🔀', offer: 'Ask me about PRs', does: 'I sum up, review, comment on and merge them', example: 'Review the newest PR and tell me if it’s ready to merge' },
-  queue: { icon: '📋', offer: 'Ask me to queue work', does: 'I turn it into tasks for fresh workers', example: 'Queue every open bug issue, most important first' },
+  product: { icon: '🧭', offer: 'Ask me about the product', does: 'I shape the roadmap, write specs and triage issues', example: 'Turn the open feedback issues into a prioritized roadmap' },
+  development: { icon: '🛠️', offer: 'Ask me to build it', does: 'I write code, review PRs and run the engineers', example: 'Fix issue #42 and open a pull request' },
+  marketing: { icon: '📣', offer: 'Ask me to spread the word', does: 'I write release notes, launch posts and copy', example: 'Write release notes for everything merged this week' },
 };
 
 /** A board agent waiting by its board before anyone has asked it anything (see buildKiosk), and where. */

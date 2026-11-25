@@ -686,7 +686,7 @@ test('a Codex board agent stops needing input when the permission tool finishes 
   const workers = manager(f, f.codex, [], []);
   t.after(() => workers.shutdown());
 
-  const asked = workers.station('station-queue', 'Ada', 'Queue the maintenance issues');
+  const asked = workers.station('station-product', 'Ada', 'Queue the maintenance issues');
   assert.equal(typeof asked, 'object');
   if (typeof asked === 'string') return;
   const id = asked.info.id;
@@ -1027,28 +1027,31 @@ test('a board agent is hired with its brief on the first prompt, then prompted, 
   const launches = () => f.read().filter((r) => r.kind === 'claude' && r.args.includes('--settings') && r.stdin === undefined);
 
   assert.match(workers.station('desk-1', 'test', 'file an issue') as string, /no agent/i);
-  assert.match(workers.station('station-issues', 'test', '   ') as string, /empty/i);
-  assert.match(workers.spawn('station-issues', 'test', undefined, false, 'shell') as string, /shell/i);
+  assert.match(workers.station('station-product', 'test', '   ') as string, /empty/i);
+  assert.match(workers.spawn('station-product', 'test', undefined, false, 'shell') as string, /shell/i);
 
   // Nobody there yet: it's hired, told what it's for, with the request after that.
-  const hired = workers.station('station-issues', 'Ada', 'File an issue about the dog');
+  const hired = workers.station('station-product', 'Ada', 'File an issue about the dog');
   assert.equal(typeof hired, 'object');
   if (typeof hired === 'string') return;
   assert.equal(hired.hired, true);
-  assert.equal(hired.info.name, 'Issues agent');
-  assert.equal(hired.info.deskId, 'station-issues');
+  assert.equal(hired.info.name, 'Product lead');
+  assert.equal(hired.info.deskId, 'station-product');
+  // The product lead stands in the shared checkout, with no worktree of its own.
+  assert.equal(hired.info.worktree, undefined);
   assert.equal(hired.info.activity, 'File an issue about the dog');
   const [first] = await waitFor(launches, (l) => l.length === 1);
   const initial = first.args.at(-1)!;
-  assert.match(initial, /Issues agent/);
+  assert.match(initial, /Product lead/);
   assert.match(initial, /office-queue add/);
-  // Only the queue agent loses its file-editing tools.
-  assert.equal(first.args.includes('--disallowedTools'), false);
+  assert.match(initial, /office-workers hire/);
+  // Standing in the shared checkout, it can't edit its files.
+  assert.deepEqual(first.args.slice(first.args.indexOf('--disallowedTools') + 1, first.args.indexOf('--disallowedTools') + 4), ['Edit', 'Write', 'NotebookEdit']);
   assert.ok(initial.endsWith('File an issue about the dog'));
   const id = hired.info.id;
 
   // The same agent takes the next request in its session.
-  const again = workers.station('station-issues', 'Grace', 'Label it as a bug');
+  const again = workers.station('station-product', 'Grace', 'Label it as a bug');
   assert.deepEqual(typeof again === 'object' && [again.hired, again.info.id], [false, id]);
   await waitFor(() => f.read(), (records) => records.some((r) => r.stdin?.includes('Label it as a bug')));
 
@@ -1056,7 +1059,7 @@ test('a board agent is hired with its brief on the first prompt, then prompted, 
   assert.equal(workers.handleHook(id, first.env.hookToken!, 'SessionStart', { session_id: 'issues-session' }), true);
   assert.equal(workers.handleHook(id, first.env.hookToken!, 'PermissionRequest', { tool_name: 'Bash', tool_input: { command: 'gh issue create' } }), true);
   assert.equal(workers.get(id)?.status, 'needs_input');
-  assert.match(workers.station('station-issues', 'Ada', 'hello?') as string, /waiting on an answer/i);
+  assert.match(workers.station('station-product', 'Ada', 'hello?') as string, /waiting on an answer/i);
 
   // Its own token proves who it is; anyone else's doesn't.
   assert.equal(workers.authenticate(id, first.env.hookToken!)?.id, id);
@@ -1066,7 +1069,7 @@ test('a board agent is hired with its brief on the first prompt, then prompted, 
   // Asleep, a request wakes it up carrying on its session, without the brief again.
   await waitFor(() => workers.get(id)?.status, (s) => s === 'exited');
   assert.equal(workers.authenticate(id, first.env.hookToken!), undefined);
-  const woken = workers.station('station-issues', 'Ada', 'Close the duplicates');
+  const woken = workers.station('station-product', 'Ada', 'Close the duplicates');
   assert.deepEqual(typeof woken === 'object' && [woken.hired, woken.info.id], [false, id]);
   const [, second] = await waitFor(launches, (l) => l.length === 2);
   assert.ok(second.args.includes('--resume') && second.args.includes('issues-session'));
@@ -1084,7 +1087,7 @@ test('a worker nobody picked a model for starts on the office default, and a boa
     f.close();
   });
   const prompts: PromptSource = {
-    text: (id) => (id === 'station.issues' ? 'You triage issues. The request:' : PROMPTS[id].text),
+    text: (id) => (id === 'station.product' ? 'You triage issues. The request:' : PROMPTS[id].text),
     agent: () => ({ provider: 'claude', model: 'sonnet', effort: 'low' }),
   };
   const workers = new WorkerManager(f.root, f.data, f.claude, ['--from-test'], { url: 'http://127.0.0.1:1', token: '' }, events([]), ledger(f.data), undefined, prompts);
@@ -1092,7 +1095,7 @@ test('a worker nobody picked a model for starts on the office default, and a boa
   const launches = (id: string) => f.read().filter((r) => r.kind === 'claude' && r.args.includes('--settings') && r.stdin === undefined && r.env.workerId === id);
   const flag = (args: string[], name: string) => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined);
 
-  const hired = workers.station('station-issues', 'Ada', 'File one about the dog');
+  const hired = workers.station('station-product', 'Ada', 'File one about the dog');
   assert.equal(typeof hired, 'object');
   if (typeof hired === 'string') return;
   assert.deepEqual([hired.info.provider, hired.info.model, hired.info.effort], ['claude', 'sonnet', 'low']);
@@ -1109,7 +1112,7 @@ test('a worker nobody picked a model for starts on the office default, and a boa
   assert.equal(own.args.includes('--model'), false);
 });
 
-test('the queue agent is launched without file-editing tools, and board agents get office-queue on their PATH', async (t) => {
+test('the leads in the shared checkout are launched without file-editing tools, and every lead gets office-queue on its PATH', async (t) => {
   const f = fixture();
   const updates: WorkerInfo[] = [];
   isolateProviderEnvironment(f, t);
@@ -1138,7 +1141,7 @@ test('the queue agent is launched without file-editing tools, and board agents g
   accessSync(path.join(bin, 'office-queue'), constants.X_OK);
   assert.match(execFileSync(path.join(bin, 'office-queue'), ['--help'], { encoding: 'utf8' }), /office-queue add --title/);
 
-  const hired = workers.station('station-queue', 'Ada', 'Fix the typo in the README');
+  const hired = workers.station('station-marketing', 'Ada', 'Fix the typo in the README');
   assert.equal(typeof hired, 'object');
   if (typeof hired === 'string') return;
   const id = hired.info.id;
@@ -1151,21 +1154,22 @@ test('the queue agent is launched without file-editing tools, and board agents g
   // Woken up carrying on its session, it's still without them.
   assert.equal(workers.handleHook(id, first.env.hookToken!, 'SessionStart', { session_id: 'queue-session' }), true);
   await waitFor(() => workers.get(id)?.status, (s) => s === 'exited');
-  workers.station('station-queue', 'Grace', 'Also bump the version');
+  workers.station('station-marketing', 'Grace', 'Also bump the version');
   const [, second] = await waitFor(() => launches(id), (l) => l.length === 2);
   assert.ok(second.args.includes('--resume') && second.args.includes('queue-session'));
   assert.deepEqual(denied(second.args), ['Edit', 'Write', 'NotebookEdit']);
   assert.equal(second.args.at(-1), 'Also bump the version');
   assert.ok(onPath(second));
 
-  // The other board agents keep their tools; they, and a desk worker, get the commands all the same.
-  const pulls = workers.station('station-pulls', 'Ada', 'Sum up the open PRs');
+  // The product lead is without them too; a desk worker keeps its tools, and gets the commands all the same.
+  // (The development lead, in a worktree of its own, keeps its tools: see the test of it.)
+  const pulls = workers.station('station-product', 'Ada', 'Sum up the open issues');
   const desk = workers.spawn('desk-2', 'Ada', 'Fix login');
   assert.ok(typeof pulls === 'object' && typeof desk === 'object');
   if (typeof pulls !== 'object' || typeof desk !== 'object') return;
   const [pullsLaunch] = await waitFor(() => launches(pulls.info.id), (l) => l.length === 1);
   const [deskLaunch] = await waitFor(() => launches(desk.id), (l) => l.length === 1);
-  assert.equal(denied(pullsLaunch.args), undefined);
+  assert.deepEqual(denied(pullsLaunch.args), ['Edit', 'Write', 'NotebookEdit']);
   assert.ok(onPath(pullsLaunch));
   assert.equal(denied(deskLaunch.args), undefined);
   assert.ok(onPath(deskLaunch), 'office-workers is first on a desk worker\'s PATH');
@@ -1460,6 +1464,28 @@ test('stopping the office on purpose (Ctrl+C) leaves nothing to carry on', async
   const resumed = (await waitFor(() => launches(f), (x) => x.length >= 2))[1];
   assert.ok(resumed.args.includes('stopped'));
   assert.equal(promptOf(resumed), undefined);
+});
+
+test('the development lead is hired into a worktree of its own, with its editing tools, and leaves the shared checkout alone', async (t) => {
+  const f = carryOnFixture(t);
+  const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd, encoding: 'utf8' }).trim();
+  git(f.root, 'init', '-q', '-b', 'main');
+  writeFileSync(path.join(f.root, 'a.txt'), 'a');
+  git(f.root, 'add', 'a.txt');
+  git(f.root, 'commit', '-qm', 'init');
+  const workers = manager(f, f.claude, []);
+  t.after(() => workers.shutdown());
+  const asked = workers.station('station-development', 'Ada', 'Fix the login redirect');
+  assert.equal(typeof asked, 'object', typeof asked === 'string' ? asked : '');
+  if (typeof asked === 'string') return;
+  assert.equal(asked.info.name, 'Development lead');
+  // A branch name git takes, though the lead's name has a space in it.
+  assert.match(asked.info.worktree?.branch ?? '', /^office\/development-lead-[0-9a-f]{4}$/);
+  assert.equal(git(f.root, 'branch', '--show-current'), 'main');
+  const [first] = await waitFor(() => launches(f), (x) => x.length > 0);
+  assert.equal(first.args.includes('--disallowedTools'), false);
+  assert.match(first.args.at(-1)!, /Development lead/);
+  assert.ok(first.args.at(-1)!.endsWith('Fix the login redirect'));
 });
 
 test('a worktree worker that makes its own branch is followed there: O finds the PR it opened, and sending it home tidies both branches', async (t) => {

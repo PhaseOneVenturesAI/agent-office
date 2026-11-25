@@ -19,7 +19,7 @@ export interface WorkerRow {
   model?: string;
   desk: string;
   status: WorkerStatus;
-  /** The board it stands by, for a board agent ("PR agent"). */
+  /** The board it stands by, for a lead ("Marketing lead"). */
   board?: string;
   /** At the meeting room's table, called to a meeting. */
   meeting?: true;

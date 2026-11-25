@@ -105,9 +105,9 @@ test('the default worker is checked before it is kept, and one the office can no
 });
 
 test('a board agent is told its rewritten brief', () => {
-  const source: PromptSource = { text: (id) => (id === 'station.pulls' ? 'You review PRs. The request:' : PROMPTS[id].text), agent: () => undefined };
-  assert.equal(stationBrief('pulls', source), 'You review PRs. The request:');
-  assert.equal(stationBrief('issues', source), stationBrief('issues'));
+  const source: PromptSource = { text: (id) => (id === 'station.marketing' ? 'You review PRs. The request:' : PROMPTS[id].text), agent: () => undefined };
+  assert.equal(stationBrief('marketing', source), 'You review PRs. The request:');
+  assert.equal(stationBrief('product', source), stationBrief('product'));
 });
 
 function queueFixture(t: { after(fn: () => void): void }, officeDefault: AgentChoice | undefined, note?: string) {

@@ -88,8 +88,8 @@ test('meeting controls cannot stop another account’s agents', () => {
 
 test('an occupied board agent refuses another account without replacing its session', () => {
   const calls:string[]=[];
-  const manager = {workers:new Map([['board',{owner:'alice',info:{id:'board',deskId:'station-issues',status:'idle'},pty:{}}]]),prompt:()=>calls.push('prompt'),resume:()=>calls.push('resume')};
-  assert.match(WorkerManager.prototype.station.call(manager as any,'station-issues','Bob','New task','bob') as string,/another account/);
+  const manager = {workers:new Map([['board',{owner:'alice',info:{id:'board',deskId:'station-product',status:'idle'},pty:{}}]]),prompt:()=>calls.push('prompt'),resume:()=>calls.push('resume')};
+  assert.match(WorkerManager.prototype.station.call(manager as any,'station-product','Bob','New task','bob') as string,/another account/);
   assert.deepEqual(calls,[]);
 });
 

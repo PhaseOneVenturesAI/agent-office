@@ -135,29 +135,35 @@ export const BEANBAGS: DeskDef[] = (
 /** Everywhere a worker can sit: the desks, the back office's once it's built out (see deskBuilt), then the bean bags. */
 export const SEATS: DeskDef[] = [...DESKS, ...WING_DESKS, ...BEANBAGS];
 
-/** The boards with an agent standing by: the Issues board, the PR board and the task queue. */
-export type StationKind = 'issues' | 'pulls' | 'queue';
+/**
+ * The office's three leads, each standing by a board: Product (what gets built and why), Development
+ * (building it) and Marketing (telling people about it).
+ */
+export type StationKind = 'product' | 'development' | 'marketing';
+
+/** Every lead, in the order they stand along the north wall from west to east. */
+export const STATION_KINDS: readonly StationKind[] = ['product', 'development', 'marketing'];
 
 /**
- * The board agents: a worker standing behind a little kiosk just west of each of those boards (see
- * BOARDS), there for anyone to prompt about it. (x, z) is the kiosk. They face into the room, so at
+ * The leads (the board agents): a worker standing behind a little kiosk just west of each of those
+ * boards (see BOARDS), there for anyone to prompt. (x, z) is the kiosk. They face into the room, so at
  * rotY PI the worker stands on the wall side of it. Nobody hires them from the desks or the queue.
  */
 export const STATIONS: DeskDef[] = [
   // Between the plant in the north-west corner and the Issues board.
-  { id: 'station-issues', station: 'issues', x: -15.6, z: FLOOR.minZ + 1.3, rotY: Math.PI, label: 'Issues board' },
-  // Between the task queue and the PR board.
-  { id: 'station-pulls', station: 'pulls', x: 0, z: FLOOR.minZ + 1.3, rotY: Math.PI, label: 'PR board' },
+  { id: 'station-product', station: 'product', x: -15.6, z: FLOOR.minZ + 1.3, rotY: Math.PI, label: 'Product kiosk' },
   // Between the Issues board and the task queue.
-  { id: 'station-queue', station: 'queue', x: -7.8, z: FLOOR.minZ + 1.3, rotY: Math.PI, label: 'Task queue' },
+  { id: 'station-development', station: 'development', x: -7.8, z: FLOOR.minZ + 1.3, rotY: Math.PI, label: 'Development kiosk' },
+  // Between the task queue and the PR board.
+  { id: 'station-marketing', station: 'marketing', x: 0, z: FLOOR.minZ + 1.3, rotY: Math.PI, label: 'Marketing kiosk' },
 ];
-/** A board agent's kiosk: its top, and how far behind its middle (toward the wall) the agent stands. */
+/** A lead's kiosk: its top, and how far behind its middle (toward the wall) the agent stands. */
 export const KIOSK = { width: 0.8, depth: 0.5, height: 0.55, stand: 0.55 } as const;
-/** Each board agent's name and its color, the same whenever it's hired. */
+/** Each lead's name and its color, the same whenever it's hired. */
 export const STATION_AGENT: Record<StationKind, { name: string; color: string }> = {
-  issues: { name: 'Issues agent', color: '#ef476f' },
-  pulls: { name: 'PR agent', color: '#118ab2' },
-  queue: { name: 'Queue agent', color: '#06d6a0' },
+  product: { name: 'Product lead', color: '#ef476f' },
+  development: { name: 'Development lead', color: '#06d6a0' },
+  marketing: { name: 'Marketing lead', color: '#ffd166' },
 };
 
 /** The upstairs office: a glass-walled loft on posts in the south-east corner, looking down on the desks. */
@@ -225,7 +231,7 @@ export function beanbagsOut(taken: (id: string) => boolean, wing = 0): Set<strin
  * home still packing up there (`packing`). Each shows that it's free, with a '+' over a seat and the
  * board agent waiting at a kiosk. It's worked out afresh from who's there rather than seat by seat as
  * workers come and go, so swapping one floor's workers for another's never leaves a place showing
- * free under someone (two floors can each have a Queue agent at the same kiosk).
+ * free under someone (two floors can each have a Development lead at the same kiosk).
  */
 export function vacantSeats(workers: Iterable<{ deskId: string }>, packing: (id: string) => boolean = () => false): Set<string> {
   const taken = new Set<string>();

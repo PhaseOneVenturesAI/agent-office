@@ -83,9 +83,9 @@ export const STATION: MapConfig = {
     { name: 'Starboard aft bench', x: BENCH_X, z: 6, length: 10, seats: 4 },
   ],
   stations: {
-    issues: { x: -13.2, z: BOARDS_Z[0], rotY: -Math.PI / 2 },
-    queue: { x: -13.2, z: BOARDS_Z[1], rotY: -Math.PI / 2 },
-    pulls: { x: 13.2, z: BOARDS_Z[0], rotY: Math.PI / 2 },
+    product: { x: -13.2, z: BOARDS_Z[0], rotY: -Math.PI / 2 },
+    development: { x: -13.2, z: BOARDS_Z[1], rotY: -Math.PI / 2 },
+    marketing: { x: 13.2, z: BOARDS_Z[0], rotY: Math.PI / 2 },
   },
   // The briefing table, aft on the starboard side.
   council: { x: 10, z: 24.8, rotY: Math.PI },

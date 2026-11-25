@@ -98,9 +98,9 @@ export const CASTLE: MapConfig = {
     { name: 'South-east table', x: 6.8, z: 6, length: 10, seats: 4 },
   ],
   stations: {
-    issues: { x: -11.3, z: -15, rotY: -Math.PI / 2 },
-    queue: { x: -11.3, z: -3, rotY: -Math.PI / 2 },
-    pulls: { x: 11.3, z: -15, rotY: Math.PI / 2 },
+    product: { x: -11.3, z: -15, rotY: -Math.PI / 2 },
+    development: { x: -11.3, z: -3, rotY: -Math.PI / 2 },
+    marketing: { x: 11.3, z: -15, rotY: Math.PI / 2 },
   },
   council: { x: 6.6, z: -18.8, rotY: 0 },
   boards: {

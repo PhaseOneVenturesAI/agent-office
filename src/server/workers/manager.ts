@@ -10,7 +10,7 @@ import type { AgentChoice, AgentEffort, AgentProvider, TerminalHit, WorkerInfo, 
 import { AGENT_PROVIDERS, providerMeta, takesEffort, takesModel } from '../../shared/providers.js';
 import { Worktrees, workspaceOf, type WorktreeCleanup, type WorktreeState } from '../worktrees.js';
 import { DESK_BY_ID, STATION_AGENT, deskBuilt } from '../../shared/layout.js';
-import { stationBrief } from '../stations.js';
+import { stationBrief, stationWorktree } from '../stations.js';
 import type { PromptSource } from '../prompts.js';
 import type { GhAs } from '../signins.js';
 import type { ServiceOwner } from '../services.js';
@@ -278,7 +278,7 @@ export class WorkerManager {
     let wt: WorkerInfo['worktree'] = meeting?.worktree;
     let others: WorkerRepo[] | undefined;
     if (worktree) {
-      const slug = `${name.toLowerCase()}-${id.slice(0, 4)}`;
+      const slug = `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${id.slice(0, 4)}`;
       const made = repos.length ? this.makeWorkspace(slug, repos) : this.trees.create(slug);
       if (typeof made === 'string') return made;
       if ('repos' in made) {
@@ -359,12 +359,13 @@ export class WorkerManager {
    * the agent and whether it was just hired.
    */
   station(deskId: string, by: string, text: string, owner?: string): { info: WorkerInfo; hired: boolean } | string {
-    if (!DESK_BY_ID.get(deskId)?.station) return 'There is no agent to ask there';
+    const kind = DESK_BY_ID.get(deskId)?.station;
+    if (!kind) return 'There is no agent to ask there';
     const clean = text.replace(/\r\n?/g, '\n').trim();
     if (!clean) return 'Empty prompt';
     const w = [...this.workers.values()].find((x) => x.info.deskId === deskId);
     if (!w) {
-      const info = this.spawn(deskId, by, clean, false, 'agent', undefined, undefined, undefined, undefined, owner);
+      const info = this.spawn(deskId, by, clean, stationWorktree(kind), 'agent', undefined, undefined, undefined, undefined, owner);
       return typeof info === 'string' ? info : { info, hired: true };
     }
     if (w.owner !== owner) return 'This board agent belongs to another account. Use your own agent or queue the task under your account.';
