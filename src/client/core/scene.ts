@@ -37,7 +37,8 @@ export interface Stage {
 
 export function makeRenderer(canvas: HTMLCanvasElement): THREE.WebGLRenderer | null {
   try {
-    return new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+    // With alpha, so the office TV can show the YouTube player under the canvas through its screen (features/tv/screen.ts).
+    return new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
   } catch (err) {
     console.error(err);
     return null;
