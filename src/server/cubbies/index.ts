@@ -1,3 +1,4 @@
+import { EMPTY_BOARDS, type DraftBoards } from '../../shared/protocol/drafts.js';
 import { randomBytes } from 'node:crypto';
 import type { Look } from '../../shared/avatar.js';
 import { sanitizeLook, lookFromSeed } from '../../shared/avatar.js';
@@ -7,7 +8,7 @@ import { CubbyRecords, type CubbyRecord } from './records.js';
 import { HALL_SLOTS } from '../../shared/cubbyhall.js';
 import { relaySignature } from './wire.js';
 import { short, snapshot } from './snapshot.js';
-interface Live { admitted: boolean; binding: CubbyBinding; interior: CubbyInterior; pending?: { id: string; at: number }; }
+interface Live { admitted: boolean; binding: CubbyBinding; interior: CubbyInterior; draft?: DraftBoards; pending?: { id: string; at: number }; }
 const id = () => randomBytes(12).toString('hex');
 
 /** No transcript files, provider credentials, collectors or process launchers on the server. */
@@ -16,12 +17,12 @@ export class Cubbies {
   private live = new Map<string, Live>();
   constructor(dir: string, readonly enabled: boolean, private nodes: Nodes,
     private accountName: (id: string) => string | undefined, private floorExists: (id: string) => boolean,
-    private changed: () => void, private now = Date.now) {
+    private changed: () => void, private now = Date.now, private draftOwner: (floor: string) => string | undefined = () => undefined) {
     this.records = new CubbyRecords(dir, enabled);
     if (enabled) nodes.extension = this.extension;
   }
   state(floorId?: string, owner?: string): CubbiesState {
-    if (!this.enabled || !floorId || !this.floorExists(floorId)) return { enabled: false, cubbies: [], setupAllowed: false };
+    if (!this.enabled || !floorId || !this.floorExists(floorId) || (this.draftOwner(floorId) !== undefined && this.draftOwner(floorId) !== owner)) return { enabled: false, cubbies: [], setupAllowed: false };
     return { enabled: true, floorId, setupAllowed: !!owner && !!this.accountName(owner), cubbies: [...this.records.rows.values()]
       .filter(r => r.floorId === floorId)
       .map(r => {
@@ -36,8 +37,16 @@ export class Cubbies {
           ...(mine ? { interior: privateView } : {}) };
       }).sort((a, b) => a.slot - b.slot) };
   }
+  /** Only the cubby's authenticated owner can read its in-memory draft boards. */
+  draftBoards(id: string, owner: string): DraftBoards | undefined {
+    const r = this.records.rows.get(id);
+    if (!this.enabled || !r || r.owner !== owner || !this.accountName(owner) || this.draftOwner(r.floorId) !== owner) return;
+    return this.live.get(id)?.draft ?? EMPTY_BOARDS;
+  }
   setup(floorId: string, owner: string, slot: number, name: string, look: Look) {
     if (!this.enabled || !this.floorExists(floorId) || !this.accountName(owner)) throw Error('Cubbies require your own account on an open project floor');
+    const draftOwner = this.draftOwner(floorId);
+    if (draftOwner !== undefined && (owner !== draftOwner || slot !== 0)) throw Error('A draft has one cubby, for its owner at the studio table');
     if (!Number.isInteger(slot) || slot < 0 || slot >= HALL_SLOTS) throw Error(`Choose one of the ${HALL_SLOTS} cubbies`);
     const previous = [...this.records.rows.values()].find(r => r.floorId === floorId && r.slot === slot);
     if (previous && previous.owner !== owner) throw Error('That cubby is already set up');
@@ -103,7 +112,7 @@ export class Cubbies {
       r.computerId = f.computerId; r.computerName = short(f.computerName, 60) || 'Your computer'; this.records.save();
       const binding = { cubbyId: r.id, floorId: r.floorId, ownerId: owner, connectionId: id(), computerId: r.computerId };
       const interior = this.live.get(r.id)?.interior ?? this.empty(r); interior.computerName = r.computerName; interior.computerId = r.computerId; interior.ownerFingerprint = undefined; interior.error = undefined;
-      this.live.set(r.id, { admitted: true, binding, interior }); this.send(r, { t: 'cubby.ready', ...binding, signature: '' });
+      this.live.set(r.id, { admitted: true, binding, interior, draft: this.live.get(r.id)?.draft }); this.send(r, { t: 'cubby.ready', ...binding, signature: '' });
     } else {
       const live = this.live.get(r.id); if (!live?.admitted) return true;
       if (f.t === 'cubby.owner-key') {
@@ -112,6 +121,7 @@ export class Cubbies {
       } else if (f.t === 'cubby.snapshot') {
         const next = snapshot(f, this.now());
         if (!next || next.observedAt < (live.interior.observedAt ?? 0)) return true;
+        if (this.draftOwner(r.floorId) === owner && next.draft) live.draft = next.draft;
         Object.assign(live.interior, { agents: next.agents, plan: next.plan, needsYou: next.needsYou, observedAt: next.observedAt, error: next.error });
         if (next.wake) this.line(live, { id: id(), role: 'notice', text: `💤→☀️ ${next.wake}`, at: this.now() });
       } else if (f.t === 'cubby.reply') {

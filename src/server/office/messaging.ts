@@ -1,3 +1,4 @@
+import { visibleMessage } from '../drafts/visibility.js';
 import { canSeeWorker, canViewTerminal, publicWorker } from '../worker-ownership.js';
 import { WebSocket } from 'ws';
 import type { Ctx, Messaging, ToastLevel } from './context.js';
@@ -8,14 +9,13 @@ import type { ServerMsg, WorkerInfo } from '../../shared/protocol.js';
 /** Sending to the browsers in `ctx.clients`: one, everyone, a floor, or someone's neighbors. */
 export function messaging(ctx: Ctx): Messaging {
   const sendTo = (c: Client, msg: ServerMsg) => {
-    if (c.ws.readyState === WebSocket.OPEN) c.ws.send(JSON.stringify(msg));
+    if (c.ws.readyState === WebSocket.OPEN) c.ws.send(JSON.stringify(visibleMessage(ctx, c, msg)));
   };
   const broadcast = (msg: ServerMsg, except?: string, droppable = false) => {
-    const json = JSON.stringify(msg);
     for (const c of ctx.clients.values()) {
       if (c.id === except || c.ws.readyState !== WebSocket.OPEN) continue;
       if (droppable && c.ws.bufferedAmount > 4 * 1024 * 1024) continue;
-      c.ws.send(json);
+      sendTo(c, msg);
     }
   };
   const toastAll = (text: string, level: ToastLevel = 'info') => broadcast({ t: 'toast', text, level });
@@ -31,7 +31,7 @@ export function messaging(ctx: Ctx): Messaging {
     }
     const json = JSON.stringify(msg);
     for (const c of ctx.clients.values()) {
-      if (c.peer.floor !== floor.id || c.ws.readyState !== WebSocket.OPEN) continue;
+      if (c.peer.floor !== floor.id || !ctx.floorVisible(floor.id, c) || c.ws.readyState !== WebSocket.OPEN) continue;
       // A private worker's updates only reach its owner, the admins and the coworkers it's shared with.
       if (msg.t === 'worker.update' && !canSeeWorker(ctx, c.accountId, msg.worker, owner)) continue;
       if (msg.t === 'screen' && !canViewTerminal(ctx, c.accountId, msg.workerId)) continue;
@@ -47,7 +47,7 @@ export function messaging(ctx: Ctx): Messaging {
     if (!floor) return;
     const json = JSON.stringify({ t: 'toast', text, level });
     for (const c of ctx.clients.values()) {
-      if (c.peer.floor !== floor.id || c.ws.readyState !== WebSocket.OPEN) continue;
+      if (c.peer.floor !== floor.id || !ctx.floorVisible(floor.id, c) || c.ws.readyState !== WebSocket.OPEN) continue;
       if (!canSeeWorker(ctx, c.accountId, worker, owner)) continue;
       c.ws.send(json);
     }

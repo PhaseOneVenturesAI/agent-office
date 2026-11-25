@@ -10,31 +10,37 @@ import { SLOW_CLIENT_BYTES, type Client } from './client.js';
 
 /** Finding floors, the elevator's list of them, and taking one off the building. */
 export function floorHelpers(ctx: Ctx): FloorHelpers {
-  const floorOf = (c: Client): Floor | undefined => (c.peer.floor ? ctx.floors.get(c.peer.floor) : undefined);
+  const floorVisible = (id: string, c: Pick<Client, 'accountId'>): boolean => {
+    const def = ctx.floors.get(id)?.def ?? ctx.building.list().find(d => d.id === id);
+    return !def?.draft || !!ctx.drafts?.owns(id, c.accountId);
+  };
+  const floorOf = (c: Client): Floor | undefined => (c.peer.floor && floorVisible(c.peer.floor, c) ? ctx.floors.get(c.peer.floor) : undefined);
   /** The floor a worker sits on. Worker ids are unique across the building. */
   const workerFloor = (workerId: string): Floor | undefined => {
     for (const f of ctx.floors.values()) if (f.workers.get(workerId)) return f;
     return undefined;
   };
-  const floorInfos = (): FloorInfo[] => [
-    ...[...ctx.floors.values()].map((f) => ({ ...f.info(), ...(ctx.building.isLocal(f.id) ? { local: true } : {}) })),
+  const floorInfos = (c: Pick<Client, 'accountId'> = {}): FloorInfo[] => [
+    ...[...ctx.floors.values()].map((f) => ({ ...f.info(), ...(f.def.draft ? { draft: true as const } : {}), ...(ctx.building.isLocal(f.id) ? { local: true } : {}) })),
     ...ctx.building.pending().map((d) => ({ id: d.id, name: d.name, repo: d.repo, dir: d.dir, palette: d.palette, addedBy: d.addedBy, addedAt: d.addedAt, cloning: true, clone: ctx.building.cloneProgress(d.id), workers: 0, busy: 0, waiting: 0, people: 0, wing: 0 })),
-  ];
+  ].filter(f => floorVisible(f.id, c));
   // The elevator's counts change with every worker update; tell everyone at most a few times a second.
-  let floorsSent = '';
+  const floorsSent = new WeakMap<Client, string>();
   let floorsTimer: NodeJS.Timeout | undefined;
   const floorsChanged = () => {
     floorsTimer ??= setTimeout(() => {
       floorsTimer = undefined;
-      const list = floorInfos();
-      const json = JSON.stringify(list);
-      if (json === floorsSent) return;
-      floorsSent = json;
-      ctx.broadcast({ t: 'floors', floors: list });
+      for (const c of ctx.clients.values()) {
+        const list = floorInfos(c), json = JSON.stringify(list);
+        if (json === floorsSent.get(c)) continue;
+        floorsSent.set(c, json);
+        ctx.sendTo(c, { t: 'floors', floors: list });
+      }
     }, 250);
   };
   /** Where someone arriving goes: the floor they asked for, else the first one there is. */
-  const arrivalFloor = (wanted: string | null): Floor | undefined => (wanted && ctx.floors.get(wanted)) || ctx.floors.values().next().value;
+  const arrivalFloor = (wanted: string | null, c: Pick<Client, 'accountId'> = {}): Floor | undefined =>
+    (wanted && floorVisible(wanted, c) && ctx.floors.get(wanted)) || [...ctx.floors.values()].find(f => floorVisible(f.id, c));
 
   const closing = new Map<Floor, Promise<string | undefined>>();
   /**
@@ -47,12 +53,13 @@ export function floorHelpers(ctx: Ctx): FloorHelpers {
     const removed = ctx.building.remove(floor.id, who);
     if (typeof removed === 'string') return removed;
     const name = floor.def.name;
-    const next = [...ctx.floors.values()].find((f) => f !== floor);
     // The list without it first, so nobody arrives somewhere (the lobby's panel) that still shows it.
-    const list = floorInfos().filter((f) => f.id !== floor.id);
-    floorsSent = JSON.stringify(list);
-    ctx.broadcast({ t: 'floors', floors: list });
     for (const c of ctx.clients.values()) {
+      const list = floorInfos(c).filter(f => f.id !== floor.id);
+      floorsSent.set(c, JSON.stringify(list));
+      ctx.sendTo(c, { t: 'floors', floors: list });
+      if (!floorVisible(floor.id, c)) continue;
+      const next = [...ctx.floors.values()].find(f => f !== floor && floorVisible(f.id, c));
       if (c.peer.floor === floor.id || (!next && c.peer.floor === ROOF)) {
         if (next) ctx.goToFloor(c, next);
         else ctx.toLobby(c);
@@ -74,7 +81,7 @@ export function floorHelpers(ctx: Ctx): FloorHelpers {
     return task;
   };
 
-  return { floorOf, workerFloor, floorInfos, floorsChanged, cancelFloorsChanged: () => clearTimeout(floorsTimer), arrivalFloor, closeFloor };
+  return { floorVisible, floorOf, workerFloor, floorInfos, floorsChanged, cancelFloorsChanged: () => clearTimeout(floorsTimer), arrivalFloor, closeFloor };
 }
 
 /**
@@ -137,6 +144,7 @@ export async function openFloors(ctx: Ctx, hookPort: number): Promise<FloorsOpen
   /** Whether a worker on `from` works in `on`'s project too (see WorkerInfo.repos). */
   const worksIn = (from: Floor, on: Floor) => from.workers.list().some((w) => w.repos?.some((r) => r.floor === on.id));
   const openFloor = (def: FloorDef): Floor | undefined => {
+    if (def.draft && !ctx.drafts.enabled) return undefined;
     if (!existsSync(def.dir)) {
       console.error(`agent-office: the ${def.name} floor's checkout is gone (${def.dir}) — it stays closed until it's back`);
       return undefined;

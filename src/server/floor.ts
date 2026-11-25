@@ -240,7 +240,7 @@ export class Floor {
         return typeof as === 'string' ? Promise.resolve(as) : this.github.claim(issue, as);
       },
       refreshGitHub: () => void this.github.refresh(),
-      hiringPaused: () => ctx.ledger.hiringPaused,
+      hiringPaused: () => def.draft ? 'Draft work runs on your computer' : ctx.ledger.hiringPaused,
       room: () => ctx.capacity.room(),
       emptied: () => {
         ctx.toast(this, '📋 The queue is empty: every task is done 🎉');
@@ -269,7 +269,7 @@ export class Floor {
       {
         update: (state) => ctx.emit(this, { t: 'meeting', state }),
         toast: (text, level) => ctx.toast(this, text, level),
-        hiringPaused: () => ctx.ledger.hiringPaused,
+        hiringPaused: () => def.draft ? 'Draft work runs on your computer' : ctx.ledger.hiringPaused,
         postReview: (pr, file, owner) => {
           const as = ctx.ghAs(owner);
           return typeof as === 'string' ? Promise.reject(new Error(as)) : this.github.review(pr, file, as);
@@ -312,12 +312,12 @@ export class Floor {
     this.jukebox = new Jukebox(dataDir);
     this.tv = new TvSet(dataDir);
     this.whiteboard = new Whiteboard(dataDir);
-    this.ready = this.workers.start();
+    this.ready = def.draft ? Promise.resolve() : this.workers.start();
 
-    void this.github.refresh();
+    if (!def.draft) void this.github.refresh();
     // A floor with people on it, or work under way, keeps its boards fresh; the others check in now and then.
     this.timer = setInterval(() => {
-      if (this.active() || Date.now() - this.github.issues.fetchedAt > IDLE_REFRESH_MS) void this.github.refresh();
+      if (!def.draft && (this.active() || Date.now() - this.github.issues.fetchedAt > IDLE_REFRESH_MS)) void this.github.refresh();
     }, REFRESH_MS);
   }
 
@@ -386,6 +386,7 @@ export class Floor {
 
   /** Someone just walked in: boards that haven't been looked at in a while get fetched again. */
   arrived() {
+    if (this.def.draft) return;
     if (Date.now() - Math.max(this.github.issues.fetchedAt, this.github.pulls.fetchedAt) > REFRESH_MS) void this.github.refresh();
   }
 
