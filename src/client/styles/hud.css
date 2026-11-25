@@ -100,17 +100,23 @@
 #waiting.all-done:hover { background: #c3efd5; }
 #waiting .key { margin: 0 0 0 auto; background: var(--ink); color: var(--paper); box-shadow: none; }
 
-/* The chat: lines float up and fade after a while; hover it or press T to read back. */
+/* The chat: the newest lines float up in the corner and fold away once they're a while old.
+   Hovering the chat, or typing in it, keeps the whole scrollback open to scroll, read and copy. */
 .chat { position: absolute; left: 12px; bottom: 12px; width: 330px; max-width: calc(100vw - 24px); display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 #hud > .chat { pointer-events: none; }
-#chat-log { list-style: none; margin: 0; padding: 0 0 3px; max-height: 190px; width: 100%; overflow: auto; font-size: 13px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; scrollbar-width: none; }
+#chat-log { list-style: none; margin: 0; padding: 0 0 3px; max-height: min(320px, 40vh); width: 100%; overflow: auto; font-size: 13px; line-height: 1.35; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; scrollbar-width: none; pointer-events: auto; }
 #chat-log:empty { display: none; }
-#chat-log li { max-width: 100%; padding: 3px 9px; background: rgba(255, 250, 243, .94); border: 2px solid var(--ink); border-radius: 10px; box-shadow: 0 2px 0 var(--ink); overflow-wrap: anywhere; animation: chat-out .6s ease-in forwards; }
-@keyframes chat-out { to { opacity: 0; visibility: hidden; } }
-.chat:is(:hover, :focus-within) #chat-log { pointer-events: auto; scrollbar-width: thin; }
+#chat-log li { max-width: 100%; padding: 3px 9px; background: rgba(255, 250, 243, .94); border: 2px solid var(--ink); border-radius: 10px; box-shadow: 0 2px 0 var(--ink); overflow-wrap: anywhere; cursor: text; animation: chat-out .6s ease-in forwards; }
+@keyframes chat-out { to { opacity: 0; } }
+#chat-log li.folded { display: none; }
+.chat:is(:hover, :focus-within) #chat-log { max-height: min(55vh, 480px); scrollbar-width: thin; }
 .chat:is(:hover, :focus-within) #chat-log li { animation: none; }
+.chat:is(:hover, :focus-within) #chat-log li.folded { display: block; }
 #chat-log b { font-weight: 900; }
-#chat-log .sys { color: var(--muted); font-style: italic; }
+/* A note from the office itself (a line with no sender): no bubble, just a muted aside. */
+#chat-log li.sys { padding: 1px 9px; background: none; border-color: transparent; box-shadow: none; color: var(--muted); font-style: italic; }
+#chat-log a { color: #3a6bd8; font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+#chat-log a:hover { color: var(--accent); }
 #chat-input { pointer-events: auto; width: 180px; border: 2px solid var(--ink); border-radius: 10px; padding: 7px 10px; font: inherit; font-size: 14px; background: rgba(255, 255, 255, .92); box-shadow: 0 2px 0 var(--ink); outline: none; transition: width .15s; }
 #chat-input:focus { width: 100%; border-color: var(--accent); background: #fff; }
 
