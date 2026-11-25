@@ -11,6 +11,7 @@ import type { CubbiesClientMsg, CubbyInfo } from '../../../shared/protocol/cubbi
 import type { Ctx } from '../../core/context';
 import { aside, hintTitle, key } from '../../core/hint';
 import { store } from '../../state';
+import { modalOpen } from '../../ui/dom';
 import type { Collider, Interactable } from '../../world/types';
 import { CUBBY_HALL, HALL_SLOTS, HALL_WAY_OUT, inCubbyHall } from '../../../shared/cubbyhall';
 import { STATUS_TEXT, agentCard, clip, type CubbyIt, type CubbyPlacement } from './model';
@@ -156,6 +157,8 @@ export function installCubbies(ctx: Ctx, deps: CubbiesDeps = { aimed: () => null
     const focus = { x: p.x, z: p.z, aimed: deps.aimed(), yaw: ctx.player.camYaw };
 
     for (const r of rooms.values()) r.update(f.dt, f.t, Date.now(), focus);
+    // While a window (the chat, Send a task, setup) is open, the cubby's labels would show huge behind it.
+    hideLabels(modalOpen());
   });
 
   // From inside the hall the office's floating labels (the board agents' speech cards above all) show
@@ -177,6 +180,19 @@ export function installCubbies(ctx: Ctx, deps: CubbiesDeps = { aimed: () => null
       if (at.x > CUBBY_HALL.maxX) {
         o.layers.set(OUTSIDE_LAYER);
         quieted!.push(o);
+      }
+    });
+  }
+
+  let hiddenLabels: THREE.Object3D[] = [];
+  function hideLabels(hide: boolean) {
+    for (const o of hiddenLabels) if (o.layers.isEnabled(MODAL_LAYER)) o.layers.set(0);
+    hiddenLabels = [];
+    if (!hide) return;
+    group.traverse((o) => {
+      if ((o as THREE.Sprite).isSprite && o.layers.isEnabled(0)) {
+        o.layers.set(MODAL_LAYER);
+        hiddenLabels.push(o);
       }
     });
   }
@@ -305,3 +321,6 @@ function isInside(root: THREE.Object3D, o: THREE.Object3D): boolean {
   for (let p = o.parent; p; p = p.parent) if (p === root) return true;
   return false;
 }
+
+/** Where the cubby's labels go while a window is open: no camera looks at it. */
+const MODAL_LAYER = 29;
