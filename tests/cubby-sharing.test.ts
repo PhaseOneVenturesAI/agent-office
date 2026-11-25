@@ -298,3 +298,16 @@ test('sharing and task sending remain disabled with the feature flag off', t => 
   assert.equal(last(f.alice, 'cubbies.taskSent'), undefined);
   assert.deepEqual(f.alice.view(), []);
 });
+
+test('a device’s "asks to talk" note goes once it is approved on the computer, with one confirmation', t => {
+  const f = fixture(t), ws = f.cubby!.ws, key = 'k'.repeat(120), mac = { fingerprint: 'f'.repeat(32), label: 'Mac', addedAt: 1 };
+  const chat = () => f.alice.view()[0].interior!.chat.map((l: { text: string }) => l.text);
+  ws.frame({ t: 'cubby.devices', floorId: 'floor', devices: [mac], requests: [{ requestId: 'ask1', label: 'iPhone', publicKey: key, at: Date.now() }],
+    note: '📱 iPhone asks to talk to your lead. Its code is 123 456.' });
+  assert.ok(chat().some(t => t.includes('asks to talk')));
+  ws.frame({ t: 'cubby.devices', floorId: 'floor', devices: [mac, { fingerprint: 'e'.repeat(32), label: 'iPhone', addedAt: 2 }], requests: [] });
+  assert.ok(!chat().some(t => t.includes('asks to talk')));
+  assert.equal(chat().filter(t => t === '✅ iPhone can talk to your lead now.').length, 1);
+  ws.frame({ t: 'cubby.devices', floorId: 'floor', devices: [mac, { fingerprint: 'e'.repeat(32), label: 'iPhone', addedAt: 2 }], requests: [] });
+  assert.equal(chat().filter(t => t.startsWith('✅')).length, 1);
+});

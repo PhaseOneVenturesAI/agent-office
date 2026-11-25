@@ -2,14 +2,14 @@ import { EMPTY_BOARDS, type DraftBoards } from '../../shared/protocol/drafts.js'
 import { randomBytes } from 'node:crypto';
 import type { Look } from '../../shared/avatar.js';
 import { sanitizeLook, lookFromSeed } from '../../shared/avatar.js';
-import type { CubbyBinding, CubbyChatLine, CubbyDeviceAction, CubbyInterior, CubbiesState, CubbyRelayFrame, CubbyOwnerMessage } from '../../shared/protocol/cubbies.js';
+import type { CubbyBinding, CubbyChatLine, CubbyDevice, CubbyDeviceAction, CubbyDeviceRequest, CubbyInterior, CubbiesState, CubbyRelayFrame, CubbyOwnerMessage } from '../../shared/protocol/cubbies.js';
 import type { Nodes, NodeExtension } from '../nodes.js';
 import { CubbyRecords, type CubbyRecord } from './records.js';
 import { HALL_SLOTS } from '../../shared/cubbyhall.js';
 import { relaySignature } from './wire.js';
 import { devicesOf, short, snapshot } from './snapshot.js';
 import { CubbySharing, watcherInterior } from './sharing.js';
-interface Live { admitted: boolean; binding: CubbyBinding; interior: CubbyInterior; draft?: DraftBoards; pending?: { id: string; at: number }; }
+interface Live { admitted: boolean; binding: CubbyBinding; interior: CubbyInterior; draft?: DraftBoards; pending?: { id: string; at: number }; asks?: Map<string, string>; }
 const id = () => randomBytes(12).toString('hex');
 
 /** No transcript files, provider credentials, collectors or process launchers on the server. */
@@ -163,6 +163,23 @@ export class Cubbies {
     live.pending = undefined;
   }
   private empty(r: CubbyRecord): CubbyInterior { return { computerName: r.computerName ?? 'Your computer', leadName: r.leadName, look: r.look, agents: [], plan: [], needsYou: [], chat: [] }; }
+  /** A device's "asks to talk" note goes once its request is settled, however it was settled (here or on the computer). */
+  private devices(live: Live, devices: CubbyDevice[], requests: CubbyDeviceRequest[], note?: string) {
+    const before = live.interior.deviceRequests ?? [], trusted = new Set((live.interior.ownerDevices ?? []).map(d => d.fingerprint));
+    const waiting = new Set(requests.map(r => r.requestId)), settled = before.filter(r => !waiting.has(r.requestId));
+    live.interior.ownerDevices = devices; live.interior.deviceRequests = requests;
+    const stale = new Set(settled.flatMap(r => live.asks?.get(r.requestId) ?? []));
+    if (stale.size) live.interior.chat = live.interior.chat.filter(l => !stale.has(l.id));
+    for (const r of settled) live.asks?.delete(r.requestId);
+    if (note) {
+      const line = id(); this.line(live, { id: line, role: 'notice', text: note, at: this.now() });
+      const fresh = requests.filter(r => !before.some(b => b.requestId === r.requestId));
+      if (fresh.length === 1) (live.asks ??= new Map()).set(fresh[0].requestId, line);
+    } else {
+      const added = devices.filter(d => !trusted.has(d.fingerprint));
+      for (const r of settled) if (added.some(d => d.label === r.label)) this.line(live, { id: id(), role: 'notice', text: `✅ ${r.label} can talk to your lead now.`, at: this.now() });
+    }
+  }
   private line(live: Live, line: CubbyChatLine) { live.interior.chat = [...live.interior.chat, line].slice(-40); }
   private send(r: CubbyRecord, frame: CubbyRelayFrame) { return this.nodes.sendSigned(r.nodeId, key => ({ ...frame, signature: relaySignature(key, frame) })); }
   private extension: NodeExtension = (nodeId, owner, raw) => {
@@ -183,8 +200,7 @@ export class Cubbies {
       if (f.t === 'cubby.devices') {
         const next = devicesOf(f, this.now());
         if (!next) return true;
-        live.interior.ownerDevices = next.devices; live.interior.deviceRequests = next.requests;
-        if (next.note) this.line(live, { id: id(), role: 'notice', text: next.note, at: this.now() });
+        this.devices(live, next.devices, next.requests, next.note);
       } else if (f.t === 'cubby.snapshot') {
         const next = snapshot(f, this.now());
         if (!next || next.observedAt < (live.interior.observedAt ?? 0)) return true;
