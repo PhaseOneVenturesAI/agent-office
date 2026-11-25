@@ -1,0 +1,273 @@
+/**
+ * Draft floors (cubbies step 2): a project before its kickoff, seen only by its owner. While you're on
+ * one of your own drafts (store.drafts.here) the floor's lights are down, its desks are under sheets,
+ * one lamp hangs over a studio table where the whiteboard stood, the north boards are Decisions, Plan
+ * and Screens, the TV wall is the Brand wall, and your lead greets you at the doors and then waits by
+ * the table. Everywhere else, and for everyone else, nothing here shows, collides or answers E: each
+ * thing it hides or turns off is put back exactly as it was when you leave.
+ */
+import type { Ctx } from '../../core/context';
+import { aside, hintTitle, key } from '../../core/hint';
+import type { IdleAgent } from '../../core/stations';
+import { store } from '../../state';
+import { officeFill } from '../../world/sky';
+import type { Collider, Interactable } from '../../world/types';
+import type { Cubbies } from '../cubbies';
+import { toolName } from '../cubbies/model';
+import { DIM, LEAD_SPOTS, PODS, PODS_BY_STUDIO, STUDIO, greeting, leadName, studioAction, uncoveredPods, walkedPast } from './model';
+import { DraftScene } from './world';
+
+// The kinds of thing you can use that this adds (see InteractKinds in world/types.ts).
+declare module '../../world/types' {
+  interface InteractKinds {
+    studiotable: true;
+    draftlead: true;
+  }
+}
+
+export interface DraftsDeps {
+  /** Rides the elevator to a floor (your new draft, once it's made). */
+  ride(floorId: string): void;
+  /** The office's lights, which the sky sets afresh each frame: a draft turns them down after it. */
+  lights(): { intensity: number }[];
+  /** The board agents waiting by their boards, hidden on a draft until kickoff. */
+  idleAgents(): IdleAgent[];
+  /** The cubbies: the lead's chat, and the setup window. */
+  cubbies(): Pick<Cubbies, 'setUp' | 'talk'>;
+}
+
+/** The office's things a draft turns off: the boards, the TV, the whiteboard, every desk in a pod and the board agents' kiosks. */
+const PODDED = new Set(PODS.flatMap((p) => p.desks.map((d) => d.id)));
+function draftTurnsOff(it: Interactable): boolean {
+  if (it.kind === 'issues' || it.kind === 'queue' || it.kind === 'pulls' || it.kind === 'tv' || it.kind === 'whiteboard' || it.kind === 'station') return true;
+  return it.kind === 'desk' && !!it.deskId && PODDED.has(it.deskId);
+}
+
+export function installDrafts(ctx: Ctx, deps: DraftsDeps) {
+  const scene = new DraftScene();
+  scene.group.visible = false;
+  ctx.scene.add(scene.group);
+  const { office } = ctx;
+
+  /** What's turned off or put away while you're on the draft, to put back as it was. */
+  let undo: (() => void)[] = [];
+  let shown = false;
+  let covered = '';
+  /** The lead: at the doors, on its way to the table, or there. */
+  let leadAt: 'greet' | 'walking' | 'table' = 'greet';
+  let dim = 1;
+  /** The draft that's up. */
+  let shownFor = '';
+  /** The "+" markers over the uncovered pods' seats, kept down while you're here (the workers' views put them up as workers come and go). */
+  let quiet: { visible: boolean }[] = [];
+  let kiosks: { visible: boolean }[] = [];
+
+  const active = () => !!store.drafts.here && ctx.inOffice() && !ctx.upTop();
+  const cubbyOf = () => {
+    const id = store.drafts.here?.cubbyId;
+    return id ? store.cubbies.cubbies.find((c) => c.id === id && c.mine) : undefined;
+  };
+  const lead = () => leadName(store.drafts.here, cubbyOf()?.interior?.leadName);
+
+  function show(on: boolean) {
+    shown = on;
+    scene.group.visible = on;
+    if (!on) {
+      for (const fn of undo.reverse()) fn();
+      undo = [];
+      covered = '';
+      quiet = [];
+      kiosks = [];
+      scene.clearDesigners();
+      return;
+    }
+    leadAt = 'greet';
+    placeLead(LEAD_SPOTS.greet);
+    // Things to bump into: the whiteboard goes, the studio table comes.
+    const cols: Collider[] = ctx.world().colliders;
+    const wb = office.whiteboard;
+    const gone = wb.colliders.filter((c) => cols.includes(c));
+    for (const c of gone) cols.splice(cols.indexOf(c), 1);
+    cols.push(...scene.colliders);
+    undo.push(() => {
+      for (const c of scene.colliders) if (cols.includes(c)) cols.splice(cols.indexOf(c), 1);
+      cols.push(...gone);
+    });
+    wb.group.visible = false;
+    undo.push(() => void (wb.group.visible = true));
+    for (const it of office.interactables) {
+      if (it.off || !draftTurnsOff(it)) continue;
+      it.off = true;
+      undo.push(() => void (it.off = false));
+    }
+    // The board agents wait at their kiosks with a card and an "Ask me" sign: all of it away until kickoff.
+    for (const a of deps.idleAgents()) {
+      if (a.model.root.visible) {
+        a.model.root.visible = false;
+        undo.push(() => void (a.model.root.visible = true));
+      }
+      for (const v of [a.view.vacancy, a.view.group]) {
+        const was = v.visible;
+        undo.push(() => void (v.visible = was));
+        kiosks.push(v);
+      }
+    }
+  }
+
+  /** The covers, and the designers at the pods they've uncovered. */
+  function syncPods() {
+    const here = store.drafts.here;
+    if (!here || !shown) return;
+    const open = uncoveredPods(here.designers);
+    const k = [...open].join();
+    if (k !== covered) {
+      // Desks first back as they were, then the covered pods' put away again.
+      covered = k;
+      quiet = [];
+      for (const p of PODS) {
+        scene.covers.get(p.id)!.visible = !open.has(p.id);
+        for (const d of p.desks) {
+          const view = office.desks.get(d.id);
+          if (!view) continue;
+          // Uncovered for a designer, not for hiring: no "+" over its free seats.
+          if (open.has(p.id)) quiet.push(view.vacancy);
+          for (const [o, want] of [[view.group, open.has(p.id)], [view.vacancy, false]] as const) {
+            if (o.visible === want) continue;
+            const was = o.visible;
+            o.visible = want;
+            undo.push(() => void (o.visible = was));
+          }
+        }
+      }
+    }
+    const helpers = (cubbyOf()?.interior?.agents ?? []).filter((a) => a.designer);
+    scene.setDesigners(
+      PODS_BY_STUDIO.filter((p) => open.has(p.id)),
+      helpers.map((a) => ({ name: `${toolName(a.tool)} · screens`, task: a.task || 'Drawing screens' })),
+      cubbyOf()?.ownerName ?? store.me.account?.name ?? '',
+      (id) => office.desks.get(id),
+    );
+  }
+
+  function sync() {
+    const here = store.drafts.here;
+    if (!here) return;
+    const look = cubbyOf()?.interior?.look;
+    const name = lead();
+    scene.setLead(name, look, [...name].reduce((n, ch) => n + ch.charCodeAt(0), 0));
+    scene.boards.sync(here.boards);
+    syncPods();
+    ctx.hint.invalidate();
+  }
+
+  function placeLead(at: { x: number; z: number; rotY: number }) {
+    scene.lead.root.position.set(at.x, 0, at.z);
+    scene.lead.root.rotation.y = at.rotY;
+    scene.leadIt.x = at.x;
+    scene.leadIt.z = at.z;
+  }
+
+  /** The lead greets you at the doors; once you've walked on past, it walks over to the table. */
+  function moveLead(dt: number, t: number) {
+    const here = store.drafts.here!;
+    const p = ctx.player.pos;
+    const r = scene.lead.root;
+    let moving = false;
+    if (leadAt === 'greet' && walkedPast(p.x, p.z)) leadAt = 'walking';
+    if (leadAt === 'walking') {
+      const to = LEAD_SPOTS.table;
+      const dx = to.x - r.position.x;
+      const dz = to.z - r.position.z;
+      const d = Math.hypot(dx, dz);
+      const step = Math.min(d, 1.5 * dt);
+      if (d < 0.05) {
+        leadAt = 'table';
+        r.rotation.y = to.rotY;
+      } else {
+        r.position.x += (dx / d) * step;
+        r.position.z += (dz / d) * step;
+        r.rotation.y = Math.atan2(dx, dz);
+        moving = true;
+      }
+      scene.leadIt.x = r.position.x;
+      scene.leadIt.z = r.position.z;
+    }
+    if (!moving) {
+      // Turned toward you while you're near, so it talks to you rather than the wall.
+      const dx = p.x - r.position.x;
+      const dz = p.z - r.position.z;
+      if (Math.hypot(dx, dz) < 6) {
+        const want = Math.atan2(dx, dz);
+        const diff = Math.atan2(Math.sin(want - r.rotation.y), Math.cos(want - r.rotation.y));
+        r.rotation.y += diff * (1 - Math.exp(-dt * 4));
+      }
+    }
+    scene.say(leadAt === 'greet' ? greeting(here) : '');
+    scene.lead.update(dt, t, moving, false);
+  }
+
+  store.on('drafts', sync);
+  store.on('cubbies', sync);
+  ctx.usables.add({ usable: () => (shown ? [scene.table, scene.leadIt] : []), pickable: () => scene.group });
+  ctx.ticks.add('others', (f) => {
+    const on = active();
+    // Straight from one draft to another: everything put back, then the new one's put up.
+    if (shown && on && store.drafts.here!.id !== shownFor) show(false);
+    if (on !== shown) {
+      show(on);
+      shownFor = on ? store.drafts.here!.id : '';
+      if (on) sync();
+    }
+    if (!shown) return;
+    for (const v of [...quiet, ...kiosks]) v.visible = false;
+    moveLead(f.dt, f.t);
+    scene.update(f.dt, f.t);
+  });
+  // After the sky (and the lamps indoors) have set the lights for this frame: turned down on a draft,
+  // eased so stepping out of the elevator is a fade rather than a switch. Below in the garage, it's the garage's light.
+  ctx.ticks.add('env', ({ dt }) => {
+    const want = shown && ctx.player.pos.y > -1 ? DIM : 1;
+    dim += (want - dim) * (1 - Math.exp(-dt * 3));
+    if (Math.abs(dim - want) < 0.002) dim = want;
+    if (dim === 1) return;
+    for (const l of deps.lights()) l.intensity *= dim;
+    officeFill().multiplyScalar(dim);
+  });
+
+  ctx.messages.on('drafts.made', (m) => deps.ride(m.floorId));
+
+  const act = () => studioAction(store.drafts.here ?? {}, lead());
+  const use = () => {
+    const here = store.drafts.here;
+    if (!here) return;
+    if (here.cubbyId) deps.cubbies().talk(here.cubbyId);
+    else deps.cubbies().setUp(0);
+  };
+
+  ctx.interactions.define('studiotable', {
+    reach: 3,
+    hint: () => {
+      const a = act();
+      return { k: `studio-${a.label}`, parts: [hintTitle('🛋️ Studio table'), aside(store.drafts.here?.name ?? ''), key('E', a.label)] };
+    },
+    use: (_it, k) => {
+      if (k === 'E') use();
+    },
+  });
+
+  ctx.interactions.define('draftlead', {
+    reach: 3.5,
+    hint: () => {
+      const a = act();
+      const name = lead();
+      return a.talk
+        ? { k: `draftlead-${name}`, parts: [hintTitle(`💬 ${name}`), aside('your lead'), key('E', a.label)] }
+        : { k: `draftlead-setup-${name}`, parts: [hintTitle(`💬 ${name}`), aside('set up at the studio table to talk')] };
+    },
+    use: (_it, k) => {
+      if (k === 'E' && store.drafts.here?.cubbyId) use();
+    },
+  });
+
+  return { scene, studio: STUDIO, active: () => shown };
+}

@@ -42,6 +42,7 @@ import { installCoffee } from './features/coffee';
 import { installCubbies } from './features/cubbies';
 import { installDictation } from './features/dictation';
 import { installDog } from './features/dog';
+import { installDrafts } from './features/drafts';
 import { installEmotes } from './features/emotes';
 import { installGolf } from './features/golf';
 import { installGong } from './features/gong';
@@ -171,6 +172,7 @@ parts.cards = installCarrying(ctx, {
 });
 parts.seating = installSeating(ctx, { shares: () => parts.talk.currentShares(), watchShare: () => parts.talk.watchShare(), arcade: parts.arcade, showBar: parts.bar.showBar, usable: () => parts.pointer.usable() });
 installGong(ctx, { burstOver: parts.views.burstOver, workerViews: parts.views.workerViews, court: () => parts.worlds.court(), idleAgents: () => parts.worlds.idleAgents() });
+installDrafts(ctx, { ride: (id) => parts.travel.ride(id), lights: () => [parts.stage.hemi, parts.stage.ambient, parts.stage.sun], idleAgents: () => parts.worlds.idleAgents(), cubbies: () => parts.cubbies });
 
 parts.hintbar = installHintBar(ctx, core, parts);
 parts.emotes = installEmotes(ctx);
