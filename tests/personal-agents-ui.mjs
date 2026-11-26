@@ -22,7 +22,7 @@ const agents = [
 const cubby = { id: 'cub-me', slot: 0, ownerName: 'Jonathan Fixture', ownerColor: color, mine: true, lamp: 'working', working: 4,
   interior: { computerName: 'Mac mini', leadName: 'Nova', look, agents, plan: ['Build checkout', 'Prepare launch'], needsYou: [], chat: [] } };
 const state = { enabled: true, floorId: 'fixture', setupAllowed: true, ownerColor: color, cubbies: [cubby,
-  { id: 'cub-other', slot: 1, ownerName: 'Alex Fixture', ownerColor: '#9a2038', mine: false, lamp: 'working', working: 2 }] };
+  { id: 'cub-other', slot: 1, ownerName: 'Alex Fixture', ownerColor: '#c0283f', mine: false, lamp: 'working', working: 2 }] };
 const push = m => socket.send(JSON.stringify(m));
 const shot = async (name, frame) => {
   for (const [width, height, suffix] of [[1280, 800, 'desktop'], [390, 844, 'phone']]) {
@@ -58,7 +58,7 @@ try {
     a.core.upTop = false; a.core.trip = null; o.player.enabled = true; o.player.view = 'first';
     o.sky.show({ hour: 12, weather: 'clear' });
   });
-  push({ t: 'cubbies', state: { ...state, ownerColor: '#5633b5', cubbies: [] } });
+  push({ t: 'cubbies', state: { ...state, ownerColor: '#5b3cc4', cubbies: [] } });
   await page.waitForTimeout(300);
   await page.mouse.click(700, 700);
   await page.evaluate(() => { const a = window.__audit; a.ctx.interactions.use(a.cubbies.rooms().get(0).door, 'E', null); });
@@ -108,7 +108,7 @@ try {
   assert.ok(materialEvidence.models.some(m => m.label === "Jonathan's · Plimbo Marketing"));
   assert.ok(materialEvidence.models.some(m => m.label === 'Codex · Build checkout' && m.colors['owner-antenna-tip'] === color));
   assert.ok(materialEvidence.models.some(m => m.label === 'Kimi · Review checkout' && m.colors['owner-antenna-tip'] === color));
-  assert.ok(materialEvidence.frost.every(c => c === '#9a2038'));
+  assert.ok(materialEvidence.frost.every(c => c === '#c0283f'));
   evidence.push(materialEvidence);
   const p = materialEvidence.place;
   await stand(p.x + p.depth / 2 + 1.7, p.z, Math.PI / 2, -0.12);

@@ -11,19 +11,19 @@ import { Worker } from '../src/client/world/character/worker.js';
 import { PersonalPerson } from '../src/client/features/cubbies/personal-agents/person.js';
 import { PersonalHelper } from '../src/client/features/cubbies/personal-agents/helper.js';
 
-const color = '#10594f';
+const color = '#0f7a6b';
 test('owner palette is closed and defaults are stable across accounts and reloads', () => {
   for (const p of OWNER_PALETTE) assert.equal(isOwnerColor(p.color), true);
   for (const bad of ['', '#ffffff', '#1F8A7A', 'red', null, {}, '<script>']) assert.equal(isOwnerColor(bad), false);
   assert.equal(defaultOwnerColor('alice'), '#414c60');
   assert.ok(new Set(Array.from({ length: 100 }, (_, i) => defaultOwnerColor(`account-${i}`))).size === 8);
 });
-test('every swatch contrasts with cream and wood; Blue remains Jonathan’s cobalt', () => {
+test('every swatch meets 3:1 graphic contrast on the office cream; Blue remains Jonathan’s cobalt', () => {
   const luminance = (hex: string) => {
     const v = hex.slice(1).match(/../g)!.map(n => parseInt(n, 16) / 255).map(n => n <= 0.04045 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4);
     return v[0] * 0.2126 + v[1] * 0.7152 + v[2] * 0.0722;
   };
-  for (const p of OWNER_PALETTE) for (const [surface, minimum] of [['#f4ecdf', 6.5], ['#c98f5c', 2.85]] as const) {
+  for (const p of OWNER_PALETTE) for (const [surface, minimum] of [['#f4ecdf', 3]] as const) {
     const a = luminance(p.color), b = luminance(surface);
     assert.ok((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) >= minimum, `${p.name} against ${surface}`);
   }

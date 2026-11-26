@@ -1,9 +1,9 @@
 /** One account colour, restricted to colours legible against the office's cream and wood. */
 export const OWNER_PALETTE = [
-  { name: 'Violet', color: '#5633b5' }, { name: 'Teal', color: '#10594f' },
-  { name: 'Red', color: '#9a2038' }, { name: 'Orange', color: '#853a12' },
-  { name: 'Blue', color: '#1e40c8' }, { name: 'Green', color: '#22562e' },
-  { name: 'Pink', color: '#90265c' }, { name: 'Slate', color: '#414c60' },
+  { name: 'Violet', color: '#5b3cc4' }, { name: 'Teal', color: '#0f7a6b' },
+  { name: 'Red', color: '#c0283f' }, { name: 'Orange', color: '#c2560f' },
+  { name: 'Blue', color: '#1e40c8' }, { name: 'Green', color: '#2e7d3a' },
+  { name: 'Pink', color: '#b8327a' }, { name: 'Slate', color: '#414c60' },
 ] as const;
 export type OwnerColor = typeof OWNER_PALETTE[number]['color'];
 export function isOwnerColor(value: unknown): value is OwnerColor {
