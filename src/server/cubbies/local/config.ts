@@ -13,6 +13,7 @@ export interface LocalOptions {
   bridge?: boolean;
 }
 export interface LocalConfig {
+  projectsFile?: string;
   ownerKey: string; replaceOwnerKey?: boolean;
   floor: string; project: string; roots: string[]; branches: Map<string, string>; state: string;
   computerId: string; provider: 'claude' | 'codex'; session: string;
@@ -91,7 +92,7 @@ export async function configure(options: LocalOptions, home = os.homedir(), exec
   if (!uuid(computerId)) throw new Error('Invalid locally persisted computer identity');
   const claudeHome = profile === 'phase-one' ? path.join(home, '.claude-phase-one-ventures') : profile === 'personal'
     ? path.join(home, '.claude') : process.env.CLAUDE_CONFIG_DIR ?? path.join(home, '.claude');
-  return { ...scope, ownerKey: options.ownerKey, replaceOwnerKey: options.replaceOwnerKey, floor: options.floor, state, computerId, provider, session: session ?? randomUUID(),
+  return { ...scope, projectsFile: registryPath, ownerKey: options.ownerKey, replaceOwnerKey: options.replaceOwnerKey, floor: options.floor, state, computerId, provider, session: session ?? randomUUID(),
     executable: profile ? `claude-${profile}` : provider, claudeHome, fresh: !options.bridge && (!session || saved?.authorizedNew === true),
     ...(options.bridge ? { bridge: true } : {}) };
 }

@@ -13,7 +13,14 @@ export interface PitchPiece {
   url?: string; youtube?: string; image?: DraftImage; images: DraftImage[]; stamp?: PitchStamp;
 }
 export interface Pitch { department: string; lead: string; status: 'building' | 'ready'; version: string; pieces: PitchPiece[] }
-export interface PitchView { cubbyId: string; floorId: string; computerId: string; pitch: Pitch; notice?: { requestId: string; text: string } }
+export interface PitchView {
+  /** HQ display location; floorId remains the source cubby for signatures. */
+  displayFloorId?: string;
+  readOnly?: boolean;
+  /** Only the owner receives device fingerprints for cross-floor verdict signing. */
+  ownerDevices?: import('./cubbies.js').CubbyDevice[];
+  cubbyId: string; floorId: string; computerId: string; pitch: Pitch; notice?: { requestId: string; text: string };
+}
 export interface PitchVerdictMessage extends PitchStamp { pieceId: string; version: string; ownerSig: string }
 export type PitchVerdictPayload = { cubbyId: string; floorId: string; computerId: string } & Omit<PitchVerdictMessage, 'ownerSig'>;
 export type PitchClientMsg = { t: 'pitch.verdict'; cubbyId: string; floorId: string } & PitchVerdictMessage;

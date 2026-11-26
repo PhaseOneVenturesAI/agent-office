@@ -10,6 +10,7 @@ import type { Deploys } from '../deploys.js';
 import type { Costwall } from '../costwall.js';
 import type { Hygiene } from '../hygiene.js';
 import type { Deliveries } from '../delivery/index.js';
+import type { HQ } from '../hq/index.js';
 import type { Drafts } from '../drafts/index.js';
 import type { Cubbies } from '../cubbies/index.js';
 import type { Nodes } from '../nodes.js';
@@ -81,6 +82,7 @@ export interface BuildingServices {
   nodes: Nodes;
   cubbies: Cubbies;
   drafts: Drafts;
+  hq: HQ;
   deliveries: Deliveries;
   /** Cloudflare Access sign-in, when the office runs behind it (see server/cloudflare.ts). */
   cloudflare?: CloudflareAccess;

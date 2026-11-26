@@ -1,3 +1,4 @@
+import { hq } from './hq';
 import { pitch } from './pitch';
 // Every slice of the store, the core's included, in the one order the store runs them in: the order
 // they take in each message and each floor you arrive on, and so the order their topics fire in. On
@@ -77,4 +78,5 @@ export const SLICES: readonly Slice[] = [
   cubbies,
   drafts,
   pitch,
+  hq,
 ];

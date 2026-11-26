@@ -1,3 +1,4 @@
+import { hqChanged } from '../../hq/views.js';
 import { pitchChanged } from './pitch.js';
 import { addQueueTask } from './queue.js';
 import { draftsChanged } from './drafts.js';
@@ -10,6 +11,7 @@ const last = new WeakMap<Client, string>();
 export function cubbiesChanged(ctx: Ctx) {
   draftsChanged(ctx);
   pitchChanged(ctx);
+  hqChanged(ctx);
   if (!ctx.cubbies) return; // Services are constructed before the context is assigned.
   for (const c of ctx.clients.values()) {
     const state = cubbiesView(ctx, ctx.floorOf(c), c), key = JSON.stringify(state);

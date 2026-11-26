@@ -1,0 +1,4 @@
+.modal.hq-board { width: min(620px, calc(100vw - 24px)); }
+.modal.hq-board section { border-left: 3px solid var(--ink, #292638); padding: 0 16px; margin: 12px 0 24px; }
+.modal.hq-board h3, .modal.hq-board h4 { margin: 12px 0 6px; overflow-wrap: anywhere; }
+.modal.hq-board p { margin: 6px 0; overflow-wrap: anywhere; }

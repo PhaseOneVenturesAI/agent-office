@@ -8,7 +8,7 @@ const fits = (frame: Snapshot) => Buffer.byteLength(JSON.stringify(frame)) <= 64
 export function publication(frame: Snapshot): Snapshot {
   if (fits(frame)) return frame;
   const small: Snapshot = { t: 'cubby.snapshot', floorId: frame.floorId, observedAt: frame.observedAt,
-    agents: [...frame.agents], plan: [], needsYou: [], error: BOARD_TOO_BIG };
+    projects: frame.projects, agents: [...frame.agents], plan: [], needsYou: [], error: BOARD_TOO_BIG };
   // Roster metadata alone can also exceed the socket cap; retain as many current agents as fit.
   while (!fits(small) && small.agents.length) small.agents.pop();
   return small;

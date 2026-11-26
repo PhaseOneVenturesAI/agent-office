@@ -34,6 +34,7 @@ export interface ProjectInfo {
  * and queue. You go between them in the elevator.
  */
 export interface FloorInfo {
+  hq?: { ownerName: string; mine: boolean };
   id: string;
   /** The repository's name, or the folder's when it isn't on GitHub. */
   name: string;
@@ -103,6 +104,7 @@ export interface RepoChoice {
 /** Everything that belongs to the floor you're on: sent when you walk in, and when you change floors. */
 
 export interface FloorView {
+  hq?: import('./hq.js').HQView;
   cubbies: CubbiesState;
   pitch?: import('./pitch.js').PitchView;
   drafts: DraftsState;
