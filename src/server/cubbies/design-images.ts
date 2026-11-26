@@ -8,14 +8,22 @@ export class DraftImages {
   private complete = new Map<string, DesignImage>();
   private pending = new Map<string, Pending>();
   boards(boards: DraftBoards): void {
+    this.references([...boards.ideas, ...boards.screens].flatMap(c => c.image ? [c.image] : []), DRAFT_LIMITS.images);
+  }
+  references(images: DraftImage[], limit: number): void {
     this.referenced.clear();
-    for (const c of [...boards.ideas, ...boards.screens]) if (c.image && this.referenced.size < DRAFT_LIMITS.images) this.referenced.set(c.image.hash, c.image);
+    for (const image of images) if (this.referenced.size < limit) this.referenced.set(image.hash, image);
     for (const hash of this.complete.keys()) if (!this.referenced.has(hash)) this.complete.delete(hash);
     for (const hash of this.pending.keys()) if (!this.referenced.has(hash)) this.pending.delete(hash);
   }
   reconnect() { this.pending.clear(); }
   get(hash: string) { return this.complete.get(hash); }
-  accept(f: Record<string, unknown>): boolean {
+  /** Image-file bytes retained or being assembled (base64 transport has bounded overhead). */
+  get bytes(): number {
+    return [...this.complete.values()].reduce((n, image) => n + image.bytes.length, 0) +
+      [...this.pending.values()].reduce((n, p) => n + p.size / 4 * 3, 0);
+  }
+  accept(f: Record<string, unknown>, byteLimit = Infinity): boolean {
     const hash = f.hash;
     if (typeof hash !== 'string' || !this.referenced.has(hash) || this.complete.has(hash)) return false;
     const reject = () => { this.pending.delete(hash); return false; };
@@ -28,6 +36,8 @@ export class DraftImages {
     const p = this.pending.get(hash);
     if (!p || f.index !== p.parts.length || f.total !== p.total || p.size + f.data.length > encodedLimit ||
       ((f.index as number) < p.total - 1 && (f.data.length !== DRAFT_LIMITS.chunk || f.data.includes('=')))) return reject();
+    const chunkBytes = f.data.length / 4 * 3 - (f.data.endsWith('==') ? 2 : f.data.endsWith('=') ? 1 : 0);
+    if (this.bytes + chunkBytes > byteLimit) return reject();
     p.parts.push(f.data); p.size += f.data.length;
     if (p.parts.length !== p.total) return false;
     this.pending.delete(hash);

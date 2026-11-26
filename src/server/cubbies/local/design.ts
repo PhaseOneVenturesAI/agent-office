@@ -10,8 +10,8 @@ export function regularDirectory(dir: string): void {
   const s = lstatSync(dir);
   if (!s.isDirectory() || s.isSymbolicLink()) throw Error('Not a regular project directory');
 }
-export function readDesign(project: string, relative: unknown): DesignImage {
-  if (typeof relative !== 'string' || !/^design\//.test(relative) || relative.includes('\\') || relative.includes('\0')) throw Error('Invalid design path');
+export function readDesign(project: string, relative: unknown, folder: 'design' | 'pitch' = 'design'): DesignImage {
+  if (typeof relative !== 'string' || !relative.startsWith(`${folder}/`) || relative.includes('\\') || relative.includes('\0')) throw Error('Invalid design path');
   const parts = relative.split('/');
   if (parts.some(p => !p || p === '.' || p === '..')) throw Error('Invalid design path');
   let dir = path.join(project, '.agent-office'); regularDirectory(dir);

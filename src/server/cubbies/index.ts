@@ -1,3 +1,6 @@
+import { PitchStore } from '../pitch/store.js';
+import { validVerdict } from '../../shared/pitch/clean.js';
+import type { PitchVerdictMessage } from '../../shared/protocol/pitch.js';
 import { DraftImages } from './design-images.js';
 import { boardFeedbackBytes, FEEDBACK_FULL } from '../drafts/feedback-budget.js';
 import { BOARD_TOO_BIG } from './publication.js';
@@ -12,11 +15,12 @@ import { HALL_SLOTS } from '../../shared/cubbyhall.js';
 import { relaySignature } from './wire.js';
 import { devicesOf, short, snapshot } from './snapshot.js';
 import { CubbySharing, watcherInterior } from './sharing.js';
-interface Live { admitted: boolean; binding: CubbyBinding; interior: CubbyInterior; draft?: DraftBoards; feedback?: Map<string, number>; pending?: { id: string; at: number }; asks?: Map<string, string>; }
+interface Live { admitted: boolean; binding: CubbyBinding; interior: CubbyInterior; draft?: DraftBoards; verdicts?: Map<string, number>; feedback?: Map<string, number>; pending?: { id: string; at: number }; asks?: Map<string, string>; }
 const id = () => randomBytes(12).toString('hex');
 
 /** No transcript files, provider credentials, collectors or process launchers on the server. */
 export class Cubbies {
+  private pitches = new PitchStore();
   readonly records: CubbyRecords;
   private live = new Map<string, Live>();
   private sharing: CubbySharing;
@@ -97,7 +101,10 @@ export class Cubbies {
     };
     return { ...boards, ideas: boards.ideas.map(ready), screens: boards.screens.map(ready) };
   }
-  dropDraftImages(floorId: string): void { this.images.delete(floorId); }
+  dropDraftImages(floorId: string): void {
+    this.images.delete(floorId);
+    this.pitches.retain(id => this.online(id));
+  }
   draftImage(floorId: string, owner: string, hash: string) {
     if (!this.enabled || !this.floorExists(floorId) || this.draftOwner(floorId) !== owner || !this.accountName(owner)) {
       if (!this.floorExists(floorId) || this.draftOwner(floorId) === undefined) this.dropDraftImages(floorId);
@@ -128,6 +135,32 @@ export class Cubbies {
     pending.set(requestId, this.now());
     if (!this.send(r, frame)) { pending.delete(requestId); throw Error('Your computer disconnected; feedback was not queued'); }
   }
+  pitchView(floorId?: string, owner?: string) {
+    if (!this.enabled || !floorId || !owner || !this.floorExists(floorId) || !this.accountName(owner)) return;
+    const records = [...this.records.rows.values()].filter(r => r.floorId === floorId && r.owner === owner).sort((a, b) => a.slot - b.slot);
+    for (const r of records) {
+      const view = r.computerId && this.pitches.view(r.id, floorId, r.computerId);
+      if (view) return view;
+    }
+  }
+  pitchImage(cubbyId: string, owner: string, hash: string) {
+    const r = this.records.rows.get(cubbyId);
+    if (!this.enabled || !r || r.owner !== owner || !this.accountName(owner) || !this.floorExists(r.floorId)) return;
+    return this.pitches.image(cubbyId, hash);
+  }
+  verdict(floorId: string, owner: string, cubbyId: string, message: PitchVerdictMessage) {
+    const { r, live } = this.ownerLink(floorId, owner, cubbyId);
+    const pitch = this.pitches.view(r.id, floorId, live.binding.computerId)?.pitch;
+    if (!validVerdict(message) || !pitch || pitch.version !== message.version || !pitch.pieces.some(p => p.id === message.pieceId) ||
+      typeof message.ownerSig !== 'string' || !/^[A-Za-z0-9_-]{86}$/.test(message.ownerSig)) throw Error('Sign a verdict for the current pitch');
+    const pending = live.verdicts ??= new Map();
+    for (const [id, time] of pending) if (this.now() - time > 12 * 60_000) pending.delete(id);
+    if (pending.has(message.requestId) || pending.size >= 40) throw Error('Verdict already sent or too many notes awaiting replies');
+    const { pieceId, version, verdict, note, requestId, at, ownerSig } = message;
+    const frame: CubbyRelayFrame = { t: 'cubby.verdict', ...live.binding, pieceId, version, verdict, ...(note !== undefined ? { note } : {}), requestId, at, ownerSig, signature: '' };
+    pending.set(requestId, this.now());
+    if (!this.send(r, frame)) { pending.delete(requestId); throw Error('Your computer disconnected; verdict was not queued'); }
+  }
   setup(floorId: string, owner: string, slot: number, name: string, look: Look) {
     if (!this.enabled || !this.floorExists(floorId) || !this.accountName(owner)) throw Error('Cubbies require your own account on an open project floor');
     const draftOwner = this.draftOwner(floorId);
@@ -145,7 +178,7 @@ export class Cubbies {
       if (previous) this.records.rows.set(previous.id, previous); else this.records.rows.delete(r.id);
       this.nodes.revoke(invite.id); throw e;
     }
-    if (previous) { this.dropDraftImages(floorId); this.live.delete(previous.id); this.nodes.revoke(previous.nodeId); }
+    if (previous) { this.dropDraftImages(floorId); this.pitches.drop(previous.id); this.live.delete(previous.id); this.nodes.revoke(previous.nodeId); }
     this.changed(); return { id: r.id, floorId, token: invite.token };
   }
   chat(floorId: string, owner: string, cubbyId: string, message: CubbyOwnerMessage) {
@@ -196,6 +229,7 @@ export class Cubbies {
   }
   /** Node disconnects, expiry and revocation immediately clear the chat admission. */
   refresh() {
+    this.pitches.retain(id => this.online(id));
     for (const floorId of this.images.keys()) {
       const owner = this.draftOwner(floorId);
       if (!this.floorExists(floorId) || owner === undefined || !this.accountName(owner) ||
@@ -204,7 +238,7 @@ export class Cubbies {
     for (const [key, live] of this.live) {
       this.expire(live);
       const r = this.records.rows.get(key);
-      if (!r || !this.nodes.isOnline(r.nodeId)) {
+      if (!r || !this.online(key)) {
         live.admitted = false;
         live.interior.error = 'Computer disconnected. Work stays on that computer.';
         live.pending = undefined;
@@ -246,7 +280,7 @@ export class Cubbies {
     const r = [...this.records.rows.values()].find(r => r.nodeId === nodeId && r.owner === owner && r.floorId === f.floorId);
     if (!r || !this.floorExists(r.floorId)) return true;
     if (f.t === 'cubby.hello') {
-      this.images.get(r.floorId)?.reconnect();
+      this.images.get(r.floorId)?.reconnect(); this.pitches.drop(r.id);
       if (typeof f.computerId !== 'string' || !/^[\w-]{8,128}$/.test(f.computerId) || (r.computerId && r.computerId !== f.computerId)) return true;
       if ([...this.records.rows.values()].some(other => other.id !== r.id && other.owner === owner && other.floorId === r.floorId && other.computerId === f.computerId)) return true;
       r.computerId = f.computerId; r.computerName = short(f.computerName, 60) || 'Your computer'; this.records.save();
@@ -258,8 +292,9 @@ export class Cubbies {
     } else {
       const live = this.live.get(r.id); if (!live?.admitted) return true;
       if (f.t === 'cubby.design-image') {
-        if (this.draftOwner(r.floorId) !== owner) { this.dropDraftImages(r.floorId); return true; }
-        if (!this.images.get(r.floorId)?.accept(f)) return true;
+        const pitchChanged = this.pitches.accept(r.id, f);
+        const draftChanged = this.draftOwner(r.floorId) === owner && this.images.get(r.floorId)?.accept(f);
+        if (!pitchChanged && !draftChanged) return true;
       } else if (f.t === 'cubby.devices') {
         const next = devicesOf(f, this.now());
         if (!next) return true;
@@ -273,10 +308,19 @@ export class Cubbies {
           if (!images) this.images.set(r.floorId, images = new DraftImages());
           images.boards(live.draft);
         } else { live.draft = undefined; this.dropDraftImages(r.floorId); }
+        if (next.error !== BOARD_TOO_BIG) this.pitches.publish(r.id, owner, next.pitch);
         Object.assign(live.interior, { agents: next.agents, plan: next.plan, needsYou: next.needsYou, observedAt: next.observedAt, error: next.error });
         if (next.wake) this.line(live, { id: id(), role: 'notice', text: `💤→☀️ ${next.wake}`, at: this.now() });
       } else if (f.t === 'cubby.reply') {
         if (typeof f.text !== 'string') return true;
+        if (typeof f.requestId === 'string' && live.verdicts?.has(f.requestId)) {
+          if (this.now() - live.verdicts.get(f.requestId)! <= 12 * 60_000) {
+            this.pitches.notice(r.id, f.requestId, f.text);
+            if (!f.error) live.verdicts.delete(f.requestId);
+            this.changed();
+          }
+          return true;
+        }
         if (typeof f.requestId === 'string' && live.feedback?.has(f.requestId)) {
           if (this.now() - live.feedback.get(f.requestId)! <= 12 * 60_000) {
             this.line(live, { id: id(), role: f.error ? 'notice' : 'assistant', text: short(f.text, 12000), at: this.now() });

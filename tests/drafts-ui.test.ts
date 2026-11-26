@@ -27,8 +27,8 @@ function kept(state: unknown) {
 }
 const here = { id: 'draft-1', name: 'Kindly', createdAt: 1, online: true, designers: 1, boards: { ideas: [], decisions: [], plan: [], screens: [], brand: { colors: [] } } };
 
-test('the slice is the last one, and starts with no drafts', () => {
-  assert.equal(SLICES[SLICES.length - 1], drafts);
+test('the slice follows cubbies, and starts with no drafts', () => {
+  assert.equal(SLICES[SLICES.findIndex(s => 'cubbies' in (s.on ?? {})) + 1], drafts);
   assert.deepEqual(new Store([drafts]).drafts, NO_DRAFTS);
 });
 

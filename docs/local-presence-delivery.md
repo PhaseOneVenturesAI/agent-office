@@ -170,3 +170,32 @@ Concurrent readers of the same repository and exact source SHA reuse one request
 Only watched runs keep the shared one-minute poller active. Evidence and leases are in-memory metadata attached to existing PRs, not a new task backlog, and reset on server restart. GitHub read errors retain earlier evidence with a visible error and original read time. The server's existing `gh` account needs Actions read access. No logs or artifact bodies are fetched.
 
 There are no dispatch, retry, cancellation, merge or deploy controls here. The controls coordinate readers inside this Office process; they cannot prevent independent agents or other Office instances from launching CI. Project pre-merge and exact-commit release gates still apply.
+
+## Pitch gallery (step 1)
+
+With `AGENT_OFFICE_CUBBIES=1`, a lead on the owner's connected computer can publish `.agent-office/pitch.json` in the selected project folder. The connector reads this explicit file on its normal snapshot cycle. For example:
+
+```json
+{
+  "department": "Marketing",
+  "lead": "Plimbo Marketing lead",
+  "status": "ready",
+  "version": "v3",
+  "pieces": [
+    { "id": "home", "kind": "site", "title": "Home page", "url": "https://example.com/", "image": "pitch/home.png", "notes": ["Review the main promise"] },
+    { "id": "video", "kind": "video", "title": "Explainer", "youtube": "dQw4w9WgXcQ", "image": "pitch/poster.png" },
+    { "id": "slides", "kind": "slides", "title": "Launch deck", "images": ["pitch/slide-1.png", "pitch/slide-2.png"] },
+    { "id": "ads", "kind": "ads", "title": "Ads", "images": ["pitch/ad-1.png", "pitch/ad-2.png"] }
+  ]
+}
+```
+
+The file is limited to 64 KiB. IDs must match `[\w-]{1,64}`; there is at most one piece of each kind, four pieces total, 24 slide images and eight ad images. Images must be PNG, JPEG or WebP under `.agent-office/pitch/`, with regular directories and no symlinks or traversal. The existing design-image checks strip metadata, cap files at 2 MiB and decoded dimensions at 16 megapixels, then transfer cleaned bytes over the same chunked channel. The server announces an image only after its complete hash, format and dimensions have been checked. Pitch images have a 32 MiB cleaned-file byte budget per owner across all their cubbies, including the decoded byte size of in-flight base64 chunks; an image exceeding the budget is omitted while earlier images remain. Pitch rows and images are discarded when their cubby record, account or floor is removed, or their computer is offline or no longer admitted.
+
+Only the publishing cubby's owner receives the pitch, image URLs, verdicts and lead replies. Admitted watchers and admins have no extra access. Other accounts' meeting rooms are unchanged. When one owner has multiple publishing computers on a floor, the room shows the pitch from their first publishing cubby in slot order. Images remain scoped to their publishing cubby. A server restart waits for a fresh computer snapshot; verdicts persist on the computer.
+
+`building` puts a status pill beside the meeting-room door. `ready` displays a home-page screenshot on the wall, a video screen, a slide easel and ad cards on the existing table. Entering the room eases down the owner's lighting and brings up up to four warm lights without shadows. The owner’s back-wall board shows the pitch’s building or ready state; other accounts keep the normal meeting board. The door, seats and existing meeting board keep their original interactions. Press **E** on a piece for its large view; slides have previous/next controls. **✕** and **Esc** return to mouse-look. `/lite` lists the same pieces with large views and verdict controls.
+
+**Approve**, **Change…** and **Drop** apply to a piece; one verdict covers the entire ads set. Change requires a note, at most 1,000 characters. The trusted owner device signs the piece ID, pitch version, verdict, note, request ID, timestamp and cubby/computer binding. The connector checks the signature, a ±60-second window and replay IDs before atomically saving a private, bounded `.agent-office/pitch-feedback.json`. The saved rows include the owner signature and all signed fields; every snapshot re-verifies them against the current trusted devices and cubby/floor/computer binding, dropping unsigned or invalid rows. Stamps appear only when the verified saved file comes back in a snapshot. A stamp records the owner’s review only; it is never a merge, publish or spend approval, which still requires an explicit yes from the owner. Increment `version` for a fresh review. An idle lead receives `Pitch verdict on <title> (<version>): Change — <note>`; a busy lead can read the saved file. Pitch replies stay out of the cubby's watcher-visible conversation.
+
+Home-page links accept HTTPS only, without credentials, and open with no opener or referrer. The wall currently uses the published screenshot: arbitrary-site live framing is not enabled. YouTube videos use the existing TV embed/player path only while the owner is inside the ready room; leaving removes the iframe. A video without a YouTube ID keeps its poster and the “▶ opens on your computer” note. A future live-site screen must use `sandbox="allow-scripts"` and `referrerpolicy="no-referrer"`, without same-origin, forms, popups or top navigation permissions; an iframe load event alone cannot establish that a site accepted framing.

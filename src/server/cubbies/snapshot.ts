@@ -1,3 +1,4 @@
+import { cleanPitch } from '../../shared/pitch/clean.js';
 import { cleanDraftBoards } from '../drafts/boards.js';
 import { MAX_DEVICE_REQUESTS, MAX_OWNER_DEVICES, type CubbyAgent, type CubbyDevice, type CubbyDeviceRequest, type CubbyNodeFrame } from '../../shared/protocol/cubbies.js';
 const roles = new Set(['lead', 'builder', 'reviewer', 'factory', 'paradev', 'direct']);
@@ -14,7 +15,7 @@ export function snapshot(raw: Record<string, unknown>, now: number): Extract<Cub
       ...(a.role !== 'direct' && typeof a.progress === 'string' ? { progress: short(a.progress, 600) } : {}),
       ...(a.role === 'factory' && typeof a.deadlineAt === 'number' && Number.isFinite(a.deadlineAt) ? { deadlineAt: a.deadlineAt } : {}) });
   }
-  return { ...(raw.draft !== undefined ? { draft: cleanDraftBoards(raw.draft) } : {}), t: 'cubby.snapshot', floorId: short(raw.floorId, 128), agents, observedAt: raw.observedAt, plan: lines(raw.plan), needsYou: lines(raw.needsYou), ...(typeof raw.error === 'string' ? { error: short(raw.error, 400) } : {}), ...(typeof raw.wake === 'string' && raw.wake.trim() ? { wake: short(raw.wake, 600) } : {}) };
+  return { ...(raw.pitch !== undefined ? { pitch: cleanPitch(raw.pitch) } : {}), ...(raw.draft !== undefined ? { draft: cleanDraftBoards(raw.draft) } : {}), t: 'cubby.snapshot', floorId: short(raw.floorId, 128), agents, observedAt: raw.observedAt, plan: lines(raw.plan), needsYou: lines(raw.needsYou), ...(typeof raw.error === 'string' ? { error: short(raw.error, 400) } : {}), ...(typeof raw.wake === 'string' && raw.wake.trim() ? { wake: short(raw.wake, 600) } : {}) };
 }
 
 /** The trusted devices and waiting requests a computer reports: bounded, plain fields only. */

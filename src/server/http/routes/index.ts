@@ -1,3 +1,4 @@
+import { pitchImageRoute } from './pitch-images.js';
 import { draftImageRoute } from './draft-images.js';
 // Every HTTP route the office answers, in the order they're tried: a new route goes where it has to
 // come in that order (see http/router.ts). The public ones are tried first, then the sign-in check,
@@ -31,6 +32,7 @@ export const routes: readonly Route[] = [
   // Signed in.
   authRoutes.whoami,
   agentRoutes.models,
+  pitchImageRoute,
   draftImageRoute,
   fileRoutes.image,
   fileRoutes.whiteboardFile,

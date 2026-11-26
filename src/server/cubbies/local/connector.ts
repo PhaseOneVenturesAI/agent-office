@@ -1,3 +1,7 @@
+import { localPitch } from './pitch.js';
+import { appendVerdict, mergeVerdicts, type VerdictTrust } from './pitch-feedback.js';
+import { validVerdict } from '../../../shared/pitch/clean.js';
+import { verifyOwnerVerdict } from '../wire.js';
 import { DRAFT_LIMITS } from '../../../shared/protocol/drafts.js';
 import { localDesign, sendDesignImages } from './design.js';
 import { appendFeedback } from './feedback.js';
@@ -33,6 +37,7 @@ export interface ConnectorDeps {
   devices?: DeviceStore;
 }
 const FRAME_KEYS: Record<string, string[]> = {
+  'cubby.verdict': ['pieceId', 'version', 'verdict', 'note', 'requestId', 'at', 'ownerSig'],
   'cubby.feedback': ['cardId', 'requestId', 'at', 'text', 'ownerSig'],
   'cubby.ready': [], 'cubby.chat': ['requestId', 'at', 'text', 'ownerSig'],
   'cubby.device-request': ['requestId', 'at', 'publicKey', 'label'], 'cubby.device': ['requestId', 'at', 'action', 'target', 'ownerSig'],
@@ -97,6 +102,7 @@ export class CubbyConnector {
     if (!this.binding || bindingKeys.some((key) => frame[key] !== this.binding![key]) ||
       typeof frame.requestId !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(frame.requestId) || !Number.isSafeInteger(frame.at)) return;
     if (frame.t === 'cubby.device-request' || frame.t === 'cubby.device') { this.device(frame); return; }
+    if (frame.t === 'cubby.verdict') { this.verdict(frame); return; }
     if (frame.t === 'cubby.feedback') { this.feedback(frame); return; }
     if (typeof frame.text !== 'string' || !frame.text.trim() || frame.text.length > 8000) return;
     if (!this.trusted((key) => verifyOwner(key, frame))) {
@@ -147,9 +153,42 @@ export class CubbyConnector {
       () => { if (this.generation === generation && !abort.signal.aborted) this.reply(frame.requestId, 'Feedback saved; the local lead could not reply.', true); },
     ).finally(() => { if (this.abort === abort) this.abort = undefined; });
   }
+  private verdict(frame: Extract<CubbyRelayFrame, { t: 'cubby.verdict' }>): void {
+    if (!validVerdict(frame)) return;
+    if (!this.trusted(key => verifyOwnerVerdict(key, frame))) {
+      this.reply(frame.requestId, 'Verdict was not signed by a trusted device; nothing changed.', true); return;
+    }
+    if (Math.abs(this.now() - frame.at) > 60_000 || this.seen.has(frame.requestId) || this.seen.size >= MAX_SEEN) {
+      this.reply(frame.requestId, 'Verdict expired or was already received; nothing changed.', true); return;
+    }
+    let title: string;
+    try {
+      const { pitch } = localPitch(this.config.project);
+      const piece = pitch?.pieces.find(p => p.id === frame.pieceId);
+      if (!pitch || !piece || pitch.version !== frame.version) throw Error('Pitch changed');
+      appendVerdict(this.config.project, pitch, frame, this.verdictTrust()!);
+      title = piece.title;
+    } catch {
+      this.reply(frame.requestId, 'Could not save verdict. The pitch changed, it was already saved, or its feedback file needs checking.', true); return;
+    }
+    this.seen.set(frame.requestId, frame.at);
+    const busy = !!this.abort || this.lead.busy;
+    this.reply(frame.requestId, busy ? 'Verdict saved. Your busy lead can read pitch-feedback.json.' : 'Verdict saved and sent to your lead.', true);
+    void this.snapshot();
+    if (busy) return;
+    const generation = this.generation, abort = new AbortController(); this.abort = abort;
+    const label = frame.verdict[0].toUpperCase() + frame.verdict.slice(1);
+    void this.lead.send(`Pitch verdict on ${title} (${frame.version}): ${label}${frame.note ? ` — ${frame.note}` : ''}`, abort.signal).then(
+      answer => { if (this.generation === generation && !abort.signal.aborted) this.reply(frame.requestId, answer); },
+      () => { if (this.generation === generation && !abort.signal.aborted) this.reply(frame.requestId, 'Verdict saved; the local lead could not reply.', true); },
+    ).finally(() => { if (this.abort === abort) this.abort = undefined; });
+  }
   /** Whether one of the trusted devices made this signature (a damaged trust record trusts nobody). */
   private trusted(check: (key: string) => boolean): boolean {
     try { return this.devices.pins().some((p) => check(p.key)); } catch { return false; }
+  }
+  private verdictTrust(): VerdictTrust | undefined {
+    return this.binding && { binding: this.binding, verify: row => this.trusted(key => verifyOwnerVerdict(key, row)) };
   }
   private sendDevices(note?: string): void {
     try { if (this.binding) this.send?.(devicesFrame(this.devices, this.config.floor, this.now(), note)); }
@@ -197,15 +236,19 @@ export class CubbyConnector {
       }
       if (!this.deps.snapshot) saveSeen(this.config.state, { at: this.now(), head, agents: frame.agents.map(({ id, tool, role, task, status }) => ({ id, tool, role, task, status })) });
       if (generation === this.generation && this.binding) {
+        // Verify saved stamps with current device trust and binding on every publication.
+        if (frame.pitch) frame.pitch = mergeVerdicts(this.config.project, frame.pitch, this.verdictTrust());
         const outgoing = publication(frame);
         if (this.send?.(outgoing) === false) return;
-        if (!outgoing.draft) this.sentImages.clear();
+        const images = new Map<string, import('../../drafts/image-format.js').DesignImage>();
         if (outgoing.draft) {
-          const { images } = localDesign(this.config.project);
+          const local = localDesign(this.config.project);
           const referenced = new Set([...outgoing.draft.ideas, ...outgoing.draft.screens].flatMap(c => c.image ? [c.image.hash] : []));
-          await sendDesignImages(this.config.floor, [...images.values()].filter(i => referenced.has(i.meta.hash)), this.sentImages,
-            f => this.send?.(f), () => generation === this.generation && !!this.binding);
+          for (const [hash, image] of local.images) if (referenced.has(hash)) images.set(hash, image);
         }
+        if (outgoing.pitch) for (const [hash, image] of localPitch(this.config.project).images) images.set(hash, image);
+        await sendDesignImages(this.config.floor, images.values(), this.sentImages,
+          f => this.send?.(f), () => generation === this.generation && !!this.binding);
       }
       if (generation === this.generation) this.sendDevices();
     } catch { /* source failure is retried at the next bounded interval */ }

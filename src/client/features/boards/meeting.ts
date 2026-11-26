@@ -58,7 +58,7 @@ export class MeetingBoardTexture {
     this.texture = c.texture;
   }
 
-  render(state: MeetingState) {
+  render(state: MeetingState, notice?: string) {
     const { g } = this;
     const W = this.canvas.width;
     const H = this.canvas.height;
@@ -66,14 +66,17 @@ export class MeetingBoardTexture {
     g.fillRect(0, 0, W, H);
     const m = state.current;
     g.textBaseline = 'alphabetic';
-    if (!m) {
+    if (notice || !m) {
       g.fillStyle = INK;
       g.textAlign = 'center';
       g.font = `900 64px ${FONT}`;
-      g.fillText('🤝 The meeting room is free', W / 2, H / 2 - 10);
+      if (notice) {
+        const lines = wrap(g, notice, W - 60);
+        lines.forEach((line, i) => g.fillText(line, W / 2, H / 2 + (i - (lines.length - 1) / 2) * 76));
+      } else g.fillText('🤝 The meeting room is free', W / 2, H / 2 - 10);
       g.font = `700 36px ${FONT}`;
       g.fillStyle = '#5c5f73';
-      g.fillText('Press E at the table to call a meeting: whatever it writes shows up here.', W / 2, H / 2 + 50);
+      if (!notice) g.fillText('Press E at the table to call a meeting: whatever it writes shows up here.', W / 2, H / 2 + 50);
       g.textAlign = 'left';
       this.texture.needsUpdate = true;
       return;
