@@ -1,3 +1,5 @@
+import { PersonalPerson } from '../cubbies/personal-agents/person';
+import type { OwnerColor, PersonalRole } from '../../../shared/personal-agents/appearance';
 // What a draft floor puts in the office: a pale sheet over each covered pod of desks, the studio table
 // where the whiteboard stands with its one warm lamp over it, the panels over the boards and the TV
 // (boards.ts), the lead (greeting you at the doors, then by the table) and a designer at each pod a
@@ -7,7 +9,7 @@ import * as THREE from 'three';
 import type { Look } from '../../../shared/avatar';
 import { WALL_HEIGHT } from '../../../shared/layout';
 import { AVATAR_COLORS } from '../../state/persist';
-import { Person, Worker } from '../../world/character';
+import { Worker } from '../../world/character';
 import { mesh, roundedBox, textSprite, toon } from '../../world/toon';
 import type { Collider, DeskView, Interactable } from '../../world/types';
 import { CREAM, INK, disposeTree, simpleDesk } from '../cubbies/props';
@@ -106,7 +108,7 @@ export class DraftScene {
   readonly colliders: Collider[] = [
     { minX: STUDIO.x - STUDIO.width / 2 - 0.05, maxX: STUDIO.x + STUDIO.width / 2 + 0.05, minZ: STUDIO.z - STUDIO.depth / 2 - 0.05, maxZ: STUDIO.z + STUDIO.depth / 2 + 0.05, top: STUDIO.height },
   ];
-  readonly lead: Person;
+  readonly lead: PersonalPerson;
   private bubble: THREE.Sprite | null = null;
   private bubbleText = '';
   private leadKey = '';
@@ -135,19 +137,18 @@ export class DraftScene {
     this.pool = lamp.pool;
     this.group.add(lamp.group);
     this.group.add(this.boards.group);
-    this.lead = new Person('Lead', AVATAR_COLORS[0], { skin: 0, hair: 0, style: 0 });
+    this.lead = new PersonalPerson('Lead', AVATAR_COLORS[0], { skin: 0, hair: 0, style: 0 });
     this.lead.root.userData.interact = this.leadIt;
     this.group.add(this.lead.root);
   }
 
   /** The lead's name and look (the look from its cubby, when there is one). */
-  setLead(name: string, look: Look | undefined, colorIndex: number) {
-    const key = `${name}|${look ? `${look.skin},${look.hair},${look.style}` : ''}|${colorIndex}`;
+  setLead(name: string, look: Look | undefined, color: OwnerColor, owner: string, project: string, role: PersonalRole) {
+    const key = `${name}|${look ? `${look.skin},${look.hair},${look.style}` : ''}|${color}|${owner}|${project}|${role}`;
     if (key === this.leadKey) return;
     this.leadKey = key;
     if (look) this.lead.setLook(look);
-    this.lead.setColor(AVATAR_COLORS[colorIndex % AVATAR_COLORS.length]);
-    this.lead.setLabel(name, null);
+    this.lead.setUniform(owner, project, role, color);
     this.lead.setDoing('✨ your lead');
   }
 

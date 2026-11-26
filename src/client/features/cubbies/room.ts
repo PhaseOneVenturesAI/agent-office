@@ -1,3 +1,5 @@
+import { defaultOwnerColor } from '../../../shared/personal-agents/appearance';
+import { ownerSilhouette } from './personal-agents/silhouette';
 // One cubby as the hall shows it: its front (clear glass for yours, frosted for anyone else's, an open
 // doorway for yours and a free one), the dark sign pill over the door with its lamp, the shapes moving
 // behind frosted glass, and the door you walk up to. Inside your own is the Interior (interior.ts), and
@@ -64,6 +66,7 @@ export class CubbyRoom {
     // Shapes behind someone else's frosted glass: how many are working, never who or what.
     const shapes = face === 'other' && info && info.lamp !== 'asleep' ? Math.min(3, Math.max(0, info.working | 0)) : 0;
     this.setShapes(shapes);
+    for (const shape of this.shapes) shape.traverse(o => { if (o instanceof THREE.Mesh) o.material = ownerSilhouette(info?.ownerColor ?? defaultOwnerColor(ownerName)); });
     // The inside: only your own, once your computer has sent it, or one whose owner let you in to watch.
     const interior = (face === 'mine' || face === 'watch') && info?.interior ? info.interior : null;
     if (interior && !this.interior) {
@@ -74,7 +77,7 @@ export class CubbyRoom {
       this.dropInterior();
       changed = true;
     }
-    if (interior && info && this.interior) this.interior.sync(info.id, interior, info.lamp, ownerName, face === 'watch');
+    if (interior && info && this.interior) this.interior.sync(info.id, interior, info.lamp, ownerName, face === 'watch', info.ownerColor);
     this.decor.spareDesk.visible = !this.interior;
     return changed;
   }

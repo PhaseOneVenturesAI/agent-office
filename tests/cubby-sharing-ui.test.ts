@@ -133,8 +133,10 @@ test('one lead, one look: the cubby, the draft greeter and the kickoff walk take
   assert.notEqual(text.leadColorIndex('Nova') % 8, text.leadColorIndex('Atlas') % 8);
   const { readFileSync } = await import('node:fs');
   const src = (f: string) => readFileSync(new URL(`../src/client/features/${f}`, import.meta.url), 'utf8');
-  assert.match(src('cubbies/interior.ts'), /AVATAR_COLORS\[leadColorIndex\(it\.leadName\)/);
-  assert.match(src('drafts/index.ts'), /scene\.setLead\(name, it\?\.look, leadColorIndex\(it\?\.leadName \?\? name\)\)/);
+  assert.match(src('cubbies/interior.ts'), /this\.lead\.setUniform\(ownerName, project, personalRole/);
+  assert.match(src('cubbies/room.ts'), /info\.ownerColor/);
+  assert.match(src('drafts/index.ts'), /scene\.setLead\(name, it\?\.look, cubbyOf\(\)\?\.ownerColor/);
+  assert.match(src('drafts/world.ts'), /this\.lead\.setUniform\(owner, project, role, color\)/);
   // The kickoff's walker is the draft scene's own lead, not a character of its own.
   assert.doesNotMatch(src('drafts/kickoff.ts'), /new Person\(/);
 });

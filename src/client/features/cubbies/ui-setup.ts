@@ -1,3 +1,5 @@
+import { defaultOwnerColor, OWNER_PALETTE, type OwnerColor } from '../../../shared/personal-agents/appearance';
+import { PersonalPerson } from './personal-agents/person';
 import './ui.css';
 import '../../shared/cubby/chat.css';
 import '../../ui/character.css';
@@ -5,11 +7,9 @@ import * as THREE from 'three';
 import { OutlineEffect } from 'three/examples/jsm/effects/OutlineEffect.js';
 import type { Look } from '../../../shared/avatar';
 import { HAIR_COLOR_NAMES, HAIR_COLORS, HAIR_STYLES, SKIN_TONES, randomLook } from '../../../shared/avatar';
-import { AVATAR_COLORS } from '../../state/persist';
 import { h, openModal, type Modal } from '../../ui/dom';
 import { store } from '../../state';
 import { ownerDeviceKey, displayFingerprint, type OwnerDeviceKey } from '../../shared/cubby/keys';
-import { Person } from '../../world/character';
 import { PROJECT_PLACEHOLDER, cleanLeadName, joinCommand } from './model';
 
 // Setting up a free cubby: your lead's name and look (the office's character picker, for the lead
@@ -21,7 +21,7 @@ const LEAD_NAMES = ['Nova', 'Atlas', 'Juniper', 'Orbit', 'Pixel', 'Sage', 'Echo'
 
 /** The lead on a turntable, drawn with its own small renderer while the window's open. */
 class LeadPreview {
-  readonly person: Person;
+  readonly person: PersonalPerson;
   private renderer: THREE.WebGLRenderer;
   private effect: OutlineEffect;
   private scene = new THREE.Scene();
@@ -33,6 +33,7 @@ class LeadPreview {
     private canvas: HTMLCanvasElement,
     name: string,
     look: Look,
+    color: OwnerColor,
   ) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -43,8 +44,9 @@ class LeadPreview {
     const sun = new THREE.DirectionalLight('#fff1d6', 2);
     sun.position.set(-3, 6, 5);
     this.scene.add(sun);
-    this.person = new Person(name, AVATAR_COLORS[2], look);
-    this.person.showLabel(false);
+    this.person = new PersonalPerson(name, color, look);
+    this.person.setUniform(store.me.account?.name ?? 'Owner', store.project?.name ?? 'Project', 'CEO', color);
+    this.person.root.children.filter(o => o instanceof THREE.Sprite).forEach(o => o.visible = false);
     this.scene.add(this.person.root);
     this.camera.position.set(0, 1.35, 4.6);
     this.camera.lookAt(0, 0.95, 0);
@@ -147,17 +149,19 @@ export interface SetupDialog {
 }
 
 /** Sets up the free cubby in `slot`: the lead's name and look, then (once the office answers) the join command. */
-export function openSetup(slot: number, send: (leadName: string, look: Look) => void): SetupDialog {
+export function openSetup(slot: number, send: (leadName: string, look: Look, ownerColor: OwnerColor) => void): SetupDialog {
   const account = store.me.account?.name;
   const deviceKey = ownerDeviceKey(account);
   // Surface failures when submitting, without an unhandled rejection while the picker is open.
   void deviceKey.catch(() => {});
   const look: Look = randomLook();
+  let ownerColor = store.cubbies.ownerColor ?? defaultOwnerColor('');
   const placeholder = LEAD_NAMES[Math.floor(Math.random() * LEAD_NAMES.length)];
   const canvas = h('canvas', { 'aria-label': 'Your lead' }) as HTMLCanvasElement;
-  const preview = new LeadPreview(canvas, placeholder, look);
+  const preview = new LeadPreview(canvas, placeholder, look, ownerColor);
   const name = h('input', { type: 'text', maxlength: 24, placeholder, 'aria-label': 'Lead name' }) as HTMLInputElement;
   name.addEventListener('keydown', (e) => e.stopPropagation());
+  const ownerRow = h('div.swatches', { role: 'radiogroup', 'aria-label': 'Owner colour' });
   const skinRow = h('div.swatches', { role: 'radiogroup', 'aria-label': 'Skin tone' });
   const styleRow = h('div.seg', { role: 'radiogroup', 'aria-label': 'Hair style' });
   const hairRow = h('div.swatches', { role: 'radiogroup', 'aria-label': 'Hair color' });
@@ -169,6 +173,12 @@ export function openSetup(slot: number, send: (leadName: string, look: Look) => 
     paint();
   };
   const paint = () => {
+    ownerRow.replaceChildren(...OWNER_PALETTE.map(p => swatch(p.color, `Owner colour: ${p.name}`, p.color === ownerColor, () => {
+      ownerColor = p.color;
+      preview.person.setUniform(account ?? 'Owner', store.project?.name ?? 'Project', 'CEO', ownerColor);
+      preview.person.root.children.filter(o => o instanceof THREE.Sprite).forEach(o => o.visible = false);
+      paint();
+    })));
     skinRow.replaceChildren(...SKIN_TONES.map((c, i) => swatch(c, `Skin tone ${i + 1} of ${SKIN_TONES.length}`, i === look.skin, () => change({ skin: i }))));
     styleRow.replaceChildren(...HAIR_STYLES.map((s, i) => h('button.btn', { type: 'button', role: 'radio', 'aria-checked': String(i === look.style), class: i === look.style ? 'on' : '', onclick: () => change({ style: i }) }, s)));
     hairRow.replaceChildren(...HAIR_COLORS.map((c, i) => swatch(c, HAIR_COLOR_NAMES[i], i === look.hair, () => change({ hair: i }))));
@@ -181,7 +191,7 @@ export function openSetup(slot: number, send: (leadName: string, look: Look) => 
     'div.body',
     {},
     h('div.charsel-stage', {}, canvas),
-    h('div.charsel-opts', {}, h('label', {}, 'Lead name'), name, h('label', {}, 'Skin tone'), skinRow, h('label', {}, 'Hair'), styleRow, h('label', {}, 'Hair color'), hairRow),
+    h('div.charsel-opts', {}, h('label', {}, 'Lead name'), name, h('label', {}, 'Owner colour'), ownerRow, h('label', {}, 'Skin tone'), skinRow, h('label', {}, 'Hair'), styleRow, h('label', {}, 'Hair color'), hairRow),
   );
   const form = h('form.modal.charsel.cubby-setup', { role: 'dialog', 'aria-label': 'Set up your cubby' }, h('header', {}, h('h2', {}, '✨ Set up your cubby')), body, h('footer', {}, status, submit)) as HTMLFormElement;
 
@@ -200,7 +210,7 @@ export function openSetup(slot: number, send: (leadName: string, look: Look) => 
       status.textContent = (error as Error).message; sent = false; submit.disabled = false; return;
     }
     const leadName = cleanLeadName(name.value) || placeholder;
-    send(leadName, { ...look });
+    send(leadName, { ...look }, ownerColor);
     submit.disabled = true;
     status.textContent = `Setting up ${leadName}…`;
   });

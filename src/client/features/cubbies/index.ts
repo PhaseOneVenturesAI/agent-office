@@ -217,9 +217,9 @@ export function installCubbies(ctx: Ctx, deps: CubbiesDeps = { aimed: () => null
 
   function setUp(slot: number) {
     if (setup?.open) return;
-    setup = openSetup(slot, (leadName, look) => {
+    setup = openSetup(slot, (leadName, look, ownerColor) => {
       askedAt = performance.now();
-      send({ t: 'cubbies.setup', slot, leadName, look });
+      send({ t: 'cubbies.setup', slot, leadName, look, ownerColor });
     });
   }
 

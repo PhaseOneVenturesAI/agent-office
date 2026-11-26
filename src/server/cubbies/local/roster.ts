@@ -79,7 +79,7 @@ export async function roster(config: LocalConfig, deps: RosterDeps = {}): Promis
         for (const s of sessions.slice(0, 128)) {
           if (typeof s.id !== 'string' || !s.id) continue;
           const tool = ['claude', 'codex', 'kimi'].includes(s.provider ?? s.agentType) ? s.provider ?? s.agentType : 'paradev';
-          add({ id: `paradev:${clean(s.id, 100)}`, tool, role: 'paradev', task: `${tool} session`,
+          add({ id: `paradev:${clean(s.id, 100)}`, tool, role: 'paradev', ...(typeof s.department === 'string' ? { department: clean(s.department, 60) } : {}), ...(typeof s.leadTitle === 'string' ? { leadTitle: clean(s.leadTitle, 60) } : {}), task: `${tool} session`,
             branch: clean(config.branches.get(root)), status: ['working', 'idle', 'needs-you'].includes(s.status) ? s.status : 'unknown' },
           Number.isSafeInteger(s.pid) ? s.pid : undefined, typeof s.providerSessionId === 'string' ? s.providerSessionId : undefined);
         }

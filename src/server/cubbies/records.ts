@@ -1,10 +1,11 @@
+import { defaultOwnerColor, isOwnerColor, type OwnerColor } from '../../shared/personal-agents/appearance.js';
 import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { Look } from '../../shared/avatar.js';
 import { sanitizeLook, lookFromSeed } from '../../shared/avatar.js';
 export interface CubbyRecord {
   id: string; floorId: string; owner: string; nodeId: string; slot: number;
-  leadName: string; look: Look; computerId?: string; computerName?: string;
+  leadName: string; look: Look; ownerColor?: OwnerColor; computerId?: string; computerName?: string;
 }
 const key = (s: unknown): s is string => typeof s === 'string' && /^[\w-]{1,128}$/.test(s);
 export class CubbyRecords {
@@ -23,10 +24,21 @@ export class CubbyRecords {
       if (slots.has(slot) || this.rows.has(r.id)) throw Error('Duplicate cubby record');
       slots.add(slot);
       this.rows.set(r.id, { id: r.id, floorId: r.floorId, owner: r.owner, nodeId: r.nodeId, slot: r.slot,
+        ownerColor: isOwnerColor(r.ownerColor) ? r.ownerColor : defaultOwnerColor(r.owner),
         leadName: r.leadName.slice(0, 32), look: sanitizeLook(r.look, lookFromSeed(r.id)),
         ...(key(r.computerId) ? { computerId: r.computerId } : {}),
         ...(typeof r.computerName === 'string' ? { computerName: r.computerName.slice(0, 60) } : {}) });
     }
+    for (const r of this.rows.values()) r.ownerColor = this.color(r.owner);
+  }
+  color(owner: string): OwnerColor {
+    return [...this.rows.values()].find(r => r.owner === owner && isOwnerColor(r.ownerColor))?.ownerColor ?? defaultOwnerColor(owner);
+  }
+  /** Apply an account's selection to every cubby; restore all rows if persistence fails. */
+  setColor(owner: string, color: OwnerColor): () => void {
+    const before = [...this.rows.values()].filter(r => r.owner === owner).map(r => [r, r.ownerColor] as const);
+    for (const [r] of before) r.ownerColor = color;
+    return () => { for (const [r, old] of before) r.ownerColor = old; };
   }
   save() {
     mkdirSync(path.dirname(this.file), { recursive: true });
