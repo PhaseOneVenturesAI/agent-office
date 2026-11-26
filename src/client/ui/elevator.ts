@@ -141,7 +141,7 @@ export function openElevator(opts: ElevatorOptions): void {
         'span.floor-text',
         {},
         h('span.floor-name', {}, f.name, draft ? h('span.draft-tag', {}, 'draft') : null, f.isNew && !draft ? h('span.new-tag', { title: 'Just kicked off' }, 'New') : null, here ? h('span.here-tag', {}, 'you are here') : mine ? h('span.here-tag', {}, 'your floor') : null),
-        h('span.floor-sub', {}, draft ? 'Only you · lights off until kickoff' : f.hq ? `Private · ${f.hq.ownerName} and their allowed managers` : [f.repo ?? f.dir, f.cloning ? f.clone?.detail : ''].filter(Boolean).join(' · ')),
+        h('span.floor-sub', {}, draft ? 'Only you · lights off until kickoff' : f.hq ? `Private · ${f.hq.ownerName} and allowed managers` : [f.repo ?? f.dir, f.cloning ? f.clone?.detail : ''].filter(Boolean).join(' · ')),
         f.cloning ? cloneBar(f.clone) : null,
       ),
       h('span.floor-stats', {}, ...stats.flatMap((s, j) => (j ? [' ', s] : [s]))),

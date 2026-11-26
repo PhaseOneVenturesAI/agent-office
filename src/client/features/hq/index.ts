@@ -33,6 +33,8 @@ export function installHQ(ctx: Ctx, deps: { idleAgents(): IdleAgent[] }) {
         world.set(view!); world.group.visible = shown = true;
         const desks = [...ctx.office.desks.values()].filter(d => !d.def.room && !d.def.wing);
         desks.forEach(d => hide(d.group));
+        world.coveredFurniture.forEach(hide);
+        hide(ctx.office.signs.group);
         for (const agent of deps.idleAgents()) hide(agent.model.root);
         hide(ctx.office.whiteboard.group);
         // Put away board faces and frames; the portfolio covers the north-wall labels.
@@ -43,7 +45,7 @@ export function installHQ(ctx: Ctx, deps: { idleAgents(): IdleAgent[] }) {
           }
         }
         const cols = ctx.world().colliders;
-        const gone = cols.filter(c => ctx.office.whiteboard.colliders.includes(c) || desks.some(d => Math.abs((c.minX + c.maxX) / 2 - d.def.x) < .1 && Math.abs((c.minZ + c.maxZ) / 2 - d.def.z) < .1 && c.top < 1.5));
+        const gone = cols.filter(c => ctx.office.whiteboard.colliders.includes(c) || world.coveredColliders.includes(c) || desks.some(d => Math.abs((c.minX + c.maxX) / 2 - d.def.x) < .1 && Math.abs((c.minZ + c.maxZ) / 2 - d.def.z) < .1 && c.top < 1.5));
         for (const c of gone) cols.splice(cols.indexOf(c), 1);
         const added: Collider[] = [...world.colliders]; cols.push(...added);
         undo.push(() => { for (const c of added) { const i = cols.indexOf(c); if (i >= 0) cols.splice(i, 1); } cols.push(...gone); });
