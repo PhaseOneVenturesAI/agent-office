@@ -1,3 +1,4 @@
+import { isOwnerColor } from '../../shared/personal-agents/appearance.js';
 import { PitchStore } from '../pitch/store.js';
 import { validVerdict } from '../../shared/pitch/clean.js';
 import type { PitchVerdictMessage } from '../../shared/protocol/pitch.js';
@@ -36,7 +37,7 @@ export class Cubbies {
   state(floorId?: string, owner?: string, clientId?: string): CubbiesState {
     this.sharing.refresh();
     if (!this.enabled || !floorId || !this.floorExists(floorId) || (this.draftOwner(floorId) !== undefined && this.draftOwner(floorId) !== owner)) return { enabled: false, cubbies: [], setupAllowed: false };
-    return { enabled: true, floorId, setupAllowed: !!owner && !!this.accountName(owner), cubbies: [...this.records.rows.values()]
+    return { enabled: true, floorId, ...(owner ? { ownerColor: this.records.color(owner) } : {}), setupAllowed: !!owner && !!this.accountName(owner), cubbies: [...this.records.rows.values()]
       .filter(r => r.floorId === floorId)
       .map(r => {
         const mine = r.owner === owner && !!this.accountName(r.owner);
@@ -45,7 +46,7 @@ export class Cubbies {
         const working = online && !stale ? live.interior.agents.filter(a => a.status === 'working').length : 0;
         const interior = live?.interior ?? this.empty(r);
         const privateView = stale ? { ...interior, agents: interior.agents.map(a => ({ ...a, status: 'unknown' as const })), error: 'Local roster has not refreshed. Check the connector on your computer.' } : interior;
-        return { id: r.id, slot: r.slot, ownerName: this.accountName(r.owner) ?? 'Former account', mine,
+        return { id: r.id, slot: r.slot, ownerColor: this.records.color(r.owner), ownerName: this.accountName(r.owner) ?? 'Former account', mine,
           lamp: !online ? 'asleep' as const : working ? 'working' as const : 'online' as const, working,
           ...(mine ? { interior: privateView, ...this.sharing.people(r.id) }
             : this.sharing.watching(r.id, owner, clientId) ? { watching: true as const, interior: watcherInterior(privateView) } : {}) };
@@ -161,7 +162,7 @@ export class Cubbies {
     pending.set(requestId, this.now());
     if (!this.send(r, frame)) { pending.delete(requestId); throw Error('Your computer disconnected; verdict was not queued'); }
   }
-  setup(floorId: string, owner: string, slot: number, name: string, look: Look) {
+  setup(floorId: string, owner: string, slot: number, name: string, look: Look, ownerColor?: unknown) {
     if (!this.enabled || !this.floorExists(floorId) || !this.accountName(owner)) throw Error('Cubbies require your own account on an open project floor');
     const draftOwner = this.draftOwner(floorId);
     if (draftOwner !== undefined && (owner !== draftOwner || slot !== 0)) throw Error('A draft has one cubby, for its owner at the studio table');
@@ -171,10 +172,14 @@ export class Cubbies {
     if (previous && this.nodes.isOnline(previous.nodeId)) throw Error('Stop your local connection before setting this cubby up again');
     const leadName = short(name, 32).trim(); if (!leadName) throw Error('Give your lead a name');
     if (!previous && [...this.records.rows.values()].some(r => r.owner === owner && r.floorId === floorId && !r.computerId)) throw Error('Connect your pending cubby before setting up another computer');
+    if (ownerColor !== undefined && !isOwnerColor(ownerColor)) throw Error('Choose an owner colour from the palette');
+    const color = isOwnerColor(ownerColor) ? ownerColor : this.records.color(owner);
     const invite = this.nodes.invite('Cubby computer', 'private', owner, true);
-    const r: CubbyRecord = { ...previous, id: previous?.id ?? id(), floorId, owner, nodeId: invite.id, slot, leadName, look: sanitizeLook(look, lookFromSeed(owner)) };
+    const r: CubbyRecord = { ...previous, id: previous?.id ?? id(), floorId, owner, nodeId: invite.id, slot, leadName, ownerColor: color, look: sanitizeLook(look, lookFromSeed(owner)) };
     this.records.rows.set(r.id, r);
+    const restoreColors = this.records.setColor(owner, color);
     try { this.records.save(); } catch (e) {
+      restoreColors();
       if (previous) this.records.rows.set(previous.id, previous); else this.records.rows.delete(r.id);
       this.nodes.revoke(invite.id); throw e;
     }

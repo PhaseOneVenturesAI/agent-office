@@ -1,3 +1,4 @@
+import { isOwnerColor } from '../../../shared/personal-agents/appearance';
 import type { Slice } from '../store';
 import type { CubbiesState, CubbyInfo, CubbyPerson } from '../../../shared/protocol/cubbies';
 
@@ -30,7 +31,7 @@ function cleanCubbies(x: CubbiesState | undefined | null): CubbiesState {
     const own = mine ? { ...(people(watchers) ? { watchers: people(watchers) } : {}), ...(people(knocking) ? { knocking: people(knocking) } : {}) } : {};
     cubbies.push({ ...summary, mine, ...(watch ? { watching: true as const } : {}), ...own, ...((mine || watch) && interior ? { interior } : {}) });
   }
-  return { enabled: true, ...(x.floorId ? { floorId: x.floorId } : {}), cubbies, setupAllowed: x.setupAllowed === true };
+  return { enabled: true, ...(isOwnerColor(x.ownerColor) ? { ownerColor: x.ownerColor } : {}), ...(x.floorId ? { floorId: x.floorId } : {}), cubbies, setupAllowed: x.setupAllowed === true };
 }
 
 export const cubbies: Slice = {

@@ -312,11 +312,13 @@ try {
   await stand(fromX, fromZ, Math.atan2(-(leadAt.x - fromX), -(leadAt.z - fromZ)), -0.2);
   await page.waitForTimeout(300);
   await shot('inside');
-  // Never more than one helper's name tag and card at a time.
+  // Never more than one helper bot's name tag at a time (v4.3); people (lead, sessions) each keep
+  // their own plate over their own head (Jonathan, 2026-11-26; tests/personal-agents-ui.mjs).
   const tagged = await page.evaluate(() => {
     const room = window.__audit.cubbies.rooms().get(0);
     let n = 0;
     for (const v of room.interior.views.values()) {
+      if (!v.model?.constructor.name.includes('Helper')) continue;
       let on = false;
       v.model?.root.traverse((o) => { if (o.isSprite && o.layers.isEnabled(0)) on = true; });
       if (on) n++;

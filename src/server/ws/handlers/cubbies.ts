@@ -22,7 +22,7 @@ export const cubbiesHandlers = {
   'cubbies.setup'(ctx, c, msg) {
     const floor = ctx.floorOf(c);
     if (!c.accountId || !floor) return ctx.warn(c, 'Sign in to set up your cubby on a project floor');
-    try { ctx.sendTo(c, { t: 'cubbies.token', ...ctx.cubbies.setup(floor.id, c.accountId, msg.slot, msg.leadName, msg.look) }); }
+    try { ctx.sendTo(c, { t: 'cubbies.token', ...ctx.cubbies.setup(floor.id, c.accountId, msg.slot, msg.leadName, msg.look, msg.ownerColor) }); }
     catch (e) { ctx.warn(c, (e as Error).message); }
   },
   'cubbies.chat'(ctx, c, msg) {

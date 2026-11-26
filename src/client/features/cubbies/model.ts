@@ -126,8 +126,8 @@ export function layoutAgents(agents: readonly CubbyAgent[], w: number, d: number
   const listed: string[] = [];
   const over: CubbyAgent[] = [];
   for (const a of agents) {
-    if (a.role === 'lead' || spots.has(a.id)) continue;
-    const spot = free[home[a.role] ?? 'stand']?.shift();
+    if (a === agents.find(agent => agent.role === 'lead') || spots.has(a.id)) continue;
+    const spot = free[(a.role === 'lead' ? 'stand' : home[a.role]) ?? 'stand']?.shift();
     if (spot) spots.set(a.id, spot);
     else over.push(a);
   }

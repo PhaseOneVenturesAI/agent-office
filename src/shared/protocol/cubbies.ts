@@ -1,3 +1,4 @@
+import type { OwnerColor } from '../personal-agents/appearance.js';
 import type { Look } from '../avatar.js';
 
 /** Only explicit owner chat crosses inward; no terminal, command or approval frames. */
@@ -6,6 +7,9 @@ export type CubbyStatus = 'idle' | 'working' | 'needs-you' | 'unknown';
 export interface CubbyAgent {
   id: string;
   tool: string;
+  department?: string;
+  harnessRole?: string;
+  leadTitle?: string;
   role: CubbyRole;
   task: string;
   branch: string;
@@ -36,6 +40,7 @@ export interface CubbyInfo {
   id: string;
   slot: number;
   ownerName: string;
+  ownerColor?: OwnerColor;
   mine: boolean;
   lamp: 'online' | 'working' | 'asleep';
   working: number;
@@ -63,10 +68,10 @@ export interface CubbyDeviceRequest { requestId: string; label: string; publicKe
 /** Most devices one cubby trusts, and most waiting to be approved. */
 export const MAX_OWNER_DEVICES = 8;
 export const MAX_DEVICE_REQUESTS = 4;
-export interface CubbiesState { enabled: boolean; floorId?: string; cubbies: CubbyInfo[]; setupAllowed: boolean }
+export interface CubbiesState { ownerColor?: OwnerColor; enabled: boolean; floorId?: string; cubbies: CubbyInfo[]; setupAllowed: boolean }
 export type CubbiesClientMsg =
   | { t: 'cubbies.get' }
-  | { t: 'cubbies.setup'; slot: number; leadName: string; look: Look }
+  | { t: 'cubbies.setup'; slot: number; leadName: string; look: Look; ownerColor?: OwnerColor }
   | ({ t: 'cubbies.chat'; id: string } & CubbyOwnerMessage)
   /** From a device that isn't trusted yet: asks the computer to trust its public key. */
   | { t: 'cubbies.addDevice'; id: string; publicKey: string; label: string }

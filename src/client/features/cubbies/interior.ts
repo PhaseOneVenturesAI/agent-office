@@ -10,22 +10,21 @@
 import * as THREE from 'three';
 import type { CubbyAgent, CubbyInfo, CubbyInterior } from '../../../shared/protocol/cubbies';
 import { AVATAR_COLORS } from '../../state/persist';
-import { Person, Worker } from '../../world/character';
-import { textSprite } from '../../world/toon';
+import { PersonalPerson } from './personal-agents/person';
+import { PersonalHelper } from './personal-agents/helper';
+import { declutter, type Plate } from './personal-agents/declutter';
+import { defaultOwnerColor, helperTool, personalRole, type OwnerColor } from '../../../shared/personal-agents/appearance';
+import { store } from '../../state';
 import type { Collider } from '../../world/types';
 import { Laptop } from '../workers/laptop';
 import { focusedOf, showTags, type Focus } from './focus';
-import { OVERFLOW_BAG_SCALE, agentCard, clip, colliderOf, deadlineText, furniture, toFloor, layoutAgents, layoutKey, leadColorIndex, usableAt, workerStatus, type CubbyIt, type CubbyPlacement, type Spot } from './model';
+import { OVERFLOW_BAG_SCALE, agentCard, clip, colliderOf, deadlineText, furniture, toFloor, layoutAgents, layoutKey, usableAt, workerStatus, type CubbyIt, type CubbyPlacement, type Spot } from './model';
 import { CREAM, FONT, Face, INK, beanbag, builderDesk, disposeTree, factoryMachine, fitText, simpleDesk, wallScreen } from './props';
-
-/** A helper's color, by the tool it runs in. */
-const TOOL_COLOR: Record<string, string> = { claude: '#d97757', codex: '#4a7dbd', kimi: '#5b5bd6' };
-const toolColor = (tool: string) => TOOL_COLOR[tool.toLowerCase().split(/\s/)[0]] ?? '#8d99ae';
 
 interface AgentView {
   agent: CubbyAgent;
   /** A character, for everyone but a factory run at its machine and a workspace on its screen. */
-  model: Worker | null;
+  model: PersonalPerson | PersonalHelper | null;
   spot: Spot;
   key: string;
 }
@@ -35,12 +34,10 @@ export class Interior {
   colliders: Collider[] = [];
   usables: CubbyIt[] = [];
   private agentsGroup = new THREE.Group();
-  private lead: Person;
+  private lead: PersonalPerson;
   private leadLook = '';
   private leadDoing = '';
   private laptop = new Laptop();
-  private computerTag: THREE.Sprite | null = null;
-  private computerName = '';
   private plan = new Face(1.6, 1.0, 512);
   private needs = new Face(1.4, 1.0, 448);
   private machine = factoryMachine();
@@ -70,8 +67,9 @@ export class Interior {
     box(f.computer.x, f.computer.z, f.computerDesk.width / 2 + 0.02, f.computerDesk.depth / 2 + 0.03, 0.8);
 
     // The lead, standing in front of it, facing the door.
-    this.lead = new Person('Lead', AVATAR_COLORS[0], { skin: 0, hair: 0, style: 0 });
+    this.lead = new PersonalPerson('Lead', AVATAR_COLORS[0], { skin: 0, hair: 0, style: 0 });
     this.lead.root.position.set(f.lead.x, 0, f.lead.z);
+    this.lead.ring.floorY = place.y ?? 0;
     this.group.add(this.lead.root);
 
     // The builders' desk: two seats, the harness's limit.
@@ -123,43 +121,33 @@ export class Interior {
     this.group.add(this.agentsGroup);
   }
 
-  sync(cubbyId: string, it: CubbyInterior, lampState: CubbyInfo['lamp'], ownerName: string, watching = false) {
+  sync(cubbyId: string, it: CubbyInterior, lampState: CubbyInfo['lamp'], ownerName: string, watching = false, color: OwnerColor = defaultOwnerColor(ownerName)) {
     this.cubbyId = cubbyId;
     this.interior = it;
     this.asleep = lampState === 'asleep';
-    const lookKey = `${it.leadName}|${it.look.skin}|${it.look.hair}|${it.look.style}`;
+    const lookKey = JSON.stringify([it.leadName, it.look]);
     if (lookKey !== this.leadLook) {
       this.leadLook = lookKey;
       this.lead.setLook(it.look);
-      this.lead.setColor(AVATAR_COLORS[leadColorIndex(it.leadName) % AVATAR_COLORS.length]);
-      this.lead.setLabel(clip(it.leadName, 24) || 'Lead', null);
     }
-    const doing = this.asleep ? `💤 asleep on ${clip(it.computerName, 20)}` : it.error ? `⚠️ ${clip(it.error, 40)}` : watching ? 'Lead · E to listen in' : `Lead · E to talk`;
+    const project = store.project?.name ?? 'Project';
+    this.lead.setUniform(ownerName, project, personalRole(it.agents.find(a => a.role === 'lead'), true), color);
+    const doing = this.asleep ? `💤 asleep on ${clip(it.computerName, 20)}` : it.error ? `⚠️ ${clip(it.error, 40)}` : watching ? 'E to listen in' : `E to talk · ${clip(it.computerName, 20)}`;
     if (doing !== this.leadDoing) this.lead.setDoing((this.leadDoing = doing));
-    if (it.computerName !== this.computerName) {
-      this.computerName = it.computerName;
-      if (this.computerTag) {
-        this.group.remove(this.computerTag);
-        disposeTree(this.computerTag);
-      }
-      const f = furniture(this.place.width, this.place.depth);
-      this.computerTag = textSprite(`💻 ${clip(it.computerName, 28)}`, { bg: CREAM, size: 34 });
-      this.computerTag.position.set(f.computer.x, 1.75, f.computer.z);
-      this.group.add(this.computerTag);
-    }
-    this.syncAgents(it.agents, ownerName);
+    this.syncAgents(it.agents, ownerName, project, color);
     this.paintBoards(it);
     this.usables = this.makeUsables();
   }
 
-  private syncAgents(agents: readonly CubbyAgent[], ownerName: string) {
-    const key = layoutKey(agents);
+  private syncAgents(agents: readonly CubbyAgent[], ownerName: string, project: string, color: OwnerColor) {
+    const key = layoutKey(agents) + JSON.stringify(agents.map(a => [a.id, a.tool, personalRole(a)]));
     if (key !== this.layout) {
       this.layout = key;
       const { spots } = layoutAgents(agents, this.place.width, this.place.depth);
       for (const [id, v] of this.views) {
         const spot = spots.get(id);
-        const still = spot && v.spot.kind === spot.kind && v.spot.index === spot.index && v.agent.role === agents.find((a) => a.id === id)?.role;
+        const next = agents.find(a => a.id === id);
+        const still = spot && next && v.spot.kind === spot.kind && v.spot.index === spot.index && v.agent.role === next.role && v.agent.tool === next.tool;
         if (!still) this.dropView(id);
       }
       for (const a of agents) {
@@ -176,25 +164,34 @@ export class Interior {
       if (!v) continue;
       v.agent = a;
       const card = agentCard(a);
-      const k = `${card.name}|${card.title}|${card.body}|${a.status}|${this.asleep}|${ownerName}`;
+      const k = `${card.name}|${card.title}|${card.body}|${a.status}|${this.asleep}|${ownerName}|${project}|${color}|${personalRole(a)}`;
       if (k === v.key) continue;
       v.key = k;
       if (v.model) {
-        v.model.setName(card.name);
-        v.model.setOwner(ownerName);
-        v.model.setStatus(workerStatus(a.status, this.asleep), false);
-        v.model.setTask({ name: card.title, summary: card.body });
+        if (v.model instanceof PersonalHelper) {
+          v.model.setStatus(workerStatus(a.status, this.asleep), false);
+          v.model.setTask({ name: card.title, summary: card.body });
+          v.model.dress(a.tool, a.role === 'direct' ? `${a.tool} session` : a.task, color);
+        } else {
+          v.model.setStatus(workerStatus(a.status, this.asleep));
+          v.model.setUniform(ownerName, project, personalRole(a), color);
+          v.model.setDoing(this.asleep ? '💤 asleep' : a.status === 'needs-you' ? 'Needs you' : a.status);
+        }
       }
       if (v.spot.kind === 'screen') this.paintScreen(v.spot.index, a);
     }
   }
 
   /** A worker for `a` in its seat or spot, or none where its machine or screen stands for it. */
-  private placeModel(a: CubbyAgent, spot: Spot): Worker | null {
+  private placeModel(a: CubbyAgent, spot: Spot): PersonalPerson | PersonalHelper | null {
     if (spot.kind === 'machine' || spot.kind === 'screen') return null;
-    const w = new Worker(a.tool, toolColor(a.tool));
+    const w = helperTool(a.tool) ? new PersonalHelper(a.tool) : new PersonalPerson(a.tool, '#6c4fd8', this.interior!.look);
+    w.ring.floorY = this.place.y ?? 0;
     const seat = spot.kind === 'seat' ? this.seats[spot.index] : spot.kind === 'reviewer' ? this.reviewerSeat : spot.kind === 'bag' ? this.bagSeats[spot.index] : null;
-    if (seat) seat.add(w.root);
+    if (seat) {
+      seat.add(w.root);
+      if (w instanceof PersonalPerson) w.sit(0);
+    }
     else {
       w.root.position.set(spot.x, 0, spot.z);
       w.root.rotation.y = spot.rotY;
@@ -304,11 +301,16 @@ export class Interior {
     else this.laptop.update(dt, undefined, 0);
     this.lead.update(dt, t, false, false);
     const shown = this.focused(focus);
+    // Every person (the lead, sessions) keeps its own plate over its own head; helper bots show
+    // theirs only while you look at them (v4.3). Plates that would overlap on screen are lifted apart.
+    showTags(this.lead.root, true);
+    const plates: (Plate | undefined)[] = [plateOf(this.lead.root)];
     for (const v of this.views.values()) {
       v.model?.update(dt, t);
       if (v.model) {
-        shrinkTags(v.model.root);
-        showTags(v.model.root, v === shown);
+        const on = v.model instanceof PersonalPerson || v === shown;
+        showTags(v.model.root, on);
+        if (on) plates.push(plateOf(v.model.root));
       }
       if (v.spot.kind === 'machine') {
         const a = v.agent;
@@ -326,6 +328,10 @@ export class Interior {
         });
       }
     }
+    if (focus?.camera) {
+      const agents = [this.lead.root, ...[...this.views.values()].flatMap((v) => (v.model ? [v.model.root] : []))];
+      declutter(plates.filter((p): p is Plate => !!p), agents, focus.camera);
+    }
   }
 
   /** Every agent's id, in roster order. */
@@ -336,6 +342,8 @@ export class Interior {
   dispose() {
     for (const id of [...this.views.keys()]) this.dropView(id);
     this.laptop.dispose();
+    this.lead.dispose();
+    disposeTree(this.lead.root);
     this.lead.root.removeFromParent();
     this.plan.dispose();
     this.needs.dispose();
@@ -346,18 +354,10 @@ export class Interior {
   }
 }
 
-/**
- * A cubby is about 4.4 by 4 m, so the office's full-size name tags and task cards would fill the view
- * from its doorway. Each label a helper draws (a sprite, redrawn whenever it changes) is shown at half
- * size here, once.
- */
-const TAG_SCALE = 0.5;
-function shrinkTags(root: THREE.Object3D) {
-  root.traverse((o) => {
-    if (!(o as THREE.Sprite).isSprite || o.userData.cubbyTag === o.scale.x) return;
-    o.scale.multiplyScalar(TAG_SCALE);
-    o.userData.cubbyTag = o.scale.x;
-  });
-}
-
 export type { Focus } from './focus';
+
+/** An agent's combined nameplate and its resting height, if it has one. */
+function plateOf(root: THREE.Object3D): Plate | undefined {
+  const sprite = root.getObjectByName('personal-nameplate') as THREE.Sprite | undefined;
+  return sprite ? { sprite, base: new THREE.Vector3(0, sprite.userData.base ?? sprite.position.y, 0), owner: root } : undefined;
+}

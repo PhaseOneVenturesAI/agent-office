@@ -112,7 +112,7 @@ test('only the owner receives interiors; public and other-admin-shaped requests 
   assert.equal(mine.lamp,'working'); assert.equal(mine.working,1);
   for (const owner of ['bob',undefined]) {
     const other = f.cubbies.state('floor',owner).cubbies[0];
-    assert.deepEqual(Object.keys(other).sort(), ['id','slot','ownerName','mine','lamp','working'].sort());
+    assert.deepEqual(Object.keys(other).sort(), ['id','slot','ownerName','ownerColor','mine','lamp','working'].sort());
     assert.equal(other.mine,false);
     assert.doesNotMatch(JSON.stringify(other), /Private|branch|decision|computer|Nova/);
   }
@@ -232,4 +232,22 @@ test('a missing reply expires visibly without replaying work or accepting a late
   ws.frame({t:'cubby.reply',floorId:'floor',requestId:request.requestId,text:'late answer'});
   assert.equal(f.cubbies.state('floor','alice').cubbies[0].interior!.chat.length,2);
   assert.doesNotThrow(()=>f.cubbies.chat('floor','alice',invite.id,message('explicit new message')));
+});
+
+
+test('owner colour validates before inviting, persists across floors and is visible to watchers', t => {
+  const f = fixture(t), look = { skin: 1, hair: 2, style: 3 };
+  assert.throws(() => f.cubbies.setup('floor', 'alice', 0, 'Nova', look, '#ffffff'), /palette/);
+  assert.equal(f.cubbies.records.rows.size, 0);
+  const first = f.cubbies.setup('floor', 'alice', 0, 'Nova', look, '#0f7a6b');
+  f.connect(first.token);
+  f.cubbies.setup('other', 'alice', 0, 'Nova', look, '#c0283f');
+  assert.equal(f.cubbies.state('floor', 'alice').cubbies[0].ownerColor, '#c0283f');
+  assert.equal(f.cubbies.state('other', 'alice').ownerColor, '#c0283f');
+  assert.equal(f.cubbies.state('floor', 'bob').cubbies[0].ownerColor, '#c0283f');
+  f.cubbies.knock('floor', 'bob', first.id, 'bob-client');
+  f.cubbies.admit('floor', 'alice', first.id, 'bob', true);
+  assert.equal(f.cubbies.state('floor', 'bob', 'bob-client').cubbies[0].ownerColor, '#c0283f');
+  const saved = JSON.parse(readFileSync(path.join(f.dir, 'cubbies.json'), 'utf8'));
+  assert.ok(saved.every((r: any) => r.ownerColor === '#c0283f'));
 });

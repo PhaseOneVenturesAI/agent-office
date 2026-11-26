@@ -1,3 +1,4 @@
+import { defaultOwnerColor, personalRole } from '../../../shared/personal-agents/appearance';
 /**
  * Draft floors (cubbies step 2): a project before its kickoff, seen only by its owner. While you're on
  * one of your own drafts (store.drafts.here) the floor's lights are down, its desks are under sheets,
@@ -13,7 +14,7 @@ import { store } from '../../state';
 import { officeFill } from '../../world/sky';
 import type { Collider, Interactable } from '../../world/types';
 import type { Cubbies } from '../cubbies';
-import { leadColorIndex, toolName } from '../cubbies/model';
+import { toolName } from '../cubbies/model';
 import { wireDraftCards } from './board-cards';
 import { wireDesignBook } from './design';
 import { wireKickoff } from './kickoff';
@@ -169,10 +170,11 @@ export function installDrafts(ctx: Ctx, deps: DraftsDeps) {
   function sync() {
     const draft = here();
     if (!draft) return;
-    // The cubby's lead is the one character: its look and its color (from its name) here as in there.
+    // The cubby's lead is the one character: its look and its owner's colour here as in there.
     const it = cubbyOf()?.interior;
     const name = lead();
-    scene.setLead(name, it?.look, leadColorIndex(it?.leadName ?? name));
+    scene.setLead(name, it?.look, cubbyOf()?.ownerColor ?? store.cubbies.ownerColor ?? defaultOwnerColor(''),
+      cubbyOf()?.ownerName ?? store.me.account?.name ?? 'Owner', here()?.name ?? store.project?.name ?? 'Project', personalRole(it?.agents.find(a => a.role === 'lead'), true));
     scene.boards.sync(draft.boards, draft.id);
     syncPods();
     ctx.hint.invalidate();
