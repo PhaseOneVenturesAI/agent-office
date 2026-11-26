@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { stickMovement, lookDrag, touchLayout, touchFirst } from '../src/client/features/touch/math.js';
+import { stickMovement, lookDrag, touchLayout, touchFirst, lookRegion } from '../src/client/features/touch/math.js';
 
 test('stick is camera-relative, analog, dead-zoned and capped diagonally', () => {
   assert.deepEqual(stickMovement(0, 0, 40), { x: 0, z: 0 });
@@ -51,3 +51,16 @@ test('touch controls show when touch is the main pointer, even if iOS also repor
   assert.equal(touchFirst(false, 10), false); // touchscreen laptop: mouse is primary
   assert.equal(touchFirst(true, 0), false);
 });
+
+for (const [width, height, panelBottom] of [[390, 844, 300], [844, 390, 110]]) {
+  test(`look area starts below a top-right panel at ${width}×${height}`, () => {
+    const panel = { left: width - 262, right: width - 12, top: 72, bottom: panelBottom };
+    const size = touchLayout(width, height);
+    const bottom = height - size.bottom - size.action - 12;
+    const r = lookRegion(width, 72, bottom, width, [panel]);
+    assert.ok(r.width >= 72 && r.height >= 120);
+    assert.ok(r.left >= panel.right || r.left + r.width <= panel.left || r.top >= panel.bottom || r.top + r.height <= panel.top);
+    assert.equal(r.top, panel.bottom + 12);
+    assert.ok(r.top + r.height <= bottom);
+  });
+}

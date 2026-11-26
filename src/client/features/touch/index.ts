@@ -34,8 +34,7 @@ export function installTouch(ctx: Ctx) {
     const vv = window.visualViewport;
     const keyboard = !!vv && vv.scale === 1 && innerHeight - vv.height > 120;
     return !touchOnly() || !player.enabled || !player.mouseLook || document.hidden || modalOpen() || isTyping() || keyboard || !!ctx.trip() ||
-      !!document.querySelector('.lite-offer, #loading:not(.hidden)') ||
-      [...document.querySelectorAll<HTMLElement>('.side section')].some(el => el.getClientRects().length > 0);
+      !!document.querySelector('.lite-offer, #loading:not(.hidden)');
   }
   function sync() {
     const available = touchOnly();

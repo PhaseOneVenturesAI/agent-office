@@ -9,6 +9,9 @@
 .touch-action:active, .touch-secondary:active { background: var(--accent); }
 .touch-look { position: absolute; background: transparent; }
 body.touch-enabled .topbar { top: calc(12px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left)); right: calc(12px + env(safe-area-inset-right)); }
+/* Leave the touch row and chat clear while keeping each panel's own scrolling. */
+body.touch-enabled .side { top: calc(72px + env(safe-area-inset-top)); right: calc(12px + env(safe-area-inset-right)); max-height: max(0px, calc(100dvh - 72px - env(safe-area-inset-top) - var(--touch-row) - var(--touch-chat, 40px) - 36px - env(safe-area-inset-bottom))); }
+body.touch-enabled .side section { flex-shrink: 1; min-height: 0; }
 body.touch-enabled .chat { bottom: calc(var(--touch-row) + 24px + env(safe-area-inset-bottom)); left: calc(12px + env(safe-area-inset-left)); width: calc(100% - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)); }
 body.touch-enabled #chat-input { font-size: 16px; }
 body.touch-enabled .hint { bottom: calc(var(--touch-row) + var(--touch-chat, 40px) + 36px + env(safe-area-inset-bottom)); max-width: calc(100% - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)); width: max-content; font-size: 13px; padding: 8px 10px; gap: 8px; }

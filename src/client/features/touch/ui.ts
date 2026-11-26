@@ -35,7 +35,8 @@ export function createTouchUI() {
     document.body.style.setProperty('--touch-chat', `${visible(chat) ? chat.offsetHeight : 0}px`);
     document.body.style.setProperty('--touch-keyboard', `${Math.max(0, innerHeight - height - y)}px`);
     const top = Math.max(safe.top + 12, topbar.getBoundingClientRect().bottom - y + 12);
-    const obstacles = [document.getElementById('chat-input')!, document.getElementById('chat-log')!, hint]
+    const obstacles = [document.getElementById('chat-input')!, document.getElementById('chat-log')!, hint,
+      ...document.querySelectorAll<HTMLElement>('.side section')]
       .filter(visible).map(el => {
         const r = el.getBoundingClientRect();
         return { left: r.left - x, right: r.right - x, top: r.top - y, bottom: r.bottom - y };
@@ -49,7 +50,7 @@ export function createTouchUI() {
     requestAnimationFrame(layout);
   }
   const observer = new ResizeObserver(schedule);
-  for (const el of [document.documentElement, chat, hint, topbar]) observer.observe(el);
+  for (const el of [document.documentElement, chat, hint, topbar, ...document.querySelectorAll('.side')]) observer.observe(el);
   window.addEventListener('resize', schedule);
   window.visualViewport?.addEventListener('resize', schedule);
   window.visualViewport?.addEventListener('scroll', schedule);
