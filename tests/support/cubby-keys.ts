@@ -1,3 +1,4 @@
+import { ownerVerdictEncoding, type PitchVerdictPayload } from '../../src/shared/protocol/pitch.js';
 import { ownerFeedbackEncoding, type DraftFeedbackPayload } from '../../src/shared/protocol/drafts.js';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import { ownerChatEncoding, ownerDeviceEncoding, type CubbyDevicePayload, type CubbyOwnerPayload } from '../../src/shared/protocol/cubbies.js';
@@ -7,6 +8,7 @@ export function testOwnerKey() {
   return {
     ownerKey: publicKey.export({ format: 'der', type: 'spki' }).toString('base64url'),
     sign: (frame: CubbyOwnerPayload) => signed(ownerChatEncoding(frame)),
+    signVerdict: (frame: PitchVerdictPayload) => signed(ownerVerdictEncoding(frame)),
     signFeedback: (frame: DraftFeedbackPayload) => signed(ownerFeedbackEncoding(frame)),
     signDevice: (frame: CubbyDevicePayload) => signed(ownerDeviceEncoding(frame)),
   };

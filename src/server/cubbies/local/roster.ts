@@ -1,3 +1,4 @@
+import { localPitch } from './pitch.js';
 import { localDesign } from './design.js';
 import os from 'node:os';
 import path from 'node:path';
@@ -101,7 +102,10 @@ export async function roster(config: LocalConfig, deps: RosterDeps = {}): Promis
   let draft: Snapshot['draft'];
   try { draft = localDesign(config.project).boards; }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') errors.push('Draft board record unavailable'); }
-  const snapshot: Snapshot = { t: 'cubby.snapshot', floorId: config.floor, agents, plan, needsYou, ...(draft ? { draft } : {}), observedAt: Date.now(),
+  let pitch: Snapshot['pitch'];
+  try { pitch = localPitch(config.project).pitch; }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') errors.push('Pitch record unavailable'); }
+  const snapshot: Snapshot = { t: 'cubby.snapshot', floorId: config.floor, agents, plan, needsYou, ...(draft ? { draft } : {}), ...(pitch ? { pitch } : {}), observedAt: Date.now(),
     ...(errors.length ? { error: errors.join('; ') } : {}) };
   return snapshot;
 }

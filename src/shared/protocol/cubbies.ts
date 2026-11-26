@@ -97,7 +97,7 @@ export type CubbyNodeFrame =
   | { t: 'cubby.devices'; floorId: string; devices: CubbyDevice[]; requests: CubbyDeviceRequest[]; note?: string }
   | { t: 'cubby.snapshot'; floorId: string; agents: CubbyAgent[]; plan: string[]; needsYou: string[]; observedAt: number; error?: string; wake?: string;
       /** On a draft floor: what the local `.agent-office/draft.json` says (see protocol/drafts.ts). */
-      draft?: import('./drafts.js').DraftBoards }
+      draft?: import('./drafts.js').DraftBoards; pitch?: import('./pitch.js').Pitch }
   | { t: 'cubby.reply'; floorId: string; requestId: string; text: string; error?: boolean }
   /**
    * One piece of a cleaned board image (step 5): `data` is base64, pieces arrive in order, and the office
@@ -106,6 +106,7 @@ export type CubbyNodeFrame =
   | { t: 'cubby.design-image'; floorId: string; hash: string; mime: 'image/png' | 'image/jpeg' | 'image/webp'; index: number; total: number; data: string };
 export interface CubbyBinding { cubbyId: string; floorId: string; ownerId: string; connectionId: string; computerId: string }
 export type CubbyRelayFrame =
+  | ({ t: 'cubby.verdict'; signature: string } & CubbyBinding & import('./pitch.js').PitchVerdictMessage)
   | ({ t: 'cubby.ready'; signature: string } & CubbyBinding)
   | ({ t: 'cubby.chat'; signature: string } & CubbyBinding & CubbyOwnerMessage)
   | ({ t: 'cubby.device-request'; signature: string; requestId: string; at: number; publicKey: string; label: string } & CubbyBinding)

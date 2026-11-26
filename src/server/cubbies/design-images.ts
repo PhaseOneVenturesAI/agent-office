@@ -8,8 +8,11 @@ export class DraftImages {
   private complete = new Map<string, DesignImage>();
   private pending = new Map<string, Pending>();
   boards(boards: DraftBoards): void {
+    this.references([...boards.ideas, ...boards.screens].flatMap(c => c.image ? [c.image] : []), DRAFT_LIMITS.images);
+  }
+  references(images: DraftImage[], limit: number): void {
     this.referenced.clear();
-    for (const c of [...boards.ideas, ...boards.screens]) if (c.image && this.referenced.size < DRAFT_LIMITS.images) this.referenced.set(c.image.hash, c.image);
+    for (const image of images) if (this.referenced.size < limit) this.referenced.set(image.hash, image);
     for (const hash of this.complete.keys()) if (!this.referenced.has(hash)) this.complete.delete(hash);
     for (const hash of this.pending.keys()) if (!this.referenced.has(hash)) this.pending.delete(hash);
   }

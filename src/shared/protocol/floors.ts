@@ -104,6 +104,7 @@ export interface RepoChoice {
 
 export interface FloorView {
   cubbies: CubbiesState;
+  pitch?: import('./pitch.js').PitchView;
   drafts: DraftsState;
   /** The floor you're on; null while the building has none. */
   floor: string | null;
