@@ -21,7 +21,8 @@ async function open(touch, width, height) {
   page.setDefaultTimeout(12000);
   await page.addInitScript(() => {
     localStorage.setItem('agent-office.profile', JSON.stringify({ name: 'Touch fixture', color: '#ff8a5b', look: { skin: 0, hair: 0, style: 0 } }));
-    localStorage.setItem('agent-office.settings', JSON.stringify({ muted: true, musicMuted: true, volume: 0, music: 0, view: 'first' }));
+    // Preserve the live office's visible People panel through the normal saved preference.
+    localStorage.setItem('agent-office.settings', JSON.stringify({ muted: true, musicMuted: true, volume: 0, music: 0, view: 'first', hud: { people: true } }));
     if (navigator.mediaDevices) navigator.mediaDevices.getUserMedia = async () => { throw new DOMException('Fixture', 'NotAllowedError'); };
   });
   await page.route('**/api/**', r => r.fulfill({ contentType: 'application/json', body: '{}' }));
@@ -45,7 +46,9 @@ async function open(touch, width, height) {
     check('touch offer explains on-screen controls', await page.locator('.lite-offer').innerText().then(t => t.includes('Walk around in 3D with on-screen controls')));
     await page.getByRole('button', { name: 'Stay in 3D', exact: true }).tap();
     check('stay-in-3D choice persists', await page.evaluate(() => localStorage.getItem('agent-office.lite-declined') === '1'));
-    await page.waitForSelector('.touch-controls:visible');
+    await settle(page);
+    check('People panel is visible at entry', await page.locator('#people-panel').isVisible());
+    check('controls appear with People panel visible', await page.locator('.touch-controls').isVisible());
   }
   // Deterministic empty walkway, retaining actual collisions and frame ticks.
   await page.evaluate(() => {
@@ -72,15 +75,21 @@ async function aimBoard(page) {
 }
 async function layoutCheck(page, name) {
   await settle(page);
+  check(name + ' People panel visible', await page.locator('#people-panel').isVisible());
+  check(name + ' controls visible with panels', await page.locator('.touch-controls').isVisible());
   const result = await page.evaluate(() => {
     const rect = el => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, width: r.width, height: r.height }; };
     const controls = [...document.querySelectorAll('.touch-surface')].filter(el => el.getClientRects().length && !el.hidden).map(rect);
     const hud = [...document.querySelectorAll('.topbar, #chat-input, #chat-log, .hint')].filter(el => el.getClientRects().length).map(rect);
+    const panels = [...document.querySelectorAll('.side section')].filter(el => el.getClientRects().length).map(rect);
+    const panelHits = panels.every(r => document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.closest('.side'));
     const overlaps = (a, b) => a.x < b.right && a.right > b.x && a.y < b.bottom && a.bottom > b.y;
-    return { controls, hud, overlap: controls.some(a => hud.some(b => overlaps(a, b))), width: visualViewport.width, height: visualViewport.height };
+    return { controls, hud, panels, panelHits, panelOverlap: controls.some(a => panels.some(b => overlaps(a, b))), overlap: controls.some(a => hud.some(b => overlaps(a, b))), width: visualViewport.width, height: visualViewport.height };
   });
   check(name + ' controls inside viewport', result.controls.every(r => r.x >= 0 && r.y >= 0 && r.right <= result.width + 1 && r.bottom <= result.height + 1));
   check(name + ' controls clear HUD', !result.overlap);
+  check(name + ' stick, action, secondary and look clear panels', !result.panelOverlap);
+  check(name + ' panel centres receive touches', result.panelHits);
   const look = await page.locator('.touch-look').boundingBox();
   check(name + ' has usable look area', look.width >= 72 && look.height >= 44);
   return result;
@@ -91,6 +100,12 @@ try {
   check('controls appear on touch', await page.locator('.touch-controls').isVisible());
   check('chat box says tap on touch', await page.locator('#chat-input').getAttribute('placeholder') === 'Tap to chat');
   check('Q absent without hint', !await page.locator('.touch-secondary').isVisible());
+  await layoutCheck(page, 'phone-entry');
+  // A size-only change must be caught by ResizeObserver, without a HUD class mutation.
+  await page.locator('#people-panel').evaluate(el => { el.style.height = '228px'; });
+  await layoutCheck(page, 'panel-resized');
+  await page.locator('#people-panel').evaluate(el => { el.style.removeProperty('height'); });
+  await layoutCheck(page, 'panel-restored');
   const cdp = await context.newCDPSession(page);
   const touches = new Map();
   async function touch(type, id, point) {
@@ -164,12 +179,14 @@ try {
   check('typing hides controls', !await page.locator('.touch-controls').isVisible());
   await page.locator('#chat-input').blur();
   await page.waitForSelector('.touch-controls:visible');
-  // An existing dock panel uses HUD classes, not the modal stack.
-  await page.locator('.dock-panel').first().tap();
-  await page.waitForSelector('.touch-controls', { state: 'hidden' });
-  check('side panel hides controls', !await page.locator('.touch-controls').isVisible());
-  await page.locator('.dock-panel').first().tap();
-  await page.waitForSelector('.touch-controls:visible');
+  // Toggle Workers while People stays visible; class changes must relayout the look area.
+  const workersToggle = page.locator('.dock-panel').filter({ hasText: 'Workers' });
+  await workersToggle.tap();
+  check('dock opens Workers panel', await page.locator('#workers-panel').isVisible());
+  await layoutCheck(page, 'dock-open');
+  await workersToggle.tap();
+  check('dock closes Workers panel', !await page.locator('#workers-panel').isVisible());
+  await layoutCheck(page, 'dock-closed');
 
   const issue = { number: 1, title: 'Touch fixture card', state: 'OPEN', url: 'https://example.invalid/issues/1', author: 'fixture', labels: [], assignees: [], createdAt: '2026-11-25T00:00:00Z', updatedAt: '2026-11-25T00:00:00Z', body: 'Local fixture', comments: 0 };
   await page.route('**/api/gh/issue?*', r => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ ...issue, comments: [], viewer: 'fixture' }) }));
@@ -180,7 +197,14 @@ try {
   await page.getByRole('button', { name: '✋ Pick it up', exact: true }).tap();
   await page.waitForSelector('.touch-secondary:visible');
   check('Q follows real carried-card hint', (await page.locator('.touch-secondary').getAttribute('aria-label')).startsWith('Q:'));
-  await layoutCheck(page, 'with-Q');
+  for (const [width, height, name] of [[390, 844, 'with-Q-phone'], [844, 390, 'with-Q-landscape']]) {
+    await page.setViewportSize({ width, height });
+    await layoutCheck(page, name);
+    check(name + ' secondary visible', await page.locator('.touch-secondary').isVisible());
+    await page.screenshot({ path: `${out}/${name}.png` });
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await settle(page);
   await page.locator('.touch-secondary').tap();
   await page.waitForFunction(() => !window.__office.carried());
   await page.waitForSelector('.touch-secondary', { state: 'hidden' });
@@ -215,6 +239,7 @@ try {
   writeFileSync(`${out}/report.json`, JSON.stringify({ checks, errors, browser: browser.version() }, null, 2));
   console.log(`${checks.length} browser checks passed; screenshots: ${out}`);
 } catch (error) {
+  console.error(`${checks.length} browser checks passed before failure`);
   console.error('Browser errors:', errors);
   for (const c of browser.contexts()) for (const p of c.pages()) {
     console.error(await p.evaluate(() => ({ pos: window.__office?.player.pos, input: window.__office?.player.walkInput, enabled: window.__office?.player.enabled, mouseLook: window.__office?.player.mouseLook, hidden: document.hidden, typing: document.activeElement?.tagName, modals: document.querySelector('#modal-root')?.textContent, panels: [...document.querySelectorAll('.side section')].map(el => [el.className, el.getClientRects().length]), root: document.querySelector('.touch-controls')?.outerHTML, width: innerWidth, vv: [visualViewport.width, visualViewport.height, visualViewport.scale] })));

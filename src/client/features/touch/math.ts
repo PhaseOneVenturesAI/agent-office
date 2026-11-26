@@ -25,14 +25,27 @@ export function touchLayout(width: number, height: number, safe: Insets = { top:
 }
 
 export interface Rect { left: number; right: number; top: number; bottom: number }
-/** Largest usable right-side rectangle, leaving the actual HUD hit areas clear (also in landscape). */
+/** Largest usable right-side rectangle, leaving the actual HUD hit areas clear (also in landscape).
+ * It starts at `top`; only when that leaves no usable area (a panel in the top right, say) does it start below one. */
 export function lookRegion(width: number, top: number, bottom: number, right: number, obstacles: Rect[]) {
-  let best = { left: width * 0.48, top, width: 0, height: 0 };
-  for (const left of [width * 0.48, ...obstacles.map(r => r.right + 12)]) {
-    if (left < width * 0.48 || right - left < 72) continue;
-    const edge = Math.min(bottom, ...obstacles.filter(r => r.right > left && r.left < right && r.bottom > top).map(r => r.top - 12));
-    const height = Math.max(0, edge - top);
-    if ((right - left) * height > best.width * best.height) best = { left, top, width: right - left, height };
+  const from = (start: number) => {
+    let best = { left: width * 0.48, top: start, width: 0, height: 0 };
+    for (const left of [width * 0.48, ...obstacles.map(r => r.right + 12)]) {
+      if (left < width * 0.48 || right - left < 72) continue;
+      const edge = Math.min(bottom, ...obstacles.filter(r => r.right > left && r.left < right && r.bottom > start).map(r => r.top - 12));
+      const height = Math.max(0, edge - start);
+      if ((right - left) * height > best.width * best.height) best = { left, top: start, width: right - left, height };
+    }
+    return best;
+  };
+  const usable = (r: { width: number; height: number }) => r.width >= 72 && r.height >= 120;
+  const first = from(top);
+  if (usable(first)) return first;
+  let best = first;
+  for (const start of obstacles.map(r => r.bottom + 12)) {
+    if (start <= top || start >= bottom) continue;
+    const r = from(start);
+    if (r.width * r.height > best.width * best.height) best = r;
   }
   return best;
 }
