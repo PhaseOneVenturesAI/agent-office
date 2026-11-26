@@ -9,6 +9,7 @@ export class PersonalNameplate {
   constructor(y: number) {
     this.sprite.name = 'personal-nameplate';
     this.sprite.position.y = y;
+    this.sprite.userData.base = y;
     this.sprite.renderOrder = 10;
   }
 

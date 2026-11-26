@@ -12,6 +12,7 @@ import type { CubbyAgent, CubbyInfo, CubbyInterior } from '../../../shared/proto
 import { AVATAR_COLORS } from '../../state/persist';
 import { PersonalPerson } from './personal-agents/person';
 import { PersonalHelper } from './personal-agents/helper';
+import { declutter, type Plate } from './personal-agents/declutter';
 import { defaultOwnerColor, helperTool, personalRole, type OwnerColor } from '../../../shared/personal-agents/appearance';
 import { store } from '../../state';
 import type { Collider } from '../../world/types';
@@ -69,8 +70,9 @@ export class Interior {
     this.lead = new PersonalPerson('Lead', AVATAR_COLORS[0], { skin: 0, hair: 0, style: 0 });
     this.lead.root.position.set(f.lead.x, 0, f.lead.z);
     this.lead.ring.floorY = place.y ?? 0;
-    // The lead stands beside the left partition; keep the whole plate inside the room.
-    this.lead.root.getObjectByName('personal-nameplate')!.position.x = 0.45;
+    // The lead stands beside the left partition: nudge its plate into the room, never so far that
+    // it leaves the lead's own head (the browser check holds the head inside the plate).
+    this.lead.root.getObjectByName('personal-nameplate')!.position.x = 0.4;
     this.group.add(this.lead.root);
 
     // The builders' desk: two seats, the harness's limit.
@@ -302,12 +304,16 @@ export class Interior {
     else this.laptop.update(dt, undefined, 0);
     this.lead.update(dt, t, false, false);
     const shown = this.focused(focus);
-    // Give the focused helper the reading space; the lead plate returns when focus leaves it.
-    showTags(this.lead.root, !shown);
+    // Every person (the lead, sessions) keeps its own plate over its own head; helper bots show
+    // theirs only while you look at them (v4.3). Plates that would overlap on screen are lifted apart.
+    showTags(this.lead.root, true);
+    const plates: (Plate | undefined)[] = [plateOf(this.lead.root)];
     for (const v of this.views.values()) {
       v.model?.update(dt, t);
       if (v.model) {
-        showTags(v.model.root, v === shown);
+        const on = v.model instanceof PersonalPerson || v === shown;
+        showTags(v.model.root, on);
+        if (on) plates.push(plateOf(v.model.root));
       }
       if (v.spot.kind === 'machine') {
         const a = v.agent;
@@ -325,6 +331,7 @@ export class Interior {
         });
       }
     }
+    if (focus?.camera) declutter(plates.filter((p): p is Plate => !!p), focus.camera);
   }
 
   /** Every agent's id, in roster order. */
@@ -348,3 +355,9 @@ export class Interior {
 }
 
 export type { Focus } from './focus';
+
+/** An agent's combined nameplate and its resting height, if it has one. */
+function plateOf(root: THREE.Object3D): Plate | undefined {
+  const sprite = root.getObjectByName('personal-nameplate') as THREE.Sprite | undefined;
+  return sprite ? { sprite, base: sprite.userData.base ?? sprite.position.y } : undefined;
+}

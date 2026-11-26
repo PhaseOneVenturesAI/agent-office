@@ -118,27 +118,46 @@ try {
     const boxes = await page.evaluate(async () => {
       const o = window.__office, inside = window.__audit.cubbies.rooms().get(0).interior;
       const Vector3 = o.camera.position.constructor;
-      const results = [];
-      for (const target of [null, ...inside.views.values()]) {
-        inside.update(0, 2, Date.now(), { x: o.player.pos.x, z: o.player.pos.z, yaw: o.player.camYaw, aimed: target?.model?.root.userData.interact });
+      const project = () => {
         o.scene.updateMatrixWorld(true); o.camera.updateMatrixWorld(true);
         const visible = [];
         inside.group.traverseVisible(sprite => {
           if (!sprite.isSprite || !sprite.layers.test(o.camera.layers)) return;
+          let owner = sprite.parent; while (owner && !owner.userData.personal) owner = owner.parent;
           const center = sprite.getWorldPosition(new Vector3()), scale = sprite.getWorldScale(new Vector3());
           const right = new Vector3().setFromMatrixColumn(o.camera.matrixWorld, 0), up = new Vector3().setFromMatrixColumn(o.camera.matrixWorld, 1);
           const corners = [-0.5, 0.5].flatMap(x => [-0.5, 0.5].map(y => center.clone().addScaledVector(right, x * scale.x).addScaledVector(up, y * scale.y).project(o.camera)));
           if (corners.some(p => p.z < -1 || p.z > 1)) return;
-          const box = { title: sprite.userData.lines?.[0] ?? sprite.name, left: Math.min(...corners.map(p => (p.x + 1) * innerWidth / 2)), right: Math.max(...corners.map(p => (p.x + 1) * innerWidth / 2)), top: Math.min(...corners.map(p => (1 - p.y) * innerHeight / 2)), bottom: Math.max(...corners.map(p => (1 - p.y) * innerHeight / 2)) };
-          visible.push(box);
+          const head = owner ? owner.getWorldPosition(new Vector3()).setY(center.y).project(o.camera) : null;
+          visible.push({ title: sprite.userData.lines?.[0] ?? sprite.name, owner: owner?.userData.personal.label ?? null, headX: head ? (head.x + 1) * innerWidth / 2 : null,
+            left: Math.min(...corners.map(p => (p.x + 1) * innerWidth / 2)), right: Math.max(...corners.map(p => (p.x + 1) * innerWidth / 2)), top: Math.min(...corners.map(p => (1 - p.y) * innerHeight / 2)), bottom: Math.max(...corners.map(p => (1 - p.y) * innerHeight / 2)) });
         });
-        results.push({ aimed: target?.agent.id ?? null, expected: (target?.model ?? inside.lead).root.userData.personal.label, visible });
+        return visible;
+      };
+      const people = [inside.lead, ...[...inside.views.values()].map(v => v.model).filter(m => m && !m.constructor.name.includes('Helper'))];
+      const results = [];
+      for (const target of [null, ...inside.views.values()]) {
+        inside.update(0, 2, Date.now(), { x: o.player.pos.x, z: o.player.pos.z, yaw: o.player.camYaw, aimed: target?.model?.root.userData.interact, camera: o.camera });
+        const helper = target?.model && target.model.constructor.name.includes('Helper') ? target.model.root.userData.personal.label : null;
+        results.push({ aimed: target?.agent.id ?? null, expected: [...people.map(m => m.root.userData.personal.label), ...(helper ? [helper] : [])].sort(), visible: project() });
       }
+      // A close line-up: two people half a metre apart, then one straight behind the other.
+      const [a, b] = people, keep = [a.root.position.clone(), b.root.position.clone()];
+      for (const [dx, dz] of [[0.5, 0], [0, 0.6]]) {
+        b.root.position.copy(a.root.position).add(new Vector3(dx, 0, dz));
+        inside.update(0, 2, Date.now(), { x: o.player.pos.x, z: o.player.pos.z, yaw: o.player.camYaw, aimed: null, camera: o.camera });
+        results.push({ aimed: `close ${dx},${dz}`, expected: people.map(m => m.root.userData.personal.label).sort(), visible: project() });
+      }
+      a.root.position.copy(keep[0]); b.root.position.copy(keep[1]);
+      inside.update(0, 2, Date.now(), { x: o.player.pos.x, z: o.player.pos.z, yaw: o.player.camYaw, aimed: null, camera: o.camera });
       return results;
     });
     for (const frame of boxes) {
-      assert.equal(frame.visible.length, 1, 'one reading space; no computer/status pill');
-      assert.equal(frame.visible[0].title, frame.expected, 'focused helper or the lead when none is focused');
+      assert.deepEqual(frame.visible.map(v => v.title).sort(), frame.expected, `${width}px ${frame.aimed}: one plate per person, plus the focused helper`);
+      for (const v of frame.visible) {
+        assert.equal(v.title, v.owner, `${width}px ${frame.aimed}: ${v.title} hangs on its own agent`);
+        assert.ok(v.headX >= v.left - 1 && v.headX <= v.right + 1, `${width}px ${frame.aimed}: ${v.title} is over its own head`);
+      }
       for (let i = 0; i < frame.visible.length; i++) for (const b of frame.visible.slice(i + 1)) {
         const a = frame.visible[i];
         assert.ok(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top,

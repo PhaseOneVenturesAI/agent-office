@@ -5,7 +5,7 @@
 import type * as THREE from 'three';
 
 /** Where you are, and what you're aiming at, for deciding whose name tag shows. */
-export interface Focus { x: number; z: number; aimed: unknown; /** Which way you're looking (0 is -z, π/2 is -x). */ yaw: number }
+export interface Focus { x: number; z: number; aimed: unknown; /** Which way you're looking (0 is -z, π/2 is -x). */ yaw: number; /** The view's camera, for keeping nameplates apart on screen. */ camera?: THREE.Camera }
 
 /** How far round from straight ahead a helper can be for its tag to show without aiming (cos 30°). */
 export const IN_FRONT = Math.cos(Math.PI / 6);
