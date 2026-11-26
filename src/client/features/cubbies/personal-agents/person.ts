@@ -77,6 +77,10 @@ export class PersonalPerson extends Person {
     this.root.userData.personal = { role, ownerColor: color, label };
   }
 
+  /** The roster status, as the office's worker models report it ('offline' while the computer sleeps). */
+  status: import('../../../../shared/protocol').WorkerStatus = 'starting';
+  setStatus(status: import('../../../../shared/protocol').WorkerStatus) { this.status = status; }
+
   override setDoing(text: string | undefined) {
     text ??= '';
     if (text === this.statusText) return;

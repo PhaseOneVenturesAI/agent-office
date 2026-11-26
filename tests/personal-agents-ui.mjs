@@ -12,7 +12,7 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, dev
 const errors = [], sent = [], evidence = [];
 let socket;
 page.on('pageerror', e => errors.push(e.message));
-const color = '#1f8a7a', look = { skin: 2, hair: 4, style: 1 };
+const color = '#1e40c8', look = { skin: 2, hair: 4, style: 1 };
 const agents = [
   { id: 'lead', tool: 'Claude', role: 'lead', task: 'Project lead', branch: 'main', status: 'working' },
   { id: 'marketing', tool: 'Claude', role: 'lead', department: 'Marketing', task: 'Launch plan', branch: 'main', status: 'working' },
@@ -64,8 +64,8 @@ try {
   await page.evaluate(() => { const a = window.__audit; a.ctx.interactions.use(a.cubbies.rooms().get(0).door, 'E', null); });
   await page.waitForSelector('.cubby-setup');
   assert.equal(await page.getByRole('radio', { name: 'Owner colour: Violet', exact: true }).getAttribute('aria-checked'), 'true');
-  await page.getByRole('radio', { name: 'Owner colour: Teal', exact: true }).click();
-  assert.equal(await page.getByRole('radio', { name: 'Owner colour: Teal', exact: true }).getAttribute('aria-checked'), 'true');
+  await page.getByRole('radio', { name: 'Owner colour: Blue', exact: true }).click();
+  assert.equal(await page.getByRole('radio', { name: 'Owner colour: Blue', exact: true }).getAttribute('aria-checked'), 'true');
   assert.equal(await page.locator('.cubby-setup .btn.close').count(), 1);
   await shot('setup-swatches');
   await page.fill('input[aria-label="Lead name"]', 'Nova');
@@ -112,7 +112,7 @@ try {
     const { PersonalPerson } = await import('/features/cubbies/personal-agents/person.ts');
     const group = new window.__audit.cubbies.group.constructor(); group.name = 'personal-comparison';
     const office = new Worker('Office worker', '#4a7dbd'); office.setOwner('Office'); office.setStatus('idle', false); office.root.position.set(-0.9, 0, 0);
-    const person = new PersonalPerson('Nova', '#1f8a7a', { skin: 2, hair: 4, style: 1 }); person.setUniform('Jonathan', 'Plimbo', 'CEO', '#1f8a7a'); person.root.position.set(0.9, 0, 0);
+    const person = new PersonalPerson('Nova', '#1e40c8', { skin: 2, hair: 4, style: 1 }); person.setUniform('Jonathan', 'Plimbo', 'CEO', '#1e40c8'); person.root.position.set(0.9, 0, 0);
     for (const m of [office, person]) { group.add(m.root); m.update(0.1, 1); }
     group.position.set(-14, 0, -4); window.__office.scene.add(group);
   });

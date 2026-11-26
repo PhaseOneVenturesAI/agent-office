@@ -2,7 +2,7 @@
 export const OWNER_PALETTE = [
   { name: 'Violet', color: '#6c4fd8' }, { name: 'Teal', color: '#1f8a7a' },
   { name: 'Red', color: '#d1495b' }, { name: 'Orange', color: '#e07a3f' },
-  { name: 'Blue', color: '#3a6fd8' }, { name: 'Green', color: '#3f8f4f' },
+  { name: 'Blue', color: '#1e40c8' }, { name: 'Green', color: '#3f8f4f' },
   { name: 'Pink', color: '#c94f8a' }, { name: 'Slate', color: '#4a5568' },
 ] as const;
 export type OwnerColor = typeof OWNER_PALETTE[number]['color'];

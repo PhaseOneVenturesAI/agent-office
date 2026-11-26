@@ -185,6 +185,7 @@ export class Interior {
           v.model.setTask({ name: card.title, summary: card.body });
           v.model.dress(a.tool, a.role === 'direct' ? `${a.tool} session` : a.task, color);
         } else {
+          v.model.setStatus(workerStatus(a.status, this.asleep));
           v.model.setUniform(ownerName, project, personalRole(a), color);
           v.model.setDoing(this.asleep ? '💤 asleep' : card.title);
         }
