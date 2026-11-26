@@ -61,7 +61,10 @@ test('only named accounts create local private drafts; names, collisions, permis
   const c = f.client('alice');
   draftsHandlers['drafts.new'](f.ctx, c, { t: 'drafts.new', name: '  Secret\n project  ' });
   const id = c.ws.sent.find((m: any) => m.t === 'drafts.made').floorId;
-  assert.equal(id, 'draft-secret-project'); assert.equal(c.peer.floor, id);
+  assert.equal(id, 'draft-secret-project');
+  assert.equal(c.peer.floor, undefined, 'creation waits for the client to ride');
+  floorHandlers['floor.go'](f.ctx, c, { t: 'floor.go', floor: id });
+  assert.equal(c.peer.floor, id, 'the owner arrives through the normal visibility check');
   const def = f.building.list()[0]; assert.equal(def.draft, true); assert.equal(def.name, 'Secret project');
   const git = (...args: string[]) => execFileSync('git', args, { cwd: def.dir, encoding: 'utf8' }).trim();
   assert.equal(git('branch', '--show-current'), 'main');

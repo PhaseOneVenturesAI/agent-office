@@ -280,7 +280,9 @@ export function installDrafts(ctx: Ctx, deps: DraftsDeps) {
     officeFill().multiplyScalar(dim);
   });
 
-  ctx.messages.on('drafts.made', (m) => deps.ride(m.floorId));
+  ctx.messages.on('drafts.made', (m) => {
+    if (store.floor !== m.floorId) deps.ride(m.floorId);
+  });
 
   const act = () => studioAction(here() ?? {}, lead());
   const use = () => {

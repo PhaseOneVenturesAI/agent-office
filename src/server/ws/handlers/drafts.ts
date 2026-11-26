@@ -23,7 +23,7 @@ export const draftsHandlers = {
       if (!floor) return ctx.warn(c, 'Draft saved, but its floor could not open. Check the office log');
       ctx.floorsChanged();
       ctx.sendTo(c, { t: 'drafts.made', floorId: floor.id });
-      ctx.goToFloor(c, floor);
+      // The client's elevator ride requests floor.go once it's ready to arrive.
       draftsChanged(ctx);
     } catch (error) { ctx.warn(c, (error as Error).message); }
   },
