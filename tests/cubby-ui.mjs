@@ -80,7 +80,27 @@ const shot = async (name) => {
 };
 
 const nightEvidence = [];
-const nightShot = async (name) => {
+/** Mean luma of the central scene (HUD excluded), per viewport, as the page stands. */
+const sceneLuma = async () => {
+  const out = {};
+  for (const [width, height, suffix] of [[1280, 800, 'desktop'], [390, 844, 'phone']]) {
+    await page.setViewportSize({ width, height });
+    await page.waitForTimeout(450);
+    out[suffix] = await page.evaluate(() => {
+      const o = window.__office;
+      o.renderer.render(o.scene, o.camera);
+      const gl = o.renderer.getContext(), w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
+      const width = Math.floor(w * 0.8), height = Math.floor(h * 0.7), pixels = new Uint8Array(width * height * 4);
+      gl.readPixels(Math.floor(w * 0.1), Math.floor(h * 0.15), width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      let sum = 0;
+      for (let i = 0; i < pixels.length; i += 4) sum += 0.2126 * pixels[i] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i + 2];
+      return sum / (width * height);
+    });
+  }
+  await page.setViewportSize({ width: 1280, height: 800 });
+  return out;
+};
+const nightShot = async (name, day = null) => {
   await page.evaluate(() => window.__office.sky.show({ hour: 21, weather: 'clear' }));
   await page.waitForTimeout(1200);
   for (const [width, height, suffix] of [[1280, 800, 'desktop'], [390, 844, 'phone']]) {
@@ -100,6 +120,9 @@ const nightShot = async (name) => {
       return { meanLuma: sum / (width * height), lights, hands: o.sky.lightAt(o.player.pos) };
     });
     assert.ok(evidence.meanLuma >= 60, `${name} ${suffix}: room lit at night (${evidence.meanLuma})`);
+    // The corridor reads as night: clearly darker than the same view by day (Jonathan, 2026-11-26).
+    if (day) assert.ok(evidence.meanLuma <= day[suffix] * 0.6, `${name} ${suffix}: night ${evidence.meanLuma} vs day ${day[suffix]}`);
+    if (day) evidence.dayLuma = day[suffix];
     assert.equal(evidence.hands, 1);
     assert.equal(evidence.lights.length, 6, 'three corridor lamps and three occupied desks; empty desk emissive only');
     assert.ok(evidence.lights.every(l => l.intensity > 0 && !l.shadow));
@@ -256,7 +279,12 @@ try {
   // And the whole corridor from its far end: free cubbies nearest, the others' frosted, yours by the doorway.
   await stand(-18.6, 4.7, 0.16, 0.06);
   await shot('hall-corridor');
-  await nightShot('night-corridor');
+  await page.evaluate(() => window.__office.sky.show({ hour: 12, weather: 'clear' }));
+  await page.waitForTimeout(1200);
+  const dayCorridor = await sceneLuma();
+  for (const [suffix, luma] of Object.entries(dayCorridor)) await page.setViewportSize(suffix === 'phone' ? { width: 390, height: 844 } : { width: 1280, height: 800 }).then(() => page.waitForTimeout(450)).then(() => page.screenshot({ path: `${out}/day-corridor-${suffix}.png` })).then(() => luma);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await nightShot('night-corridor', dayCorridor);
 
   // ---- Inside: hint bar names the lead; E talks to it. ----
   const hints = await page.evaluate(() => {

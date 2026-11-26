@@ -102,3 +102,16 @@ test('the west wall has actual sightlines through all four window holes', () => 
   }
   paint.dispose();
 });
+
+test('a lamp\'s night stretch keeps less fill there at night, none by day, and only while it is active', () => {
+  const registry = new InteriorLights();
+  let on = true;
+  const off = registry.add({ active: () => on, lights: [], bulbs: [], nightFill: { at: (x) => x < 0, level: 0.3 } });
+  assert.equal(registry.fillAt(-1, 0, 0), 1, 'day: unchanged');
+  assert.ok(Math.abs(registry.fillAt(-1, 0, 1) - 0.3) < 1e-9, 'night, in the stretch: dimmed');
+  assert.ok(Math.abs(registry.fillAt(-1, 0, 0.5) - 0.65) < 1e-9, 'dusk: in between');
+  assert.equal(registry.fillAt(1, 0, 1), 1, 'night, outside the stretch: unchanged');
+  on = false;
+  assert.equal(registry.fillAt(-1, 0, 1), 1, 'hall shut: unchanged');
+  off();
+});

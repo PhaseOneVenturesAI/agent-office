@@ -41,6 +41,14 @@ declare module '../../world/types' {
 }
 
 /**
+ * At night the corridor reads as night (Jonathan, 2026-11-26: "dim the corridor at night"): its three
+ * pendants glow low, the room's fill drops to CORRIDOR_NIGHT_FILL while you stand in it, and the cubbies'
+ * desk lamps and windows do most of the work. Inside a cubby keeps the office's night light. Day is unchanged.
+ */
+const CORRIDOR_LAMP = 1.6;
+export const CORRIDOR_NIGHT_FILL = 0.12;
+
+/**
  * A warm, light lining over the old west wall's outside face where the corridor runs along it, so the
  * corridor reads as an inside hallway rather than the building's dark exterior. It leaves the windows
  * and the doorway open.
@@ -210,7 +218,7 @@ function buildHall(looks: Looks, planks: THREE.Material, ceiling: THREE.Material
     const light = new THREE.PointLight('#ffe2b8', 0, 9, 1.6);
     light.position.set((HALL_FRONT_X + H.maxX) / 2, 3.6, z);
     group.add(light);
-    lights.push({ light, power: 7 });
+    lights.push({ light, power: CORRIDOR_LAMP });
   }
   group.add(corridorLining(d, midZ));
 
@@ -274,6 +282,9 @@ export const cubbyHall: Fixture<'cubbyHall'> = (site) => {
       }
     },
   };
-  site.get('interiorLights').add({ active: () => hall.on, lights: built.lights, bulbs: built.bulbs });
+  site.get('interiorLights').add({
+    active: () => hall.on, lights: built.lights, bulbs: built.bulbs,
+    nightFill: { at: (x, z) => x > HALL_FRONT_X && x < CUBBY_HALL.maxX && z > CUBBY_HALL.minZ && z < CUBBY_HALL.maxZ, level: CORRIDOR_NIGHT_FILL },
+  });
   return { handle: { cubbyHall: hall } };
 };

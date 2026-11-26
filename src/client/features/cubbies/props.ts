@@ -30,7 +30,8 @@ const shared = <M extends THREE.Material>(m: M): M => {
   m.userData.shared = true;
   return m;
 };
-const FROST = shared(new THREE.MeshBasicMaterial({ color: '#f4f7fb', transparent: true, opacity: 0.86, depthWrite: false, side: THREE.DoubleSide }));
+// Lit, not flat: by day it reads near-white, and at night it dims with the corridor, keeping a soft warm glow from the room behind.
+const FROST = shared(new THREE.MeshLambertMaterial({ color: '#f4f7fb', emissive: '#4a3e2e', transparent: true, opacity: 0.86, depthWrite: false, side: THREE.DoubleSide }));
 const SHADOW = shared(new THREE.MeshBasicMaterial({ color: '#9aa3ad', transparent: true, opacity: 0.55, depthWrite: false }));
 const LAMPS = Object.fromEntries(Object.entries(LAMP_COLOR).map(([k, c]) => [k, shared(toon(c, { emissive: new THREE.Color(c).multiplyScalar(0.55).getStyle() }))])) as Record<keyof typeof LAMP_COLOR, THREE.MeshToonMaterial>;
 
