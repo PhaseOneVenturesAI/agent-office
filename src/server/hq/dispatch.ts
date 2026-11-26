@@ -1,3 +1,4 @@
+import { hqChat } from './leads.js';
 import type { ClientMsg } from '../../shared/protocol.js';
 import type { Ctx } from '../office/context.js';
 import type { Client } from '../office/client.js';
@@ -16,6 +17,10 @@ export function hqDispatch(ctx: Ctx, c: Client, msg: ClientMsg): boolean {
   if (msg.t === 'drafts.kickoff' && ctx.hq.is(msg.floorId)) { ctx.warn(c, ctx.hq.visible(msg.floorId, c.accountId) ? 'HQ cannot be kicked off' : 'No such floor'); return true; }
   const floor = ctx.floorOf(c);
   if (!ctx.hq.is(floor?.id)) return false;
+  if (msg.t === 'cubbies.chat') {
+    try { hqChat(ctx, c, msg); } catch (e) { ctx.warn(c, (e as Error).message); }
+    return true;
+  }
   if (msg.t.startsWith('queue.') || ['worker.spawn', 'station.prompt', 'meeting.start', 'cubbies.sendTask'].includes(msg.t)) {
     ctx.warn(c, 'HQ work runs on the owner’s computer'); return true;
   }

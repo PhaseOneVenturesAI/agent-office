@@ -1,3 +1,4 @@
+import { leadsFor } from './leads.js';
 import type { Ctx } from '../office/context.js';
 import type { Client } from '../office/client.js';
 import type { ViewPieces } from '../ws/handlers/types.js';
@@ -9,7 +10,7 @@ export const hqView: ViewPieces['hq'] = (ctx, floor, c) => {
   if (!ctx.hq?.is(floor?.id) || c.out || !ctx.hq.visible(floor!.id, c.accountId)) return;
   const owner = ownerId(ctx);
   return { floorId: floor!.id, ownerName: ctx.hq.ownerName, mine: ctx.hq.owns(c.accountId),
-    ownerColor: ctx.cubbies.records.color(owner ?? ctx.hq.ownerName), projects: owner ? ctx.cubbies.hqProjects(owner) ?? [] : [] };
+    ownerColor: ctx.cubbies.records.color(owner ?? ctx.hq.ownerName), projects: owner ? ctx.cubbies.hqProjects(owner) ?? [] : [], leads: owner ? leadsFor(ctx, owner, ctx.hq.owns(c.accountId)) : [] };
 };
 export function hqPitch(ctx: Ctx, c: Client) {
   const floor = ctx.floorOf(c);

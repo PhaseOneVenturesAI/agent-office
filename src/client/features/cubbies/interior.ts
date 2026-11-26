@@ -35,6 +35,7 @@ export class Interior {
   usables: CubbyIt[] = [];
   private agentsGroup = new THREE.Group();
   private lead: PersonalPerson;
+  setLeadPresent(present: boolean) { this.lead.root.visible = present; }
   private leadLook = '';
   private leadDoing = '';
   private laptop = new Laptop();
@@ -304,7 +305,7 @@ export class Interior {
     // Every person (the lead, sessions) keeps its own plate over its own head; helper bots show
     // theirs only while you look at them (v4.3). Plates that would overlap on screen are lifted apart.
     showTags(this.lead.root, true);
-    const plates: (Plate | undefined)[] = [plateOf(this.lead.root)];
+    const plates: (Plate | undefined)[] = this.lead.root.visible ? [plateOf(this.lead.root)] : [];
     for (const v of this.views.values()) {
       v.model?.update(dt, t);
       if (v.model) {
@@ -329,7 +330,7 @@ export class Interior {
       }
     }
     if (focus?.camera) {
-      const agents = [this.lead.root, ...[...this.views.values()].flatMap((v) => (v.model ? [v.model.root] : []))];
+      const agents = [...(this.lead.root.visible ? [this.lead.root] : []), ...[...this.views.values()].flatMap((v) => (v.model ? [v.model.root] : []))];
       declutter(plates.filter((p): p is Plate => !!p), agents, focus.camera);
     }
   }

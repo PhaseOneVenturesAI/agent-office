@@ -12,6 +12,8 @@ import { STATUS_TEXT, ROLE_LABEL, clip, deadlineText, agentCard, helperName } fr
 // windows read-only: the lines, never a box to type in.
 
 export interface CubbyWindows {
+  sourceFloor?(id: string): string | undefined;
+  visit?: { label: string; go(): void };
   /** Your cubby with this id, as the store has it now (only yours has an inside). */
   cubby(id: string): CubbyInfo | undefined;
   /** Hears the store's cubbies change; returns how to stop. */
@@ -62,6 +64,7 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string): { close(): void 
   const form = h('form.cb-send', {}, text, send) as HTMLFormElement;
   const el = h('div.modal.cubby-chat', { role: 'dialog', 'aria-label': 'Talk to your lead' }, h('header', {}, title, sub), h('div.cb-body', {}, h('div.cb-main', {}, log, note, form), side));
 
+  if (w.visit) el.querySelector('header')!.append(h('button.btn.hq-go', { type: 'button', onclick: () => w.visit!.go() }, w.visit.label));
   const account = store.me.account?.name;
   let deviceKey: OwnerDeviceKey | undefined;
   let keyError = '';
@@ -155,7 +158,8 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string): { close(): void 
     e.preventDefault();
     const body = text.value.trim();
     const c = w.cubby(cubbyId);
-    const floorId = store.floor;
+    const viewingFloor = store.floor;
+    const floorId = w.sourceFloor?.(cubbyId) ?? viewingFloor;
     const computerId = c?.interior?.computerId;
     if (!body || !floorId || !computerId || chatMode(c) !== 'owner' || c.lamp === 'asleep' || signing ||
       !deviceKey || !deviceTrusted(c, deviceKey) || store.me.account?.name !== account) return;
@@ -164,7 +168,7 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string): { close(): void 
       const message = { text: body.slice(0, MAX_CHAT), requestId: crypto.randomUUID(), at: Date.now() };
       const ownerSig = await signOwnerChat(deviceKey, { ...message, cubbyId, floorId, computerId });
       const current = w.cubby(cubbyId);
-      if (closed || store.floor !== floorId || store.me.account?.name !== account || !current?.mine ||
+      if (closed || store.floor !== viewingFloor || store.me.account?.name !== account || !current?.mine ||
         current.lamp === 'asleep' || current.interior?.computerId !== computerId || !deviceTrusted(current, deviceKey)) return;
       w.sendChat(cubbyId, { ...message, ownerSig });
       text.value = '';

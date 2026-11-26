@@ -1,3 +1,4 @@
+import { withHQLeads } from '../../hq/leads.js';
 import { hqChanged } from '../../hq/views.js';
 import { pitchChanged } from './pitch.js';
 import { addQueueTask } from './queue.js';
@@ -6,7 +7,7 @@ import type { CubbiesClientMsg } from '../../../shared/protocol/cubbies.js';
 import type { Ctx } from '../../office/context.js';
 import type { Client } from '../../office/client.js';
 import type { FeatureHooks, HandlerMap, ViewPieces } from './types.js';
-export const cubbiesView: ViewPieces['cubbies'] = (ctx, floor, c) => ctx.cubbies?.state(floor?.id, c.out ? undefined : c.accountId, c.id) ?? { enabled: false, cubbies: [], setupAllowed: false };
+export const cubbiesView: ViewPieces['cubbies'] = (ctx, floor, c) => withHQLeads(ctx, c, ctx.cubbies?.state(floor?.id, c.out ? undefined : c.accountId, c.id) ?? { enabled: false, cubbies: [], setupAllowed: false });
 const last = new WeakMap<Client, string>();
 export function cubbiesChanged(ctx: Ctx) {
   draftsChanged(ctx);

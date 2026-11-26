@@ -1,3 +1,4 @@
+import { wireHQLeads, type HQLeadDeps } from './leads';
 import { hintTitle, key, onE } from '../../core/hint';
 import { openHQBoard } from './ui';
 import type * as THREE from 'three';
@@ -11,7 +12,8 @@ declare module '../../world/types' {
   }
 }
 /** An overlay with exact restoration, including the colliders of hidden desks. */
-export function installHQ(ctx: Ctx, deps: { idleAgents(): IdleAgent[] }) {
+export function installHQ(ctx: Ctx, deps: { idleAgents(): IdleAgent[] } & HQLeadDeps) {
+  wireHQLeads(ctx, deps);
   const world = ctx.office.hq;
   let undo: (() => void)[] = [], content = '', shown = false;
   let quiet: THREE.Object3D[] = [];

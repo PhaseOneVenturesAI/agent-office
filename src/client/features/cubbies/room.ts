@@ -138,6 +138,11 @@ export class CubbyRoom {
     this.interior = null;
   }
 
+  setLeadPresent(present: boolean) {
+    this.interior?.setLeadPresent(present);
+    for (const it of this.interior?.usables ?? []) if (it.kind === 'cubbylead') it.off = !present;
+  }
+
   /** What you bump into here. */
   colliders(): Collider[] {
     if (this.interior) return [...this.frontColliders, ...this.interior.colliders];

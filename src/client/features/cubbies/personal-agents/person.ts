@@ -27,8 +27,8 @@ export class PersonalPerson extends Person {
   override setLabel(_name: string, _muted: boolean | null) {}
   override showLabel(show: boolean) { this.plate.sprite.visible = show; }
 
-  setUniform(owner: string, project: string, role: PersonalRole, color: OwnerColor) {
-    const key = JSON.stringify([owner, project, role, color]);
+  setUniform(owner: string, project: string, role: PersonalRole, color: OwnerColor, labelRole: string = role) {
+    const key = JSON.stringify([owner, project, role, color, labelRole]);
     if (key === this.appearance) return;
     this.appearance = key;
     for (const part of this.uniform) {
@@ -81,7 +81,7 @@ export class PersonalPerson extends Person {
       }
       put(this.rig.armR, held, prop);
     }
-    this.title = personalName(owner, project, role);
+    this.title = personalName(owner, project, labelRole);
     this.ownerColor = color;
     this.ring.setColor(color);
     this.plate.set(this.title, this.statusText || 'Ready', color);

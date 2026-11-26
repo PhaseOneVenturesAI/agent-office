@@ -31,7 +31,7 @@ export function personalRole(source: RoleSource = {}, mainLead = false): Persona
   if (/\b(ceo|main lead|project lead)\b/i.test(text)) return 'CEO';
   return mainLead && !source.department && !source.leadTitle ? 'CEO' : 'Agent';
 }
-export function personalName(owner: string, project: string, role: PersonalRole): string {
+export function personalName(owner: string, project: string, role: string): string {
   return `${owner.trim().split(/\s+/)[0] || 'Owner'}'s · ${project.trim() || 'Project'} ${role}`;
 }
 export function helperName(tool: string, task: string): string {

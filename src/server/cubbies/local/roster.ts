@@ -107,7 +107,7 @@ export async function roster(config: LocalConfig, deps: RosterDeps = {}): Promis
   try { pitch = localPitch(config.project).pitch; }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') errors.push('Pitch record unavailable'); }
   let projects: Snapshot['projects'];
-  try { projects = readProjects(config.projectsFile ?? path.join(home, 'Documents/AgentHarness/projects.json')); }
+  try { projects = readProjects(config.projectsFile ?? path.join(home, 'Documents/AgentHarness/projects.json'), config); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') errors.push('Project registry unavailable'); }
   const snapshot: Snapshot = { t: 'cubby.snapshot', floorId: config.floor, agents, plan, needsYou, ...(projects ? { projects } : {}), ...(draft ? { draft } : {}), ...(pitch ? { pitch } : {}), observedAt: Date.now(),
     ...(errors.length ? { error: errors.join('; ') } : {}) };
