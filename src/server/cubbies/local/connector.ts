@@ -1,5 +1,5 @@
 import { localPitch } from './pitch.js';
-import { appendVerdict } from './pitch-feedback.js';
+import { appendVerdict, mergeVerdicts, type VerdictTrust } from './pitch-feedback.js';
 import { validVerdict } from '../../../shared/pitch/clean.js';
 import { verifyOwnerVerdict } from '../wire.js';
 import { DRAFT_LIMITS } from '../../../shared/protocol/drafts.js';
@@ -166,7 +166,7 @@ export class CubbyConnector {
       const { pitch } = localPitch(this.config.project);
       const piece = pitch?.pieces.find(p => p.id === frame.pieceId);
       if (!pitch || !piece || pitch.version !== frame.version) throw Error('Pitch changed');
-      appendVerdict(this.config.project, pitch, piece.id, { requestId: frame.requestId, verdict: frame.verdict, at: frame.at, ...(frame.note !== undefined ? { note: frame.note } : {}) });
+      appendVerdict(this.config.project, pitch, frame, this.verdictTrust()!);
       title = piece.title;
     } catch {
       this.reply(frame.requestId, 'Could not save verdict. The pitch changed, it was already saved, or its feedback file needs checking.', true); return;
@@ -186,6 +186,9 @@ export class CubbyConnector {
   /** Whether one of the trusted devices made this signature (a damaged trust record trusts nobody). */
   private trusted(check: (key: string) => boolean): boolean {
     try { return this.devices.pins().some((p) => check(p.key)); } catch { return false; }
+  }
+  private verdictTrust(): VerdictTrust | undefined {
+    return this.binding && { binding: this.binding, verify: row => this.trusted(key => verifyOwnerVerdict(key, row)) };
   }
   private sendDevices(note?: string): void {
     try { if (this.binding) this.send?.(devicesFrame(this.devices, this.config.floor, this.now(), note)); }
@@ -233,6 +236,8 @@ export class CubbyConnector {
       }
       if (!this.deps.snapshot) saveSeen(this.config.state, { at: this.now(), head, agents: frame.agents.map(({ id, tool, role, task, status }) => ({ id, tool, role, task, status })) });
       if (generation === this.generation && this.binding) {
+        // Verify saved stamps with current device trust and binding on every publication.
+        if (frame.pitch) frame.pitch = mergeVerdicts(this.config.project, frame.pitch, this.verdictTrust());
         const outgoing = publication(frame);
         if (this.send?.(outgoing) === false) return;
         const images = new Map<string, import('../../drafts/image-format.js').DesignImage>();

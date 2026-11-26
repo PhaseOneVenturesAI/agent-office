@@ -137,7 +137,14 @@ export function installBoards(ctx: Ctx, deps: BoardsDeps) {
   mountBoard(office.machineScreen, machineTex.texture, () => machineTex.render(store.machine), ['machine']);
   // The meeting room: its output as it's written on the back wall, and how it's going on the door.
   const meetingBoardTex = new MeetingBoardTexture();
-  mountBoard(office.meetingBoard, meetingBoardTex.texture, () => meetingBoardTex.render(store.meeting), ['meeting']);
+  let meetingNotice: string | undefined;
+  const renderMeetingBoard = () => meetingBoardTex.render(store.meeting, meetingNotice);
+  /** A private room activity can temporarily replace the shared board's text. */
+  function setMeetingNotice(text?: string) {
+    if (text === meetingNotice) return;
+    meetingNotice = text; renderMeetingBoard();
+  }
+  mountBoard(office.meetingBoard, meetingBoardTex.texture, renderMeetingBoard, ['meeting']);
   const meetingSignTex = new MeetingSignTexture();
   mountBoard(office.meetingSign, meetingSignTex.texture, () => meetingSignTex.render(store.meeting), ['meeting']);
   /** Puts every board's texture up on `w`'s boards. */
@@ -150,5 +157,5 @@ export function installBoards(ctx: Ctx, deps: BoardsDeps) {
     if (w.meetingSign) showOn(w.meetingSign, meetingSignTex.texture);
   }
 
-  return { issuesTex, renderPullsBoard, renderServicesBoard, renderQueueBoard, dressBoards, cardMoved };
+  return { issuesTex, renderPullsBoard, renderServicesBoard, renderQueueBoard, dressBoards, cardMoved, setMeetingNotice };
 }

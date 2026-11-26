@@ -18,7 +18,7 @@ export interface PitchVerdictMessage extends PitchStamp { pieceId: string; versi
 export type PitchVerdictPayload = { cubbyId: string; floorId: string; computerId: string } & Omit<PitchVerdictMessage, 'ownerSig'>;
 export type PitchClientMsg = { t: 'pitch.verdict'; cubbyId: string; floorId: string } & PitchVerdictMessage;
 export type PitchServerMsg = { t: 'pitch'; view?: PitchView };
-export const PITCH_LIMITS = { pieces: 4, slides: 24, ads: 8, images: 34, note: 1000, feedbackBytes: 64 * 1024 } as const;
+export const PITCH_LIMITS = { pieces: 4, slides: 24, ads: 8, images: 34, ownerImageBytes: 32 * 1024 * 1024, note: 1000, feedbackBytes: 64 * 1024 } as const;
 export function ownerVerdictEncoding(f: PitchVerdictPayload): string {
   return JSON.stringify(['agent-office/cubby-owner-verdict/v1', f.cubbyId, f.floorId, f.computerId,
     f.requestId, f.at, f.version, f.pieceId, f.verdict, f.note ?? null]);

@@ -26,6 +26,16 @@ const push = (page, frame) => sockets.get(page).send(JSON.stringify(frame));
 async function setup(page, owner = true, lite = false) {
   page.on('pageerror', e => errors.push(e.message));
   await page.addInitScript(() => {
+    // Inspect the actual canvas text drawn on the back-wall board, without production test hooks.
+    const proto = CanvasRenderingContext2D.prototype, fillRect = proto.fillRect, fillText = proto.fillText;
+    if (!proto.__pitchAudit) {
+      proto.__pitchAudit = true;
+      proto.fillRect = function(x, y, w, h) {
+        if (x === 0 && y === 0 && w === this.canvas.width && h === this.canvas.height) this.canvas.__drawnText = [];
+        return fillRect.apply(this, arguments);
+      };
+      proto.fillText = function(text) { (this.canvas.__drawnText ??= []).push(text); return fillText.apply(this, arguments); };
+    }
     localStorage.setItem('agent-office.profile', JSON.stringify({ name: 'Alice', color: '#ff8a5b', look: { skin: 0, hair: 0, style: 0 } }));
     localStorage.setItem('agent-office.settings', JSON.stringify({ muted: true, musicMuted: true, volume: 0, music: 0, view: 'first' }));
     if (navigator.mediaDevices) navigator.mediaDevices.getUserMedia = async () => { throw Error('Disabled in fixture'); };
@@ -47,9 +57,9 @@ async function setup(page, owner = true, lite = false) {
   }); });
   await page.goto(`${base}/${lite ? 'lite.html' : '?3d=1'}`);
   await page.waitForFunction(lite => lite ? window.__lite?.net.up : window.__audit && window.__office?.net.up, lite);
-  await page.evaluate(lite => {
+  await page.evaluate(([lite, owner]) => {
     const s = lite ? window.__lite.store : window.__office.store;
-    s.floor = 'fixture'; s.you = 'self'; s.me = { admin: false, account: { id: 'alice', name: 'Alice', role: 'member' } };
+    s.floor = 'fixture'; s.you = 'self'; s.me = { admin: false, account: { id: owner ? 'alice' : 'bob', name: owner ? 'Alice' : 'Bob', role: 'member' } };
     s.floors = [{ id: 'fixture', name: 'Gallery fixture', dir: '/fixture', workers: 0, people: 1, busy: 0, waiting: 0, palette: 0 }]; s.emit('floors');
     s.project = { name: 'Gallery fixture', dir: '/fixture', branch: 'main', agentProviders: ['claude'], defaultProvider: 'claude' };
     if (!lite) {
@@ -57,7 +67,7 @@ async function setup(page, owner = true, lite = false) {
       a.core.upTop = false; a.core.trip = null; o.player.enabled = true; o.player.view = 'first';
       document.getElementById('loading')?.remove(); document.getElementById('loading-screen')?.remove();
     }
-  }, lite);
+  }, [lite, owner]);
   if (!png) png = Buffer.from(await page.evaluate(() => {
     const c = document.createElement('canvas'); c.width = 960; c.height = 540; const g = c.getContext('2d');
     g.fillStyle = '#fff1de'; g.fillRect(0, 0, 960, 540); g.fillStyle = '#2b2d42'; g.font = 'bold 34px sans-serif'; g.fillText('KINDLY', 55, 65);
@@ -79,6 +89,9 @@ async function stand(page, x, z, tx, tz, pitch = 0) {
   }, [x, z, tx, tz, pitch]);
   await page.waitForTimeout(400);
 }
+const boardText = page => page.evaluate(() => window.__audit.ctx.office.meetingBoard.material.map.image.__drawnText.join(' '));
+const readyBoard = 'Marketing pitch · ready — walk the room';
+const normalBoard = '🤝 The meeting room is free Press E at the table to call a meeting: whatever it writes shows up here.';
 const shot = async (page, name) => {
   for (const [width, height, suffix] of [[1280, 800, 'desktop'], [390, 844, 'phone']]) {
     await page.setViewportSize({ width, height }); await page.waitForTimeout(250); await page.screenshot({ path: `${out}/${name}-${suffix}.png` });
@@ -87,6 +100,9 @@ const shot = async (page, name) => {
 };
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } }); await setup(page);
+  assert.equal(await boardText(page), readyBoard);
+  await page.evaluate(() => window.__office.store.emit('meeting'));
+  assert.equal(await boardText(page), readyBoard, 'meeting refresh preserves the private notice');
   await stand(page, 10.7, 7.1, 13.5, 10.4);
   const before = await page.evaluate(() => window.__office.scene.getObjectByName('pitch-room').userData.dim);
   assert.ok(before > 0.98);
@@ -100,6 +116,7 @@ try {
   });
   assert.ok(state.visible); assert.ok(state.dim < 0.4, JSON.stringify(state)); assert.deepEqual(state.kinds.sort(), ['ads', 'site', 'slides', 'video']); assert.equal(state.lights, 4);
   await stand(page, 10.7, 8.8, 14, 10.2, -0.03); await shot(page, '01-room-overview-dimmed');
+  await stand(page, 12.8, 9, 12.8, 13, 0.08); await shot(page, '07-owner-board-ready');
   await stand(page, 14.3, 9.3, 16.1, 9.5, 0.08); await shot(page, '02-wall-screen');
   await stand(page, 10.25, 10.8, 10.15, 12.4, -0.08); await shot(page, '03-easel');
   await stand(page, 13.5, 9.1, 13.7, 10.5, -0.5); await shot(page, '04-ads-table');
@@ -128,6 +145,8 @@ try {
   const other = await browser.newPage({ viewport: { width: 1280, height: 800 } }); await setup(other, false);
   await stand(other, 10.7, 9, 14, 10.4);
   assert.deepEqual(await other.evaluate(() => { const r = window.__office.scene.getObjectByName('pitch-room'); return [r.visible, r.children.length, r.userData.dim]; }), [false, 0, 1]);
+  assert.equal(await boardText(other), normalBoard);
+  await stand(other, 12.8, 9, 12.8, 13, 0.08); await shot(other, '08-other-board');
   const phone = await browser.newPage({ viewport: { width: 390, height: 844 } }); await setup(phone, true, true);
   assert.equal(await phone.locator('.pitch-list li').count(), 4); await phone.getByText('Change requested — Give the main promise more room.', { exact: true }).waitFor();
   await phone.screenshot({ path: `${out}/06-lite-list-phone.png`, fullPage: true });
@@ -149,7 +168,12 @@ try {
   push(page, { t: 'pitch', view: { ...view, pitch: { ...pitch, status: 'building' } } }); await page.waitForTimeout(1700);
   assert.ok(await page.evaluate(() => window.__office.scene.getObjectByName('pitch-room').userData.dim > 0.99));
   assert.equal(await page.evaluate(() => window.__audit.ctx.usables.lists().flat().filter(i => i.kind === 'pitchpiece').length), 0);
+  assert.equal(await boardText(page), 'Marketing pitch · building');
+  await stand(page, 12.8, 9, 12.8, 13, 0.08); await shot(page, '09-owner-board-building');
+  push(page, { t: 'pitch' }); await page.waitForTimeout(200);
+  assert.equal(await boardText(page), normalBoard, 'clearing the pitch restores the shared board');
+  assert.equal(await boardText(other), normalBoard, 'other account stays unchanged');
   assert.deepEqual(errors, []);
-  writeFileSync(`${out}/results.json`, JSON.stringify({ state, errors, checks: 'owner stations, walk-in dimming, four E reviews, close, signed verdict echo/stamp, slides, non-owner, lite, building restoration' }, null, 2));
+  writeFileSync(`${out}/results.json`, JSON.stringify({ state, errors, checks: 'owner stations, walk-in dimming, four E reviews, close, signed verdict echo/stamp, slides, non-owner, lite, owner ready/building board, normal second-account board, cleared-board restoration, building restoration' }, null, 2));
   console.log(`Pitch UI passed; screenshots in ${out}`);
 } finally { await browser.close(); await server.close(); }

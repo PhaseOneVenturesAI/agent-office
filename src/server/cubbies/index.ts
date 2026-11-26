@@ -101,7 +101,10 @@ export class Cubbies {
     };
     return { ...boards, ideas: boards.ideas.map(ready), screens: boards.screens.map(ready) };
   }
-  dropDraftImages(floorId: string): void { this.images.delete(floorId); }
+  dropDraftImages(floorId: string): void {
+    this.images.delete(floorId);
+    this.pitches.retain(id => this.online(id));
+  }
   draftImage(floorId: string, owner: string, hash: string) {
     if (!this.enabled || !this.floorExists(floorId) || this.draftOwner(floorId) !== owner || !this.accountName(owner)) {
       if (!this.floorExists(floorId) || this.draftOwner(floorId) === undefined) this.dropDraftImages(floorId);
@@ -226,6 +229,7 @@ export class Cubbies {
   }
   /** Node disconnects, expiry and revocation immediately clear the chat admission. */
   refresh() {
+    this.pitches.retain(id => this.online(id));
     for (const floorId of this.images.keys()) {
       const owner = this.draftOwner(floorId);
       if (!this.floorExists(floorId) || owner === undefined || !this.accountName(owner) ||
@@ -234,7 +238,7 @@ export class Cubbies {
     for (const [key, live] of this.live) {
       this.expire(live);
       const r = this.records.rows.get(key);
-      if (!r || !this.nodes.isOnline(r.nodeId)) {
+      if (!r || !this.online(key)) {
         live.admitted = false;
         live.interior.error = 'Computer disconnected. Work stays on that computer.';
         live.pending = undefined;
@@ -276,7 +280,7 @@ export class Cubbies {
     const r = [...this.records.rows.values()].find(r => r.nodeId === nodeId && r.owner === owner && r.floorId === f.floorId);
     if (!r || !this.floorExists(r.floorId)) return true;
     if (f.t === 'cubby.hello') {
-      this.images.get(r.floorId)?.reconnect(); this.pitches.reconnect(r.id);
+      this.images.get(r.floorId)?.reconnect(); this.pitches.drop(r.id);
       if (typeof f.computerId !== 'string' || !/^[\w-]{8,128}$/.test(f.computerId) || (r.computerId && r.computerId !== f.computerId)) return true;
       if ([...this.records.rows.values()].some(other => other.id !== r.id && other.owner === owner && other.floorId === r.floorId && other.computerId === f.computerId)) return true;
       r.computerId = f.computerId; r.computerName = short(f.computerName, 60) || 'Your computer'; this.records.save();
@@ -304,7 +308,7 @@ export class Cubbies {
           if (!images) this.images.set(r.floorId, images = new DraftImages());
           images.boards(live.draft);
         } else { live.draft = undefined; this.dropDraftImages(r.floorId); }
-        if (next.error !== BOARD_TOO_BIG) this.pitches.publish(r.id, next.pitch);
+        if (next.error !== BOARD_TOO_BIG) this.pitches.publish(r.id, owner, next.pitch);
         Object.assign(live.interior, { agents: next.agents, plan: next.plan, needsYou: next.needsYou, observedAt: next.observedAt, error: next.error });
         if (next.wake) this.line(live, { id: id(), role: 'notice', text: `💤→☀️ ${next.wake}`, at: this.now() });
       } else if (f.t === 'cubby.reply') {

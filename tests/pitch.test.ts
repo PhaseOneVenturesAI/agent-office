@@ -12,6 +12,9 @@ import { memoryStore, pinOf } from '../src/server/cubbies/local/devices.js';
 import { cubbyKey, relaySignature, verifyOwnerVerdict, verifyRelay } from '../src/server/cubbies/wire.js';
 import { pitchChanged, pitchHandlers } from '../src/server/ws/handlers/pitch.js';
 import { pitchImageRoute } from '../src/server/http/routes/pitch-images.js';
+import { PitchStore } from '../src/server/pitch/store.js';
+import { PITCH_LIMITS } from '../src/shared/protocol/pitch.js';
+import { DRAFT_LIMITS } from '../src/shared/protocol/drafts.js';
 import { cleanImage } from '../src/server/drafts/image-format.js';
 import { testOwnerKey } from './support/cubby-keys.js';
 import { png, socket, imageFrames, pngChunk } from './support/draft-board.js';
@@ -68,12 +71,13 @@ function connector(t: any, busy = false) {
   const deps = { now: () => now, release() {}, head: async () => undefined, devices: memoryStore([pinOf(owner.ownerKey, 'Owner', now)]),
     snapshot: async () => ({ t: 'cubby.snapshot' as const, floorId: 'floor', observedAt: now, agents: [], plan: [], needsYou: [], pitch: localPitch(dir).pitch }),
     lead: { busy, send: async (text: string) => { turns.push(text); return 'Received'; }, stop: async () => {} } };
+  const trust = { binding, verify: (row: any) => deps.devices.pins().some(p => verifyOwnerVerdict(p.key, row)) };
   let c = new CubbyConnector(config, 'token', deps);
   const send = (f: any) => c.receive(JSON.stringify({ ...f, signature: relaySignature(cubbyKey('token'), f) }));
   const ready = () => { c.connected(f => { sent.push(f); }); send({ t: 'cubby.ready', ...binding }); };
   const note = (extra: any = {}, signer = owner) => { const f = { t: 'cubby.verdict', ...binding, pieceId: 'home', version: 'v3', verdict: 'change', note: 'Make it clearer', requestId: 'verdict', at: now, ...extra }; return { ...f, ownerSig: signer.signVerdict(f) }; };
   ready(); t.after(async () => c.close());
-  return { dir, owner, stranger, sent, turns, send, note, file: path.join(dir, '.agent-office/pitch-feedback.json'),
+  return { dir, owner, stranger, sent, turns, send, note, devices: deps.devices, read: () => localPitch(dir, trust), file: path.join(dir, '.agent-office/pitch-feedback.json'),
     restart: async () => { await c.close(); c = new CubbyConnector(config, 'token', deps); ready(); } };
 }
 test('signed verdict is saved at 0600, echoed as a stamp, delivered to lead and refuses replay across restart', async t => {
@@ -81,8 +85,10 @@ test('signed verdict is saved at 0600, echoed as a stamp, delivered to lead and 
   assert.equal(verifyOwnerVerdict(f.owner.ownerKey, note), true); f.send(note); await tick();
   assert.equal(statSync(f.file).mode & 0o777, 0o600);
   assert.deepEqual(f.turns, ['Pitch verdict on Home page (v3): Change — Make it clearer']);
-  assert.equal(localPitch(f.dir).pitch!.pieces[0].stamp?.requestId, 'verdict');
+  assert.equal(f.read().pitch!.pieces[0].stamp?.requestId, 'verdict');
   assert.ok(f.sent.some(s => s.t === 'cubby.snapshot' && s.pitch?.pieces[0].stamp?.requestId === 'verdict'));
+  const stored = JSON.parse(readFileSync(f.file, 'utf8'))[0];
+  for (const key of ['cubbyId', 'floorId', 'computerId', 'requestId', 'at', 'version', 'pieceId', 'verdict', 'note', 'ownerSig']) assert.equal(stored[key], note[key], key);
   const saved = readFileSync(f.file); f.send(note); await tick(); assert.deepEqual(readFileSync(f.file), saved);
   await f.restart(); await tick(); f.send(note); await tick(); assert.deepEqual(readFileSync(f.file), saved); assert.equal(f.turns.length, 1);
   assert.ok(f.sent.some(s => s.t === 'cubby.snapshot' && s.pitch?.pieces[0].stamp));
@@ -100,9 +106,9 @@ test('forged, stale, replayed, wrong-version and invalid verdicts cannot change 
 });
 test('busy lead gets saved verdict without a concurrent turn; a new version clears stamps', async t => {
   const f = connector(t, true); await tick(); f.send(f.note()); await tick(); assert.equal(f.turns.length, 0);
-  assert.equal(localPitch(f.dir).pitch!.pieces[0].stamp?.verdict, 'change');
+  assert.equal(f.read().pitch!.pieces[0].stamp?.verdict, 'change');
   writeFileSync(path.join(f.dir, '.agent-office/pitch.json'), JSON.stringify({ ...raw(), version: 'v4' }));
-  assert.equal(localPitch(f.dir).pitch!.pieces[0].stamp, undefined);
+  assert.equal(f.read().pitch!.pieces[0].stamp, undefined);
 });
 test('shared-floor owner-only delivery, chunked images, verdict relay and authenticated image endpoint', t => {
   const dir = files(t); let c!: Cubbies;
@@ -138,4 +144,92 @@ test('shared-floor owner-only delivery, chunked images, verdict relay and authen
   const warnings: string[] = []; ctx.warn = (_: any, s: string) => warnings.push(s);
   pitchHandlers['pitch.verdict'](ctx, bob as any, { ...message, t: 'pitch.verdict', cubbyId: a.id, floorId: 'floor' }); assert.equal(warnings.length, 1);
   const off = new Cubbies(dir, false, nodes, id => id, () => true, () => {}); assert.equal(off.pitchView('floor', 'alice'), undefined);
+});
+
+test('saved verdicts require a genuine signature for this binding and currently trusted device', async t => {
+  const f = connector(t); await tick();
+  const signed = f.note({ verdict: 'approve', note: '  Keep exact signed spacing.  ' });
+  const { ownerSig: _sig, ...unsigned } = signed;
+  const bad = [unsigned, { ...f.note(), verdict: 'approve' }, { ...signed, note: 'Rewritten' },
+    { ...signed, at: signed.at + 1 }, { ...signed, requestId: 'forged' }, { ...signed, pieceId: 'video' },
+    { ...signed, version: 'v2' }, f.note({ verdict: 'approve' }, f.stranger),
+    ...['cubbyId', 'floorId', 'computerId'].map(key => f.note({ [key]: 'another-binding', verdict: 'approve' }))];
+  for (const row of bad) {
+    writeFileSync(f.file, JSON.stringify([row]));
+    assert.ok(f.read().pitch!.pieces.every(p => !p.stamp));
+    f.sent.length = 0; await f.restart(); await tick();
+    const snapshot = f.sent.find(s => s.t === 'cubby.snapshot');
+    assert.ok(snapshot, 'connector published a snapshot');
+    assert.ok(snapshot.pitch.pieces.every((p: any) => !p.stamp), 'invalid saved approval was not published');
+  }
+  writeFileSync(f.file, JSON.stringify([signed]));
+  assert.equal(f.read().pitch!.pieces[0].stamp?.verdict, 'approve');
+  assert.equal(localPitch(f.dir).pitch!.pieces[0].stamp, undefined, 'no trust context means no stamp');
+  f.sent.length = 0; await f.restart(); await tick();
+  assert.equal(f.sent.find(s => s.t === 'cubby.snapshot').pitch.pieces[0].stamp?.verdict, 'approve');
+  // Re-read the current trust source, not the constructor's initial owner key.
+  f.devices.update(s => { s.pins = [pinOf(f.stranger.ownerKey, 'Replacement', Date.now())]; });
+  assert.equal(f.read().pitch!.pieces[0].stamp, undefined);
+  f.sent.length = 0; await f.restart(); await tick();
+  assert.equal(f.sent.find(s => s.t === 'cubby.snapshot').pitch.pieces[0].stamp, undefined);
+});
+
+for (const reason of ['disconnect', 'record', 'floor', 'account', 'not-admitted', 'floor-image-cleanup']) {
+  test(`pitch rows and images are released on ${reason}`, t => {
+    const dir = files(t); let c!: Cubbies, floor = true, account = true;
+    const nodes = new Nodes(dir, () => c?.refresh()); t.after(() => nodes.close());
+    c = new Cubbies(dir, true, nodes, id => account ? id : undefined, () => floor, () => {});
+    const a = c.setup('floor', 'alice', 0, 'Lead', {} as any), ws = socket();
+    nodes.attach(ws as any, a.token); ws.frame({ t: 'hello', host: 'private', providers: [] });
+    ws.frame({ t: 'cubby.hello', floorId: 'floor', computerId: 'computer-alice' });
+    const { pitch, images } = localPitch(dir), image = [...images.values()][0];
+    ws.frame({ t: 'cubby.snapshot', floorId: 'floor', observedAt: Date.now(), agents: [], plan: [], needsYou: [], pitch });
+    imageFrames('floor', image).forEach(f => ws.frame(f));
+    const store = (c as any).pitches as PitchStore;
+    assert.ok(store.image(a.id, image.meta.hash));
+    if (reason === 'disconnect') ws.close();
+    if (reason === 'record') c.records.rows.delete(a.id);
+    if (reason === 'floor' || reason === 'floor-image-cleanup') floor = false;
+    if (reason === 'account') account = false;
+    if (reason === 'not-admitted') (c as any).live.get(a.id).admitted = false;
+    if (reason === 'floor-image-cleanup') c.dropDraftImages('floor');
+    else if (reason !== 'disconnect') c.refresh();
+    // Inspect storage as well as access control: hiding a stale row would still pin its memory.
+    assert.equal(store.view(a.id, 'floor', 'computer-alice'), undefined);
+    assert.equal(store.image(a.id, image.meta.hash), undefined);
+  });
+}
+
+test('owner image budget spans cubbies, refuses extra images and releases capacity on removal', () => {
+  const store = new PitchStore(), count = PITCH_LIMITS.ownerImageBytes / DRAFT_LIMITS.imageBytes;
+  const images = Array.from({ length: count + 1 }, (_, i) => {
+    const data = Buffer.alloc(DRAFT_LIMITS.imageBytes - 57, i);
+    return cleanImage(Buffer.concat([png.subarray(0, 33), pngChunk('IDAT', data), png.subarray(-12)]));
+  });
+  const publication = (start: number, end: number) => ({ ...raw(), pieces: [{ id: 'slides', kind: 'slides', title: 'Slides', images: images.slice(start, end).map(i => i.meta) }] });
+  store.publish('a', 'alice', publication(0, 8)); store.publish('b', 'alice', publication(8, images.length));
+  const upload = (id: string, i: number) => imageFrames('floor', images[i]).map(f => store.accept(id, f));
+  for (let i = 0; i < count; i++) assert.equal(upload(i < 8 ? 'a' : 'b', i).at(-1), true);
+  assert.ok(upload('b', count).every(v => !v)); assert.equal(store.image('b', images[count].meta.hash), undefined);
+  assert.equal(store.view('b', 'floor', 'computer')!.pitch.pieces[0].images.length, count - 8);
+  for (let i = 0; i < count; i++) assert.ok(store.image(i < 8 ? 'a' : 'b', images[i].meta.hash), 'earlier image kept');
+  store.publish('other', 'bob', publication(count, count + 1)); assert.equal(upload('other', count).at(-1), true, 'owners have independent budgets');
+  store.drop('a'); assert.equal(upload('b', count).at(-1), true, 'dropped rows release the budget');
+});
+
+test('unfinished image chunks count toward the owner budget across cubbies', () => {
+  const store = new PitchStore(), image = cleanImage(png), data = 'A'.repeat(DRAFT_LIMITS.chunk);
+  // 34 simultaneous references per cubby can otherwise retain more than the owner budget.
+  const metas = Array.from({ length: 34 }, (_, i) => ({ ...image.meta, hash: i.toString(16).padStart(64, '0') }));
+  const pitch = { ...raw(), pieces: [
+    { id: 'home', kind: 'site', title: 'Home', image: metas[0] }, { id: 'video', kind: 'video', title: 'Video', image: metas[1] },
+    { id: 'slides', kind: 'slides', title: 'Slides', images: metas.slice(2, 26) }, { id: 'ads', kind: 'ads', title: 'Ads', images: metas.slice(26) },
+  ] };
+  store.publish('a', 'alice', pitch); store.publish('b', 'alice', pitch);
+  for (const id of ['a', 'b']) for (const meta of metas) for (let index = 0; index < 40; index++) {
+    store.accept(id, { ...meta, index, total: 50, data });
+  }
+  const rows = (store as any).rows as Map<string, { images: { bytes: number } }>;
+  const bytes = [...rows.values()].reduce((n, r) => n + r.images.bytes, 0);
+  assert.ok(bytes > 0 && bytes <= PITCH_LIMITS.ownerImageBytes, `retained ${bytes} bytes`);
 });

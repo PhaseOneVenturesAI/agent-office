@@ -174,7 +174,7 @@ parts.cards = installCarrying(ctx, {
 });
 parts.seating = installSeating(ctx, { shares: () => parts.talk.currentShares(), watchShare: () => parts.talk.watchShare(), arcade: parts.arcade, showBar: parts.bar.showBar, usable: () => parts.pointer.usable() });
 installGong(ctx, { burstOver: parts.views.burstOver, workerViews: parts.views.workerViews, court: () => parts.worlds.court(), idleAgents: () => parts.worlds.idleAgents() });
-installPitch(ctx, { lights: () => [parts.stage.hemi, parts.stage.ambient, parts.stage.sun] });
+installPitch(ctx, { setMeetingNotice: parts.boards.setMeetingNotice, lights: () => [parts.stage.hemi, parts.stage.ambient, parts.stage.sun] });
 installDrafts(ctx, { ride: (id) => parts.travel.ride(id), lights: () => [parts.stage.hemi, parts.stage.ambient, parts.stage.sun], idleAgents: () => parts.worlds.idleAgents(), cubbies: () => parts.cubbies, aimed: () => parts.pointer.target() });
 
 parts.hintbar = installHintBar(ctx, core, parts);

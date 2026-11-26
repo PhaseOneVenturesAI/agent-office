@@ -12,7 +12,7 @@ declare module '../../world/types' {
     pitchpiece: true;
   }
 }
-export function installPitch(ctx: Ctx, deps: { lights(): { intensity: number }[] }) {
+export function installPitch(ctx: Ctx, deps: { lights(): { intensity: number }[]; setMeetingNotice(text?: string): void }) {
   const room = new PitchRoom(), screens = new PitchScreens(ctx), bulbs = new RoomBulbs(ctx.office.group);
   const slides = new Map<string, number>(); let content = '', dim = 1;
   ctx.scene.add(room.group);
@@ -38,6 +38,8 @@ export function installPitch(ctx: Ctx, deps: { lights(): { intensity: number }[]
     const next = JSON.stringify(store.pitch) ?? '';
     if (next !== content) { content = next; slides.clear(); sync(); }
     room.group.visible = active();
+    const p = active() ? store.pitch?.pitch : undefined;
+    deps.setMeetingNotice(p ? `${p.department} pitch · ${p.status}${p.status === 'ready' ? ' — walk the room' : ''}` : undefined);
     screens.tick(inside() && store.pitch?.pitch.status === 'ready' ? room.stations.find(s => s.piece.kind === 'video') : undefined);
   });
   ctx.ticks.add('env', ({ dt }) => {
