@@ -1,0 +1,15 @@
+.hq-messages { max-height: 35vh; overflow: auto; flex-shrink: 0; }
+.hq-messages:empty { display: none; }
+.hq-message { margin: 8px 0; padding: 10px; border: 1px solid #d9c6ab; border-radius: 8px; background: #fff7e9; overflow-wrap: anywhere; }
+.hq-message small { margin-left: 8px; color: #6b546d; }
+.hq-message p { margin: 6px 0; white-space: pre-wrap; }
+.hq-message-actions { display: flex; gap: 8px; }
+
+.hq-manager-chat .cb-main { overflow-y: auto; }
+.hq-manager-chat .cb-send, .hq-manager-chat .cb-note, .hq-manager-chat .cb-devices { flex-shrink: 0; }
+@media (max-width: 640px) {
+  .modal.cubby-chat.hq-manager-chat { height: calc(100dvh - 32px); }
+  .hq-manager-chat .cb-side { max-height: 20vh; }
+  .hq-manager-chat .cb-log { min-height: 90px; }
+  .hq-manager-chat .hq-messages { max-height: 25vh; }
+}

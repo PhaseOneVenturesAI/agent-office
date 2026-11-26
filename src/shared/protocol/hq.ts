@@ -1,4 +1,4 @@
-import type { CubbyInfo } from './cubbies.js';
+import type { CubbyInfo, CubbyOwnerMessage } from './cubbies.js';
 import type { OwnerColor } from '../personal-agents/appearance.js';
 /** Deliberately excludes registry paths, sessions, apps and live work status. */
 export interface HQProject {
@@ -20,6 +20,8 @@ export interface HQView {
 export const HQ_FURNISHED_PROJECTS = 6;
 export type LeadWhere = 'hq' | 'project' | 'pitch';
 export interface HQLead {
+  messages?: HQMessage[];
+  messageBadge?: string;
   id: string; project: string; projectIndex: number; departmentIndex?: number;
   role: string; title: string; computer: string; where: LeadWhere;
   floorId?: string; cubby?: CubbyInfo; needsYou: boolean;
@@ -44,4 +46,15 @@ export function cleanProjects(raw: unknown): HQProject[] {
       return department && title ? [{ department, title }] : [];
     }) }];
   });
+}
+
+export const HQ_MESSAGE_CAP = 4000;
+export interface HQMessage {
+  id: string; manager: string; lead: string; text: string; at: number;
+  state: 'waiting' | 'passed' | 'declined' | 'expired';
+}
+export type HQPassMessage = { t: 'cubbies.chat'; id: string; hqMessageId: string; ownerPublicKey: string } & CubbyOwnerMessage;
+export type HQClientMsg = { t: 'hq.message'; lead: string; text: string } | { t: 'hq.decline'; id: string } | HQPassMessage;
+export function managerMessageText(item: Pick<HQMessage, 'manager' | 'text'>) {
+  return `Message from ${item.manager} (HQ manager; can't approve merges, publishes or spending): ${item.text}`;
 }

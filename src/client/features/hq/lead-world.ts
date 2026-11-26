@@ -1,3 +1,4 @@
+import { leadMessageBadge } from './messages';
 import * as THREE from 'three';
 import type { HQLead, HQView } from '../../../shared/protocol/hq';
 import { personalRole } from '../../../shared/personal-agents/appearance';
@@ -20,24 +21,26 @@ export function bodySpot(lead: HQLead) {
 }
 export function statusText(lead: HQLead) {
   const c = lead.cubby, it = c?.interior;
-  return !c ? lead.role : `${c.lamp === 'asleep' ? '💤 asleep' : it?.error ? '⚠️ error' : it?.agents.some(a => a.role === 'lead' && a.status === 'working') ? 'working' : 'idle'} · E to talk`;
+  return leadMessageBadge(lead) ?? (!c ? lead.role : `${c.lamp === 'asleep' ? '💤 asleep' : it?.error ? '⚠️ error' : it?.agents.some(a => a.role === 'lead' && a.status === 'working') ? 'working' : 'idle'} · E to talk`);
 }
 /** A real, readable card in the spot the lead left. E opens its conversation and Go there. */
 export function statusCard(lead: HQLead, text: string, small = false) {
+  const pending = leadMessageBadge(lead);
+  const badge = pending ?? (lead.needsYou ? 'Needs you' : undefined);
   const face = new Face(small ? 1.5 : 1.8, small ? .36 : .75, 768);
-  face.draw(JSON.stringify([lead.id, text, lead.needsYou]), (c, w, h) => {
+  face.draw(JSON.stringify([lead.id, text, badge, lead.needsYou]), (c, w, h) => {
     c.fillStyle = '#fff7e9'; c.fillRect(0, 0, w, h);
     c.strokeStyle = '#d9c6ab'; c.lineWidth = 6; c.strokeRect(3, 3, w - 6, h - 6);
     c.fillStyle = '#292638'; c.textAlign = 'center'; c.textBaseline = 'middle';
     c.font = `bold ${small ? 66 : 56}px sans-serif`; fitText(c, text, w / 2, h * .27, w - 32);
     c.font = `${small ? 48 : 40}px sans-serif`;
-    fitText(c, `E to talk${lead.floorId ? ' · Go there' : ''}`, w / 2, h * (lead.needsYou ? .55 : .72), w - 32);
-    if (lead.needsYou) {
-      c.fillStyle = '#ffd166'; c.beginPath(); c.roundRect(w * .28, h * .73, w * .44, h * .23, 12); c.fill();
-      c.fillStyle = '#292638'; c.font = `bold ${small ? 36 : 38}px sans-serif`; c.fillText('Needs you', w / 2, h * .845);
+    fitText(c, `E to talk${pending && lead.needsYou ? ' · Needs you' : lead.floorId ? ' · Go there' : ''}`, w / 2, h * (badge ? .55 : .72), w - 32);
+    if (badge) {
+      c.fillStyle = '#ffd166'; c.beginPath(); c.roundRect(w * .04, h * .73, w * .92, h * .23, 12); c.fill();
+      c.fillStyle = '#292638'; c.font = `bold ${small ? 36 : 38}px sans-serif`; fitText(c, badge, w / 2, h * .845, w - 32);
     }
   });
-  face.mesh.name = 'hq-lead-status'; face.mesh.userData.statusText = text; face.mesh.userData.needsYou = lead.needsYou;
+  face.mesh.name = 'hq-lead-status'; face.mesh.userData.statusText = text; face.mesh.userData.needsYou = lead.needsYou; face.mesh.userData.messageBadge = pending;
   return face;
 }
 export class HQLeadWorld {

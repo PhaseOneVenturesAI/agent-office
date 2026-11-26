@@ -238,3 +238,83 @@ test('portfolio overflow never removes a cubby body without a furnished HQ desk'
   a.peer.floor = 'normal';
   assert.equal(cubbiesView(f.ctx, f.ctx.floorOf(a), a)!.cubbies[0].hqLead, undefined);
 });
+
+test('held manager messages are private; only a trusted owner signature passes the exact labelled chat to the connector', async t => {
+  const { sendManagerMessage, declineManagerMessage, passManagerMessage, messages } = await import('../src/server/hq/messages.js');
+  const { managerMessageText } = await import('../src/shared/protocol/hq.js');
+  const { cubbiesView } = await import('../src/server/ws/handlers/cubbies.js');
+  const f = fixture(t), { cb, ws } = f.publish('normal', Date.now(), [{ name: 'Plimbo', own: true, hasMainLead: true, departmentLeads: [] }]);
+  f.names.eddie = 'Eddie';
+  const a = f.client('alice'), m = f.client('bob'), other = f.client('eddie'), e = f.client('eve');
+  a.peer.floor = m.peer.floor = other.peer.floor = e.peer.floor = 'hq';
+  const lead = hqView(f.ctx, f.ctx.floorOf(a), a)!.leads![0];
+  const visible = (c: any) => hqView(f.ctx, f.ctx.floorOf(c), c)?.leads?.[0].messages;
+  const before = ws.sent.length;
+  const item = sendManagerMessage(f.ctx, m, lead.id, '  Please review this idea.  ');
+  assert.equal(item.text, 'Please review this idea.'); assert.equal(ws.sent.length, before, 'held send reaches no connector');
+  for (const c of [a, m]) assert.equal(visible(c)?.[0].state, 'waiting');
+  assert.deepEqual(visible(other), []); assert.equal(visible(e), undefined);
+  assert.equal(JSON.stringify(visible(m)).includes('managerId'), false);
+  for (const c of [m, other, e]) assert.throws(() => declineManagerMessage(f.ctx, c, item.id));
+  for (const c of [a, e]) assert.throws(() => sendManagerMessage(f.ctx, c, lead.id, 'No'));
+  assert.throws(() => sendManagerMessage(f.ctx, m, 'unrelated-lead', 'No'), /connected/);
+  assert.throws(() => sendManagerMessage(f.ctx, m, lead.id, 'Too soon'), /30 seconds/);
+  a.peer.floor = m.peer.floor = 'normal';
+  assert.match(cubbiesView(f.ctx, f.ctx.floorOf(a), a)!.cubbies[0].hqLead!.lead.messageBadge!, /1 message from Bob/);
+  assert.equal(cubbiesView(f.ctx, f.ctx.floorOf(a), a)!.cubbies[0].hqLead!.lead.messages, undefined);
+  assert.equal(cubbiesView(f.ctx, f.ctx.floorOf(m), m)!.cubbies[0].hqLead!.lead.messageBadge, undefined);
+  assert.throws(() => sendManagerMessage(f.ctx, m, lead.id, 'Wrong floor'), /HQ only/);
+  assert.throws(() => declineManagerMessage(f.ctx, a, item.id), /HQ only/);
+  a.peer.floor = m.peer.floor = 'hq';
+  const owner = testOwnerKey(), attacker = testOwnerKey();
+  ws.frame({ t: 'cubby.devices', floorId: 'normal', devices: [{ fingerprint: ownerFingerprint(owner.ownerKey), label: 'Owner', addedAt: Date.now() }], requests: [] });
+  const payload = { cubbyId: cb.id, floorId: 'normal', computerId: 'computer-normal', requestId: item.id, at: Date.now(), text: managerMessageText(item) };
+  const pass = { t: 'cubbies.chat' as const, id: cb.id, ...payload, hqMessageId: item.id, ownerPublicKey: owner.ownerKey, ownerSig: owner.sign(payload) };
+  const count = ws.sent.length;
+  for (const c of [m, other, e]) assert.throws(() => passManagerMessage(f.ctx, c, pass));
+  for (const forged of [
+    { ...pass, ownerSig: 'A'.repeat(86) },
+    { ...pass, ownerSig: attacker.sign(payload), ownerPublicKey: attacker.ownerKey },
+    { ...pass, text: 'Unlabelled text' },
+    { ...pass, ownerSig: owner.sign({ ...payload, floorId: 'hq' }) },
+    { ...pass, requestId: 'different-id' },
+  ]) assert.throws(() => passManagerMessage(f.ctx, a, forged), /trusted device/);
+  assert.equal(ws.sent.length, count); assert.equal(visible(a)?.[0].state, 'waiting');
+  dispatch(f.ctx, a, pass);
+  const delivered = ws.sent.at(-1);
+  assert.equal(delivered.t, 'cubby.chat'); assert.equal(delivered.text, "Message from Bob (HQ manager; can't approve merges, publishes or spending): Please review this idea.");
+  assert.equal(delivered.ownerSig, pass.ownerSig); assert.equal(verifyOwner(owner.ownerKey, delivered), true, 'connector verifier accepts the full labelled text');
+  assert.equal(delivered.hqMessageId, undefined); assert.equal(delivered.ownerPublicKey, undefined);
+  for (const c of [a, m, other]) assert.equal(visible(c)?.[0].state, 'passed');
+  assert.throws(() => passManagerMessage(f.ctx, a, pass), /No waiting/);
+  ws.frame({ t: 'cubby.reply', floorId: 'normal', requestId: item.id, text: 'I will review the idea.' });
+  assert.equal(hqView(f.ctx, f.ctx.floorOf(m), m)!.leads![0].cubby!.interior!.chat.at(-1)!.text, 'I will review the idea.');
+  const declined = sendManagerMessage(f.ctx, other, lead.id, 'Another idea');
+  const prior = ws.sent.length;
+  declineManagerMessage(f.ctx, a, declined.id);
+  assert.equal(ws.sent.length, prior); assert.equal(visible(other)?.find(i => i.id === declined.id)?.state, 'declined');
+  assert.equal(visible(m)?.some(i => i.id === declined.id), false);
+  assert.throws(() => messages(f.ctx).waiting(declined.id, 'alice'), /No waiting/);
+  assert.equal(e.ws.sent.some((frame: any) => frame.t === 'hq'), false);
+});
+
+test('held queue trims and caps text, caps five waiting per manager, expires after 24 hours and discards old memory', async () => {
+  const { HQMessages, MESSAGE_TTL } = await import('../src/server/hq/messages.js');
+  let now = 1000;
+  const queue = new HQMessages(() => now);
+  const first = queue.send('owner', 'bob', 'Bob', 'lead', `  ${'a'.repeat(5000)}  `);
+  assert.equal(first.text.length, 4000);
+  assert.throws(() => queue.send('owner', 'bob', 'Bob', 'lead', 'next'), /30 seconds/);
+  for (let i = 0; i < 4; i++) { now += 30_000; queue.send('owner', 'bob', 'Bob', 'lead', 'next'); }
+  now += 30_000;
+  assert.throws(() => queue.send('owner', 'bob', 'Bob', 'other-lead', 'six'), /5 waiting/);
+  assert.throws(() => queue.send('owner', 'eve', 'Eve', 'lead', ' \n '), /Write/);
+  assert.deepEqual(queue.visible('owner', 'other', 'lead'), []);
+  assert.deepEqual(queue.visible('another-owner', 'bob', 'lead'), []);
+  now = first.at + MESSAGE_TTL;
+  assert.equal(queue.visible('owner', 'bob', 'lead')[0].state, 'expired');
+  assert.throws(() => queue.waiting(first.id, 'owner'), /No waiting/);
+  assert.doesNotThrow(() => queue.send('owner', 'bob', 'Bob', 'lead', 'room again'));
+  now += 2 * MESSAGE_TTL;
+  assert.deepEqual(queue.visible('owner', 'owner', 'lead'), []);
+});

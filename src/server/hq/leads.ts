@@ -1,3 +1,4 @@
+import { messageLeads } from './messages.js';
 import { HQ_FURNISHED_PROJECTS } from '../../shared/protocol/hq.js';
 import type { HQLead, HQProject, LeadWhere } from '../../shared/protocol/hq.js';
 import type { CubbyInfo, CubbiesState } from '../../shared/protocol/cubbies.js';
@@ -52,7 +53,7 @@ export function leadsFor(ctx: Ctx, owner: string, mine: boolean) {
 export function withHQLeads(ctx: Ctx, c: Client, state: CubbiesState): CubbiesState {
   const access = hqAccess(ctx, c);
   if (!access || !state.enabled) return state;
-  const leads = leadsFor(ctx, access.owner, access.mine);
+  const leads = messageLeads(ctx, c, access.owner, leadsFor(ctx, access.owner, access.mine), false);
   return { ...state, cubbies: state.cubbies.map(info => {
     const lead = leads.find(l => l.cubby?.id === info.id && l.floorId === state.floorId);
     if (!lead) return info;

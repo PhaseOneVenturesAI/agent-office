@@ -30,7 +30,7 @@ async function setup(role) {
     if (navigator.mediaDevices) navigator.mediaDevices.getUserMedia = async () => { throw Error('Disabled in fixture'); };
   });
   await page.route('**/api/**', r => r.fulfill({ contentType: 'application/json', body: '{}' }));
-  await page.route('**/api/whoami', r => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ me: { admin: false, account: { id: role, name: role === 'owner' ? 'Jonathan' : role === 'manager' ? 'Ivan' : 'Outsider', role: 'member' } } }) }));
+  await page.route('**/api/whoami', r => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ me: { admin: false, account: { id: role, name: role === 'owner' ? 'Jonathan' : role === 'manager' ? 'Ivanh' : 'Outsider', role: 'member' } } }) }));
   await page.route('**/main.ts*', async r => { const response = await r.fetch(); await r.fulfill({ response, body: (await response.text()) + '\nwindow.__audit = { ctx, core, parts };' }); });
   await page.routeWebSocket(/\/ws(?:\?|$)/, ws => { sockets.set(page, ws); ws.onMessage(raw => sent.push(JSON.parse(String(raw)))); });
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?3d=1`);
@@ -48,7 +48,7 @@ async function setup(role) {
 async function account(role) {
   await page.evaluate(role => {
     const s = window.__office.store;
-    s.me = { admin: false, account: { id: role, name: role === 'owner' ? 'Jonathan' : role === 'manager' ? 'Ivan' : 'Outsider', role: 'member' } };
+    s.me = { admin: false, account: { id: role, name: role === 'owner' ? 'Jonathan' : role === 'manager' ? 'Ivanh' : 'Outsider', role: 'member' } };
     s.floors = [{ id: 'normal', name: 'Normal', dir: '/fixture', workers: 0, people: 0, busy: 0, waiting: 0, palette: 0 }];
     if (role !== 'outsider') s.floors.push({ id: 'hq', name: 'HQ', dir: '/fixture/hq', workers: 0, people: 0, busy: 0, waiting: 0, palette: 1, hq: { ownerName: 'Jonathan', mine: role === 'owner' } });
     s.emit('floors');
@@ -84,21 +84,30 @@ async function shot(name, phone) {
   for (const [width, height, suffix] of [[1280, 800, 'desktop'], [390, 844, 'phone']]) {
     await page.setViewportSize({ width, height }); if (suffix === 'phone' && phone) await phone();
     if (!await page.locator('.modal:visible').count()) { await page.keyboard.press('Shift'); await page.evaluate(() => window.__audit.parts.focus.backToGame()); }
-    await page.waitForTimeout(250); await page.screenshot({ path: `${out}/${name}-${suffix}.png` });
+    await page.waitForTimeout(250);
+    if (name.startsWith('10-') || name.startsWith('11-') || name.startsWith('12-')) {
+      assert.equal(await page.locator('.cb-send button').evaluate(el => {
+        const r = el.getBoundingClientRect(), parent = el.closest('.cb-main').getBoundingClientRect();
+        return r.bottom <= parent.bottom && r.right <= innerWidth && r.left >= 0;
+      }), true, `${name} ${suffix}: composer is fully visible`);
+    }
+    await page.screenshot({ path: `${out}/${name}-${suffix}.png` });
   }
   await page.setViewportSize({ width: 1280, height: 800 });
 }
 let where = 'hq', needsYou = false, fingerprint = '';
+const held = [], deliveredLines = [];
+const labelled = item => `Message from ${item.manager} (HQ manager; can't approve merges, publishes or spending): ${item.text}`;
 const ownerCubby = () => ({ id: 'jonathan-cubby', slot: 0, ownerName: 'Jonathan', ownerColor: '#5b3cc4', mine: true, lamp: 'working', working: 1,
   interior: { computerId: 'mac-fixture', computerName: 'Mac mini', leadName: 'Nova', look: { skin: 0, hair: 0, style: 0 },
     agents: [{ id: 'lead', tool: 'Claude', role: 'lead', task: 'Lead', branch: 'main', status: 'working' }], plan: [], needsYou: needsYou ? ['Review the pitch'] : [],
-    ownerDevices: [{ fingerprint, label: 'Browser', addedAt: 1 }], chat: [{ id: 'same-thread', role: 'assistant', text: 'The same conversation from Plimbo.', at: 1 }] } });
+    ownerDevices: [{ fingerprint, label: 'Browser', addedAt: 1 }], chat: [{ id: 'same-thread', role: 'assistant', text: 'The same conversation from Plimbo.', at: 1 }, ...deliveredLines] } });
 function leads(mine = true) {
   const c = ownerCubby();
   if (!mine) { c.mine = false; c.watching = true; delete c.interior.ownerDevices; delete c.interior.computerId; }
   return projects.flatMap((p, projectIndex) => [
     ...(p.hasMainLead ? [{ id: `project-${projectIndex}-ceo`, project: p.name, projectIndex, role: 'CEO', title: 'Main lead', computer: 'Mac mini',
-      where: projectIndex === 0 ? where : 'hq', needsYou: projectIndex === 0 && needsYou, ...(projectIndex === 0 ? { floorId: 'normal', cubby: c } : {}) }] : []),
+      where: projectIndex === 0 ? where : 'hq', needsYou: projectIndex === 0 && needsYou, ...(projectIndex === 0 ? { floorId: 'normal', cubby: c, messages: held.map(i => ({ ...i })) } : {}) }] : []),
     ...p.departmentLeads.map((d, departmentIndex) => ({ id: `project-${projectIndex}-department-${departmentIndex}`, project: p.name, projectIndex, departmentIndex,
       role: d.department, title: d.title, computer: 'Mac mini', where: 'hq', needsYou: false })),
   ]);
@@ -107,7 +116,7 @@ async function projectFloor(hqEnabled = true, mine = true) {
   await leave();
   const c = ownerCubby();
   if (!mine) { delete c.interior; c.mine = false; }
-  if (hqEnabled) c.hqLead = { hqFloorId: 'hq', lead: leads(mine)[0] };
+  if (hqEnabled) { const lead = leads(mine)[0]; delete lead.messages; c.hqLead = { hqFloorId: 'hq', lead }; }
   push(page, { t: 'cubbies', state: { enabled: true, floorId: 'normal', setupAllowed: true, cubbies: [c] } });
   await page.waitForFunction(() => window.__audit.parts.cubbies.rooms().get(0)?.info?.id === 'jonathan-cubby');
   await page.waitForTimeout(250);
@@ -208,14 +217,62 @@ try {
   assert.equal((await cubbyView()).body, false); assert.ok((await cubbyView()).cards.every(c => c.needsYou && c.statusText === 'In the HQ pitch room'));
   await stand(spot.x + 2.8, spot.z, spot.x, spot.z, -.06); await shot('05-needs-you-project', () => stand(spot.x + 4.1, spot.z, spot.x, spot.z, -.06));
   await account('manager'); await enter(false); await useLead('project-0-ceo'); await page.waitForSelector('.cubby-chat.watching');
-  assert.equal(await page.locator('.cubby-chat textarea:visible').count(), 0); assert.equal(await page.locator('.cubby-chat button[type=submit]:visible').count(), 0);
-  assert.match(await page.locator('.cb-log').innerText(), /same conversation/); await shot('07-manager-readonly'); await page.locator('.hq-go').click(); await page.waitForTimeout(500);
+  assert.equal(await page.locator('.cubby-chat textarea:visible').count(), 1);
+  assert.match(await page.locator('.cb-note.watch').innerText(), /Goes to Jonathan first. Nova only sees it if Jonathan passes it on./);
+  assert.match(await page.locator('.cb-log').innerText(), /same conversation/);
+  await page.locator('.cubby-chat textarea').fill('Could you check the next project milestone?');
+  await shot('10-manager-compose');
+  await page.locator('.cubby-chat button[type=submit]').click(); await page.waitForTimeout(150);
+  const composed = sent.filter(m => m.t === 'hq.message').at(-1);
+  assert.equal(composed.lead, 'project-0-ceo'); assert.equal(composed.text, 'Could you check the next project milestone?');
+  assert.equal(sent.filter(m => m.t === 'cubbies.chat').length, 1, 'manager compose does not send cubby chat');
+  held.push({ id: 'held-one', manager: 'Ivanh', lead: composed.lead, text: composed.text, at: Date.now(), state: 'waiting' });
+  push(page, { t: 'hq', view: hq(false) });
+  await page.waitForFunction(() => document.querySelector('.hq-messages')?.textContent.includes('waiting'));
+  assert.equal(await page.getByRole('button', { name: 'Pass on', exact: true }).count(), 0);
+  await close(); await account('owner'); await enter();
+  assert.equal((await leadView()).cards[0].messageBadge, '1 message from Ivanh');
+  await useLead('project-0-ceo');
+  await page.getByRole('button', { name: 'Pass on', exact: true }).waitFor();
+  await page.waitForFunction(() => ![...document.querySelectorAll('button')].find(b => b.textContent === 'Pass on')?.disabled);
+  await shot('11-owner-waiting');
+  // An untrusted browser can decline, but cannot pass anything to the connector.
+  const savedFingerprint = fingerprint; fingerprint = 'untrusted'; push(page, { t: 'hq', view: hq(true) });
+  await page.waitForFunction(() => [...document.querySelectorAll('button')].find(b => b.textContent === 'Pass on')?.disabled);
+  assert.match(await page.locator('.hq-messages').innerText(), /Use your trusted device/);
+  assert.equal(await page.getByRole('button', { name: 'Decline', exact: true }).isEnabled(), true);
+  fingerprint = savedFingerprint; push(page, { t: 'hq', view: hq(true) });
+  await page.getByRole('button', { name: 'Pass on', exact: true }).click(); await page.waitForTimeout(150);
+  const passed = sent.filter(m => m.t === 'cubbies.chat').at(-1);
+  assert.equal(passed.hqMessageId, 'held-one'); assert.equal(passed.text, labelled(held[0]));
+  assert.equal(passed.requestId, 'held-one'); assert.equal(passed.ownerPublicKey, publicKey);
+  const full = JSON.stringify(['agent-office/cubby-owner-chat/v1', passed.id, 'normal', 'mac-fixture', passed.requestId, passed.at, passed.text]);
+  assert.equal(verify('sha256', Buffer.from(full), { key: createPublicKey({ key: Buffer.from(publicKey, 'base64url'), type: 'spki', format: 'der' }), dsaEncoding: 'ieee-p1363' }, Buffer.from(passed.ownerSig, 'base64url')), true);
+  held[0].state = 'passed'; deliveredLines.push({ id: passed.requestId, role: 'user', text: passed.text, at: passed.at });
+  push(page, { t: 'hq', view: hq(true) });
+  await page.waitForFunction(() => document.querySelector('.cb-line.user b')?.textContent === 'Ivanh');
+  assert.equal(await page.locator('.cb-line.user b').innerText(), 'Ivanh');
+  await shot('12-passed-on-thread');
+  await close(); await account('manager'); await enter(false); await useLead('project-0-ceo');
+  assert.match(await page.locator('.hq-messages').innerText(), /passed on/);
+  await page.locator('.cubby-chat textarea').fill('A second idea to decline.');
+  await page.locator('.cubby-chat button[type=submit]').click(); await page.waitForTimeout(150);
+  held.push({ id: 'held-two', manager: 'Ivanh', lead: composed.lead, text: sent.filter(m => m.t === 'hq.message').at(-1).text, at: Date.now(), state: 'waiting' });
+  await close(); await account('owner'); await enter(); await useLead('project-0-ceo');
+  await page.getByRole('button', { name: 'Decline', exact: true }).click(); await page.waitForTimeout(150);
+  assert.equal(sent.filter(m => m.t === 'hq.decline').at(-1).id, 'held-two'); held[1].state = 'declined';
+  await close(); await account('manager'); await enter(false); await useLead('project-0-ceo');
+  assert.match(await page.locator('.hq-messages').innerText(), /declined/);
+  await page.locator('.hq-go').click(); await page.waitForTimeout(500);
   assert.equal(sent.filter(m => m.t === 'floor.go').at(-1).floor, 'normal');
   await projectFloor(true, false); await arrive(); assert.equal((await cubbyView()).interior, false);
+  await useLead('project-0-ceo', true, true);
+  assert.equal(await page.locator('.cubby-chat textarea:visible').count(), 0);
+  assert.equal(await page.locator('.hq-message').count(), 0); await close();
   await account('owner'); where = 'hq'; needsYou = false; await enter(); assert.equal((await leadView()).cards.length, 0);
   await projectFloor(false); assert.equal((await cubbyView()).body, true); assert.equal((await cubbyView()).cards.length, 0);
   await page.emulateMedia({ reducedMotion: 'reduce' }); await enter(); assert.equal((await leadView()).bodies.length, 4);
-  assert.deepEqual(errors, []); assert.equal(sent.filter(m => m.t === 'cubbies.chat').length, 1);
+  assert.deepEqual(errors, []); assert.equal(sent.filter(m => m.t === 'cubbies.chat').length, 2);
   writeFileSync(`${out}/report.json`, JSON.stringify({ evidence, errors, sentChat: message, screenshots: out }, null, 2));
   console.log(`HQ leads UI checks passed. Screenshots: ${out}`);
 } finally { await browser.close(); await server.close(); }

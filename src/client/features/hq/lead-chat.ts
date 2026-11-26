@@ -1,3 +1,4 @@
+import { leadMessages } from './messages';
 import type { HQLead } from '../../../shared/protocol/hq';
 import type { Ctx } from '../../core/context';
 import { store } from '../../state';
@@ -11,6 +12,7 @@ export function openHQLead(ctx: Ctx, lead: HQLead, current: () => HQLead | undef
     return openModal(h('div.modal.hq-lead-card', { role: 'dialog', 'aria-label': lead.title }, h('header', {}, h('h2', {}, `${lead.project} · ${lead.title}`)), body));
   }
   return openLeadChat({
+    extension: leadMessages(ctx, current),
     cubby: id => { const cubby = current()?.cubby; return cubby?.id === id ? cubby : undefined; },
     sourceFloor: () => current()?.floorId,
     onChange: fn => { const a = store.on('hq', fn), b = store.on('cubbies', fn); return () => { a(); b(); }; },
