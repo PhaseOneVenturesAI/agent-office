@@ -5,13 +5,13 @@
 // the ladder and the machine monitor.
 //
 // It runs from the north wall to just short of the exit door's landing, so the bottom floor's way out
-// and its stairs down to the street are untouched; its outer wall stands well short of the west road.
+// and its stairs down to the street are untouched; the planned west street is moved/dropped (Jonathan, 2026-11-26).
 
 import { EXIT_DOOR, EXIT_STAIRS, FLOOR, WALL_T, type Opening } from './layout.js';
 
 /** The hall inside its walls: x from its outer west wall to the old west wall's outer face. */
 export const CUBBY_HALL = {
-  minX: -23.6,
+  minX: -24.7,
   maxX: FLOOR.minX - WALL_T,
   minZ: FLOOR.minZ,
   maxZ: 5.3,
@@ -68,6 +68,9 @@ export const HALL_PLACES: readonly HallPlace[] = Array.from({ length: HALL_SLOTS
   depth: CUBBY_DEPTH,
   rotY: Math.PI / 2,
 }));
+
+/** Real west-wall openings, one per cubby; boards sit above their lintels. */
+export const HALL_WINDOWS: readonly Opening[] = HALL_PLACES.map(p => ({ wall: 'west', u: p.z, width: 2.0, y0: 1.05, y1: 2.35 }));
 
 export interface Box {
   minX: number;

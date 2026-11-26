@@ -1,3 +1,5 @@
+import { interiorLights } from './interior-lights';
+import { exteriorClearance } from './exterior-clearance';
 import * as THREE from 'three';
 import type { WallRect } from '../../../shared/decor';
 import type { FloorPalette } from '../../../shared/floors';
@@ -44,6 +46,8 @@ function floorPlan() {
     stack,
     rugs,
     nightLights,
+    interiorLights,
+    exteriorClearance,
     walls,
     balcony,
     tee,

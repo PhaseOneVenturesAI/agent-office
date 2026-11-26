@@ -81,7 +81,7 @@ test('agents go where their role goes, two builders at the desk, the rest on ove
   assert.deepEqual(crowd.listed, ['x4', 'x5', 'x6', 'x7', 'x8']);
 });
 
-test('in a hall cubby (~3 m by 2.5 m) the furniture, the lead and every spot stay apart and inside', () => {
+test('in a hall cubby (~4.4 m by 4 m) the furniture, the lead and every spot stay apart and inside', () => {
   const W = hall.CUBBY_WIDTH, D = hall.CUBBY_DEPTH;
   const f = model.furniture(W, D);
   type R = { name: string; minX: number; maxX: number; minZ: number; maxZ: number };
@@ -105,6 +105,8 @@ test('in a hall cubby (~3 m by 2.5 m) the furniture, the lead and every spot sta
   for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) assert.equal(overlap(all[i], all[j]), false, `${all[i].name} / ${all[j].name}`);
   // The boards on the back wall don't overlap, and the screens on the side wall stay in the room.
   assert.ok(f.plan.x + f.plan.width / 2 < f.needs.x - f.needs.width / 2);
+  assert.ok(f.plan.y - 0.55 > hall.HALL_WINDOWS[0].y1, 'boards clear the west window');
+  assert.ok(f.needs.y - 0.55 > hall.HALL_WINDOWS[0].y1);
   for (const s of f.screens) assert.ok(Math.abs(s.z) + 0.5 <= D / 2);
 });
 

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { Ctx } from '../../core/context';
 import type { Parts } from '../../core/parts';
+import { officeFill } from '../../world/sky';
 
 /**
  * Indoors the light that casts shadows comes from the lamps overhead, not the street's sun: the office is
@@ -23,10 +24,13 @@ export function installLamplight(ctx: Ctx, parts: Pick<Parts, 'stage' | 'place'>
   /** How far the back office was built out when the walls were last gone over: building it out makes new ones. */
   let wing = -1;
   const from = new THREE.Vector3();
+  /** How much fill light the spot you stand in keeps (an interior lamp's night stretch, like the cubby corridor), eased. */
+  let fill = 1;
 
   ctx.ticks.add('env', ({ dt }) => {
     const { sun } = parts.stage;
     const { sky } = ctx;
+    ctx.office.interiorLights.update(sky.lampsOn);
     // A map of its own (the castle) lights itself (see World.mood), and the roof's out under the sky.
     const inside = ctx.inOffice() && !ctx.upTop() && parts.place.indoors();
     indoorness += ((inside ? 1 : 0) - indoorness) * (1 - Math.exp(-dt * 3));
@@ -40,6 +44,13 @@ export function installLamplight(ctx: Ctx, parts: Pick<Parts, 'stage' | 'place'>
       }
     }
     sun.shadow.intensity = 1 + (INDOOR_LIGHT.shadow - 1) * indoorness;
+    const p = ctx.player.pos, want = ctx.office.interiorLights.fillAt(p.x, p.z, sky.lampsOn);
+    fill += (want - fill) * (1 - Math.exp(-dt * 3));
+    if (Math.abs(fill - want) < 0.002) fill = want;
+    if (fill < 1) {
+      for (const l of [parts.stage.hemi, parts.stage.ambient, sun]) l.intensity *= fill;
+      officeFill().multiplyScalar(fill);
+    }
     if (wallsShaded !== indoorness < 0.5 || wing !== ctx.office.wing.level) {
       wallsShaded = indoorness < 0.5;
       wing = ctx.office.wing.level;

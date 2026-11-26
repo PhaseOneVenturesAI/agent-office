@@ -8,12 +8,13 @@
 // nothing here is drawn or bumped into, so a floor without cubbies is exactly as it always was.
 
 import * as THREE from 'three';
-import { CUBBY_DOORWAY, CUBBY_HALL, HALL_FRONT_X, HALL_OUTER, HALL_PLACES, PARTITION_HEIGHT, hallPartitions, type HallPlace } from '../../../shared/cubbyhall';
+import { CUBBY_DOORWAY, CUBBY_HALL, HALL_FRONT_X, HALL_OUTER, HALL_PLACES, HALL_WINDOWS, PARTITION_HEIGHT, hallPartitions, type HallPlace } from '../../../shared/cubbyhall';
 import { FLOOR, PLANTS, SLAB, WALL_HEIGHT, WALL_T, WINDOWS, type Opening } from '../../../shared/layout';
 import type { Fixture } from '../../world/office/fixture';
 import { PALETTE, box, type Looks } from '../../world/office/materials';
 import { pendant } from '../../world/office/props';
-import { wallRun } from '../../world/office/shell';
+import { ownBulbs, type InteriorLamp } from '../../world/office/interior-lights';
+import { wallRun, windowIn } from '../../world/office/shell';
 import { mesh, textPlane, toon } from '../../world/toon';
 import type { Collider } from '../../world/types';
 import { CREAM, INK } from './props';
@@ -39,7 +40,13 @@ declare module '../../world/types' {
   }
 }
 
-const HALL_LAMP = 7;
+/**
+ * At night the corridor reads as night (Jonathan, 2026-11-26: "dim the corridor at night"): its three
+ * pendants glow low, the room's fill drops to CORRIDOR_NIGHT_FILL while you stand in it, and the cubbies'
+ * desk lamps and windows do most of the work. Inside a cubby keeps the office's night light. Day is unchanged.
+ */
+const CORRIDOR_LAMP = 1.6;
+export const CORRIDOR_NIGHT_FILL = 0.12;
 
 /**
  * A warm, light lining over the old west wall's outside face where the corridor runs along it, so the
@@ -131,7 +138,8 @@ function innerFacing(looks: Looks): THREE.Group {
 }
 
 /** Builds the hall (shut) into the floor: what it draws, and its colliders, kept aside until it opens. */
-function buildHall(looks: Looks, planks: THREE.Material, ceiling: THREE.Material): { group: THREE.Group; colliders: Collider[] } {
+function buildHall(looks: Looks, planks: THREE.Material, ceiling: THREE.Material): { group: THREE.Group; colliders: Collider[]; lights: InteriorLamp['lights']; bulbs: InteriorLamp['bulbs'] } {
+  const lights: InteriorLamp['lights'] = [], bulbs: InteriorLamp['bulbs'] = [];
   const T = WALL_T;
   const H = CUBBY_HALL;
   const O = HALL_OUTER;
@@ -140,9 +148,14 @@ function buildHall(looks: Looks, planks: THREE.Material, ceiling: THREE.Material
   const colliders: Collider[] = [];
 
   // Its walls: the outer west one, and the north and south ends back to the old wall.
-  wallRun(group, colliders, 'z', H.minX - T / 2, O.minZ, O.maxZ, -1, [], looks, [true, true]);
+  wallRun(group, colliders, 'z', H.minX - T / 2, O.minZ, O.maxZ, -1, [...HALL_WINDOWS], looks, [true, true]);
   wallRun(group, colliders, 'x', H.minZ - T / 2, H.minX, H.maxX, -1, [], looks, [false, false]);
   wallRun(group, colliders, 'x', H.maxZ + T / 2, H.minX, H.maxX, 1, [], looks, [false, false]);
+  for (const opening of HALL_WINDOWS) {
+    const window = windowIn(opening);
+    window.position.x = H.minX - T / 2;
+    group.add(window);
+  }
   group.add(innerFacing(looks));
   group.add(doorwayFrame());
 
@@ -193,16 +206,19 @@ function buildHall(looks: Looks, planks: THREE.Material, ceiling: THREE.Material
     const lamp = pendant(WALL_HEIGHT - 4.05);
     lamp.position.set(p.x, 4.05, p.z);
     group.add(lamp);
+    bulbs.push(...ownBulbs(lamp));
   }
   for (const z of [-9, -1.5, 4]) {
     const lamp = pendant(WALL_HEIGHT - 4.4);
     lamp.scale.setScalar(0.6);
     lamp.position.set((HALL_FRONT_X + H.maxX) / 2, 4.4, z);
     group.add(lamp);
+    bulbs.push(...ownBulbs(lamp));
     // Real warm light from the corridor lamps, so the hall isn't a dark slot (no shadows: cheap on phones).
-    const light = new THREE.PointLight('#ffe2b8', HALL_LAMP, 9, 1.6);
+    const light = new THREE.PointLight('#ffe2b8', 0, 9, 1.6);
     light.position.set((HALL_FRONT_X + H.maxX) / 2, 3.6, z);
     group.add(light);
+    lights.push({ light, power: CORRIDOR_LAMP });
   }
   group.add(corridorLining(d, midZ));
 
@@ -215,7 +231,7 @@ function buildHall(looks: Looks, planks: THREE.Material, ceiling: THREE.Material
     group.add(sign);
   }
   group.visible = false;
-  return { group, colliders };
+  return { group, colliders, lights, bulbs };
 }
 
 /** The cubby hall, shut until the floor has cubbies. */
@@ -266,5 +282,9 @@ export const cubbyHall: Fixture<'cubbyHall'> = (site) => {
       }
     },
   };
+  site.get('interiorLights').add({
+    active: () => hall.on, lights: built.lights, bulbs: built.bulbs,
+    nightFill: { at: (x, z) => x > HALL_FRONT_X && x < CUBBY_HALL.maxX && z > CUBBY_HALL.minZ && z < CUBBY_HALL.maxZ, level: CORRIDOR_NIGHT_FILL },
+  });
   return { handle: { cubbyHall: hall } };
 };

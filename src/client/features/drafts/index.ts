@@ -275,6 +275,7 @@ export function installDrafts(ctx: Ctx, deps: DraftsDeps) {
     else dim += (want - dim) * (1 - Math.exp(-dt * 3));
     if (Math.abs(dim - want) < 0.002) dim = want;
     loft.set(dim);
+    office.interiorLights.dim(dim);
     if (dim === 1) return;
     for (const l of deps.lights()) l.intensity *= dim;
     officeFill().multiplyScalar(dim);

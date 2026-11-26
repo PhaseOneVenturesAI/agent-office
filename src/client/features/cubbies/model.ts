@@ -70,7 +70,7 @@ export interface Spot {
 }
 
 /**
- * The furniture's places, for a cubby `w` wide and `d` deep (the hall's are about 4.4 by 2.5): the
+ * The furniture's places, for a cubby `w` wide and `d` deep (the hall's are about 4.4 by 4): the
  * computer's desk and the builders' desk side by side against the back wall with the lead in front of
  * the computer, the factory machine and the reviewer's bean bag in the front corners either side of
  * the door, the Paradev screens on the left wall, and the standing spots and the overflow bean bags
@@ -82,21 +82,22 @@ export function furniture(w: number, d: number) {
   const back = -d / 2;
   const front = d / 2;
   const deskZ = back + 0.42;
+  const boardY = d >= 3.9 ? 3.05 : 2.25; // Above the west window, with its view left open.
   const boardW = Math.min(1.6, w / 2 - 0.25);
   return {
     computer: { x: left + 0.55, z: back + 0.35 },
     computerDesk: { width: 1.0, depth: 0.6 },
     lead: { x: left + 0.55, z: back + 1.1, rotY: 0 },
     builderDesk: { x: right - 0.92, z: deskZ },
-    plan: { x: left + w / 4, y: 2.25, z: back + 0.04, width: boardW },
-    needs: { x: right - w / 4, y: 2.25, z: back + 0.04, width: boardW },
+    plan: { x: left + w / 4, y: boardY, z: back + 0.04, width: boardW },
+    needs: { x: right - w / 4, y: boardY, z: back + 0.04, width: boardW },
     // Where builderDesk() puts its two chairs' workers: 0.78 out in front of the desk.
     seats: [-0.45, 0.45].map((dx, index): Spot => ({ kind: 'seat', index, x: right - 0.92 + dx, z: deskZ + 0.78, rotY: Math.PI })),
     reviewer: { kind: 'reviewer', index: 0, x: right - 0.52, z: front - 0.55, rotY: -Math.PI / 2 } satisfies Spot,
     machine: { kind: 'machine', index: 0, x: left + 0.32, z: front - 0.45, rotY: Math.PI / 2 } satisfies Spot,
-    screens: [0, 1].map((index): Spot => ({ kind: 'screen', index, x: left + 0.06, z: back + 0.65 + index * 1.15, rotY: Math.PI / 2 })),
-    stands: [-0.5, 0.15].map((x, index): Spot => ({ kind: 'stand', index, x, z: front - 0.87, rotY: 0 })),
-    bags: [-0.5, 0.15].map((x, index): Spot => ({ kind: 'bag', index, x, z: front - 0.33, rotY: 0 })),
+    screens: [0, 1].map((index): Spot => ({ kind: 'screen', index, x: left + 0.06, z: back + 0.65 + index * Math.max(1.15, d - 2.0), rotY: Math.PI / 2 })),
+    stands: [-0.5, 0.15].map((x, index): Spot => ({ kind: 'stand', index, x, z: front - (d >= 3.9 ? 1.65 : 0.87), rotY: 0 })),
+    bags: [-0.5, 0.15].map((x, index): Spot => ({ kind: 'bag', index, x, z: front - (d >= 3.9 ? 1.0 : 0.33), rotY: 0 })),
   };
 }
 

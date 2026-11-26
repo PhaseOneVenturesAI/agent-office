@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { createHash, createPublicKey, generateKeyPairSync, verify } from 'node:crypto';
 
 const root = realpathSync(process.env.OFFICE_CUBBY_ROOT ?? process.cwd());
-const out = process.env.OFFICE_CUBBY_OUTPUT ?? '/tmp/agent-office-cubby-ui';
+const out = process.env.OFFICE_CUBBY_OUTPUT ?? `${root}/.paradev/shots-cubby-v5`;
 mkdirSync(out, { recursive: true });
 const FAKE_TOKEN = 'fixture-token-not-real';
 const SECRET = 'SECRET-OTHER-ACCOUNT-INTERIOR';
@@ -19,7 +19,7 @@ const SECRET = 'SECRET-OTHER-ACCOUNT-INTERIOR';
 const server = await createServer({ configFile: root + '/vite.config.ts', root: root + '/src/client', configLoader: 'runner', cacheDir: out + '/.vite', logLevel: 'warn', server: { host: '127.0.0.1', port: 0, fs: { allow: [root, realpathSync(root + '/node_modules')] } } });
 await server.listen();
 const browser = await chromium.launch({ executablePath: process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true });
-const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 2 });
+const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
 const errors = [];
 const sent = [];
 let socket = null;
@@ -66,7 +66,7 @@ const cubbies = (lamp = 'working', extra = {}) => ({
 const push = (m) => socket.send(JSON.stringify(m));
 
 const shot = async (name) => {
-  for (const [width, height, suffix] of [[1440, 1000, 'desktop'], [390, 844, 'phone']]) {
+  for (const [width, height, suffix] of [[1280, 800, 'desktop'], [390, 844, 'phone']]) {
     await page.setViewportSize({ width, height });
     await page.waitForTimeout(450);
     if (name === 'owner-key-mismatch') {
@@ -76,7 +76,62 @@ const shot = async (name) => {
     await page.screenshot({ path: `${out}/${name}-${suffix}.png` });
     if (name === 'chat' || name === 'setup') await page.locator(`.cubby-${name}`).screenshot({ path: `${out}/${name}-dialog-${suffix}.png` });
   }
-  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.setViewportSize({ width: 1280, height: 800 });
+};
+
+const nightEvidence = [];
+/** Mean luma of the central scene (HUD excluded), per viewport, as the page stands. */
+const sceneLuma = async () => {
+  const out = {};
+  for (const [width, height, suffix] of [[1280, 800, 'desktop'], [390, 844, 'phone']]) {
+    await page.setViewportSize({ width, height });
+    await page.waitForTimeout(450);
+    out[suffix] = await page.evaluate(() => {
+      const o = window.__office;
+      o.renderer.render(o.scene, o.camera);
+      const gl = o.renderer.getContext(), w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
+      const width = Math.floor(w * 0.8), height = Math.floor(h * 0.7), pixels = new Uint8Array(width * height * 4);
+      gl.readPixels(Math.floor(w * 0.1), Math.floor(h * 0.15), width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      let sum = 0;
+      for (let i = 0; i < pixels.length; i += 4) sum += 0.2126 * pixels[i] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i + 2];
+      return sum / (width * height);
+    });
+  }
+  await page.setViewportSize({ width: 1280, height: 800 });
+  return out;
+};
+const nightShot = async (name, day = null) => {
+  await page.evaluate(() => window.__office.sky.show({ hour: 21, weather: 'clear' }));
+  await page.waitForTimeout(1200);
+  for (const [width, height, suffix] of [[1280, 800, 'desktop'], [390, 844, 'phone']]) {
+    await page.setViewportSize({ width, height });
+    await page.waitForTimeout(450);
+    const evidence = await page.evaluate(() => {
+      const o = window.__office, a = window.__audit;
+      o.renderer.render(o.scene, o.camera);
+      const gl = o.renderer.getContext(), w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
+      // Central scene only: exclude the hint bar and HUD, so text can't mask a black room.
+      const width = Math.floor(w * 0.8), height = Math.floor(h * 0.7), pixels = new Uint8Array(width * height * 4);
+      gl.readPixels(Math.floor(w * 0.1), Math.floor(h * 0.15), width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      let sum = 0;
+      for (let i = 0; i < pixels.length; i += 4) sum += 0.2126 * pixels[i] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i + 2];
+      const lights = [];
+      for (const root of [a.ctx.office.cubbyHall.group, a.cubbies.group]) root.traverse(x => { if (x.isPointLight && x.visible) lights.push({ intensity: x.intensity, shadow: x.castShadow }); });
+      return { meanLuma: sum / (width * height), lights, hands: o.sky.lightAt(o.player.pos) };
+    });
+    assert.ok(evidence.meanLuma >= 60, `${name} ${suffix}: room lit at night (${evidence.meanLuma})`);
+    // The corridor reads as night: clearly darker than the same view by day (Jonathan, 2026-11-26).
+    if (day) assert.ok(evidence.meanLuma <= day[suffix] * 0.6, `${name} ${suffix}: night ${evidence.meanLuma} vs day ${day[suffix]}`);
+    if (day) evidence.dayLuma = day[suffix];
+    assert.equal(evidence.hands, 1);
+    assert.equal(evidence.lights.length, 6, 'three corridor lamps and three occupied desks; empty desk emissive only');
+    assert.ok(evidence.lights.every(l => l.intensity > 0 && !l.shadow));
+    nightEvidence.push({ name, suffix, ...evidence });
+    await page.screenshot({ path: `${out}/${name}-${suffix}.png` });
+  }
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.evaluate(() => window.__office.sky.show({ hour: 12, weather: 'clear' }));
+  await page.waitForTimeout(300);
 };
 
 try {
@@ -139,6 +194,10 @@ try {
     await page.keyboard.up(key);
     return page.evaluate(() => ({ x: window.__office.player.pos.x, z: window.__office.player.pos.z }));
   };
+  const clearanceState = () => page.evaluate(() => window.__audit.ctx.office.exteriorClearance.moves.map(m => ({
+    x: m.root.position.x, original: m.x, shift: m.dx,
+    colliders: m.cols.map(({ c, min, max }) => [c.minX - min, c.maxX - max]),
+  })));
   const hallState = () => page.evaluate(() => {
     const h = window.__audit.ctx.office.cubbyHall, cols = window.__office.world().colliders;
     return { on: h.on, visible: h.group.visible, inWorld: h.colliders.filter((c) => cols.includes(c)).length };
@@ -191,6 +250,12 @@ try {
   assert.equal(on.machine, true);
   assert.equal(on.screen, true);
   assert.deepEqual(on.kinds, ['cubbyagent', 'cubbycomputer', 'cubbydoor', 'cubbylead']);
+  const moved = await clearanceState();
+  assert.ok(moved.length >= 3, 'tree canopy, west pumpkins and graves registered');
+  for (const m of moved) {
+    assert.equal(m.x, m.original + m.shift);
+    for (const [min, max] of m.colliders) { assert.ok(Math.abs(min - m.shift) < 1e-9); assert.ok(Math.abs(max - m.shift) < 1e-9); }
+  }
   const open = await hallState();
   assert.equal(open.on && open.visible, true);
   assert.ok(open.inWorld >= 8, `the hall's walls, floor and partitions are in the way (${open.inWorld})`);
@@ -214,6 +279,12 @@ try {
   // And the whole corridor from its far end: free cubbies nearest, the others' frosted, yours by the doorway.
   await stand(-18.6, 4.7, 0.16, 0.06);
   await shot('hall-corridor');
+  await page.evaluate(() => window.__office.sky.show({ hour: 12, weather: 'clear' }));
+  await page.waitForTimeout(1200);
+  const dayCorridor = await sceneLuma();
+  for (const [suffix, luma] of Object.entries(dayCorridor)) await page.setViewportSize(suffix === 'phone' ? { width: 390, height: 844 } : { width: 1280, height: 800 }).then(() => page.waitForTimeout(450)).then(() => page.screenshot({ path: `${out}/day-corridor-${suffix}.png` })).then(() => luma);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await nightShot('night-corridor', dayCorridor);
 
   // ---- Inside: hint bar names the lead; E talks to it. ----
   const hints = await page.evaluate(() => {
@@ -255,13 +326,20 @@ try {
   assert.ok(tagged <= 1, `at most one helper shows its tag (${tagged})`);
   await stand(mineAt.x + mineAt.depth / 2 + 1.0, mineAt.z + 0.1, Math.PI / 2, -0.12);
   await shot('inside-doorway');
+  await nightShot('night-interior');
+  await stand(mineAt.x, mineAt.z + 0.8, Math.PI / 2, 0.08);
+  await shot('room-window-and-desk');
+  const freeAt = await page.evaluate(() => window.__audit.cubbies.rooms().get(3).place);
+  await stand(freeAt.x + freeAt.depth / 2 + 0.3, freeAt.z, Math.PI / 2, 0.03);
+  await shot('free-room-decor');
+  await stand(mineAt.x + mineAt.depth / 2 + 1.0, mineAt.z + 0.1, Math.PI / 2, -0.12);
   const cam = await page.evaluate(() => ({ x: window.__office.camera?.position.x ?? window.__audit.ctx.camera.position.x }));
-  assert.ok(cam.x > -23.6 && cam.x < -18.3, `the camera keeps inside the hall (${JSON.stringify(cam)})`);
+  assert.ok(cam.x > -24.7 && cam.x < -18.3, `the camera keeps inside the hall (${JSON.stringify(cam)})`);
   await stand(mineAt.x + mineAt.depth / 2 - 0.25, mineAt.z + 0.1, Math.PI / 2, -0.22);
 
   // ---- The lead's window: chat only, text only. ----
   await page.evaluate(() => { window.__office.player.view = 'first'; });
-  await page.mouse.click(700, 800);
+  await page.mouse.click(700, 700);
   await page.waitForFunction(() => window.__office.player.hasMouse);
   await page.evaluate(() => {
     const a = window.__audit;
@@ -401,12 +479,16 @@ try {
   const gone = await page.evaluate((base) => ({ visible: window.__audit.cubbies.group.visible, colliders: window.__office.world().colliders.length - base }), baseColliders);
   assert.deepEqual(gone, { visible: false, colliders: 0 });
   assert.deepEqual(await hallState(), { on: false, visible: false, inWorld: 0 });
+  for (const m of await clearanceState()) {
+    assert.equal(m.x, m.original, 'closed floor restores original scenery');
+    for (const offsets of m.colliders) assert.deepEqual(offsets, [0, 0]);
+  }
   const back = await page.evaluate(() => ({ x: window.__office.player.pos.x, z: window.__office.player.pos.z }));
   assert.ok(back.x > -18, `anyone left in the hall is put back on the open floor (${JSON.stringify(back)})`);
 
   assert.deepEqual(errors, []);
   assert.deepEqual(sent.filter((m) => /spawn|hire|resume|worker/.test(m.t)), []);
-  const report = { out, keyEvidence, off, on, hints, asleep, sentTypes: [...new Set(sent.map((m) => m.t))], errors, browser: browser.version() };
+  const report = { out, nightEvidence, keyEvidence, off, on, hints, asleep, sentTypes: [...new Set(sent.map((m) => m.t))], errors, browser: browser.version() };
   writeFileSync(`${out}/report.json`, JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report));
 } finally {

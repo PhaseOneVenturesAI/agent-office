@@ -97,7 +97,7 @@ export function installCubbies(ctx: Ctx, deps: CubbiesDeps = { aimed: () => null
     else if (rooms.size !== want.length || want.some((p) => rooms.get(p.slot)?.place !== p)) {
       dropRooms();
       for (const p of want) {
-        const r = new CubbyRoom(p);
+        const r = new CubbyRoom(p, ctx.office.interiorLights, () => hall.on && active());
         rooms.set(p.slot, r);
         group.add(r.group);
       }
@@ -123,6 +123,8 @@ export function installCubbies(ctx: Ctx, deps: CubbiesDeps = { aimed: () => null
     const p = ctx.player.pos;
     if (!on && ctx.inOffice() && !ctx.upTop() && p.y > -1 && inCubbyHall(p.x, p.z)) p.set(HALL_WAY_OUT.x, 0, HALL_WAY_OUT.z);
     hall.set(on);
+    ctx.sky.setHall(on);
+    ctx.office.exteriorClearance.set(on);
   }
 
   /** Shows or hides the cubbies, and puts what you bump into in the world you're in (or takes it out). */
