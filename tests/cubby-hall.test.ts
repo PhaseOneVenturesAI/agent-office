@@ -12,29 +12,29 @@ const inside = (a: Box, b: Box) => a.minX >= b.minX - 1e-9 && a.maxX <= b.maxX +
 /** A cubby's footprint on the floor (it faces east: its width runs along z, its depth along x). */
 const footprint = (p: hall.HallPlace): Box => ({ minX: p.x - p.depth / 2, maxX: p.x + p.depth / 2, minZ: p.z - p.width / 2, maxZ: p.z + p.width / 2 });
 
-test('the hall is about 5.3 m wide, west of the west wall, from the north wall to short of the exit landing', () => {
+test('the hall is about 6.4 m wide, west of the west wall, from the north wall to short of the exit landing', () => {
   const H = hall.CUBBY_HALL;
   assert.equal(H.maxX, FLOOR.minX - WALL_T);
-  assert.ok(H.maxX - H.minX > 5.1 && H.maxX - H.minX < 5.5, 'widened 1.6 m for a roomier corridor (Jonathan, 2026-11-25)');
-  assert.ok(hall.HALL_OUTER.minX >= -23.9 - 1e-9, 'its outer wall stands no further out than x -23.9');
+  assert.ok(H.maxX - H.minX > 6.3 && H.maxX - H.minX < 6.5, '4 m cubby depth plus the existing corridor (Jonathan, 2026-11-26)');
+  assert.ok(Math.abs(hall.HALL_OUTER.minX + 25) < E, 'outer wall at x -25');
   assert.equal(H.minZ, FLOOR.minZ);
   assert.ok(hall.HALL_OUTER.maxZ <= EXIT_DOOR.u - EXIT_DOOR.width / 2, 'south of it, the exit door is untouched');
 });
 
 test('it keeps clear of the exit landing and stairs, the street and the road', () => {
   assert.equal(overlaps(hall.HALL_OUTER, hall.exitStairsBox()), false);
-  // The west road's east edge is x -24 (see the brief); the street runs east–west south of the building.
-  assert.ok(hall.HALL_OUTER.minX > -24);
+  // Jonathan, 2026-11-26: the planned west road at x -24 moves or is dropped; no road exists there.
+  // The actual south street, exit landing and stairs remain fixed.
   assert.ok(hall.HALL_OUTER.maxZ < ROAD.minZ);
 });
 
-test('four cubbies, about 4.4 m by 2.9 m, inside the hall, side by side, fronts east onto the corridor', () => {
+test('four cubbies, about 4.4 m by 4.0 m, inside the hall, side by side, fronts east onto the corridor', () => {
   assert.equal(hall.HALL_PLACES.length, 4);
   assert.deepEqual(hall.HALL_PLACES.map((p) => p.slot), [0, 1, 2, 3]);
   for (const p of hall.HALL_PLACES) {
     assert.ok(inside(footprint(p), hall.CUBBY_HALL), `slot ${p.slot} is in the hall`);
     assert.ok(p.width > 4.2 && p.width < 4.6, `slot ${p.slot} is ~4.4 m along the hall`);
-    assert.ok(p.depth >= 2.8 && p.depth <= 3.0, `slot ${p.slot} is ~2.9 m deep`);
+    assert.ok(Math.abs(p.depth - 4) < E, `slot ${p.slot} is ~4.0 m deep`);
     assert.equal(p.rotY, Math.PI / 2, 'its front (+z in its own frame) faces east');
     assert.ok(Math.abs(p.x + p.depth / 2 - hall.HALL_FRONT_X) < 1e-9, 'its front is on the corridor');
     assert.equal(overlaps(footprint(p), hall.exitStairsBox()), false);

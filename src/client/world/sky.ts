@@ -1,7 +1,8 @@
 import * as THREE from 'three';
-import { FLOOR, SLAB, STREET_Y, WALL_HEIGHT, WALL_T, WING, wingMinZ } from '../../shared/layout';
+import { FLOOR, SLAB, STREET_Y } from '../../shared/layout';
 import type { SkyState, Theme, Weather } from '../../shared/protocol';
 import { guessPlace, skyNow, sunPosition } from '../../shared/sun';
+import { B, skyWing, skyHall, officeMask, sheltered, buildingSheltered, hallIndoors, setHall, setWing } from './sky-rooms';
 import type { NightParts } from './outside';
 
 /*
@@ -38,9 +39,6 @@ const HAZE_ABOVE = 17.5;
 export function hazeReach(above: number, far: number): number {
   return Math.min(HAZE_MAX, far * (1 + Math.max(0, above - HAZE_CLEAR) / HAZE_ABOVE));
 }
-/** The building, walls included: the office upstairs and the garage under it. */
-const B = { minX: FLOOR.minX - WALL_T, maxX: FLOOR.maxX + WALL_T, minZ: FLOOR.minZ - WALL_T, maxZ: FLOOR.maxZ + WALL_T } as const;
-
 const uniforms = {
   /** Off while drawing your hands in first person, which live in a scene of their own. */
   skyOn: { value: 1 },
@@ -65,10 +63,8 @@ const uniforms = {
   /** Where the street is, which the haze thins out with height over. */
   skyStreet: { value: STREET_Y },
   /** The back office, when the floor's built out into one (see WING): minX, maxX, minZ, maxZ. Empty without. */
-  skyWing: { value: new THREE.Vector4(1, 0, 1, 0) },
+  skyWing, skyHall,
 };
-
-const v3 = (x: number, y: number, z: number) => `vec3(${x.toFixed(3)}, ${y.toFixed(3)}, ${z.toFixed(3)})`;
 
 const PARS = /* glsl */ `
 varying vec3 vSkyWorld;
@@ -84,16 +80,9 @@ uniform vec3 skyLampMax;
 uniform float skyWet;
 uniform float skySnow;
 uniform float skyClearRooms, skyDrop, skyStreet;
-uniform vec4 skyWing;
+uniform vec4 skyWing, skyHall;
 
-// Inside the office's walls (and up through its open top), or the back office's, up to its ceiling
-// and no further: its roof, and the cornice over where the wall came down, are outdoors.
-float skyInOffice( vec3 p ) {
-  vec3 d = max( ${v3(FLOOR.minX - 0.02, -0.06, FLOOR.minZ - 0.02)} - p, p - ${v3(FLOOR.maxX + 0.02, 40, FLOOR.maxZ + 0.02)} );
-  vec3 w = max( vec3( skyWing.x, -0.06, skyWing.z ) - p, p - vec3( skyWing.y, ${(WALL_HEIGHT + 0.005).toFixed(3)}, skyWing.w ) );
-  float wing = length( max( w, 0.0 ) ) + step( ${(WALL_HEIGHT + 0.005).toFixed(3)}, p.y );
-  return 1.0 - smoothstep( 0.0, 0.12, min( length( max( d, 0.0 ) ), wing ) );
-}
+${officeMask}
 
 // Under the bottom floor: walled at the back and on the west side, open to the street on the south and east.
 float skyInGarage( vec3 p ) {
@@ -373,13 +362,6 @@ function blobTexture(inner: number): THREE.CanvasTexture {
   return new THREE.CanvasTexture(c);
 }
 
-/** The back office, walls included, when the floor you're on is built out into one (see Sky.setWing). */
-let wingBox: { minX: number; maxX: number; minZ: number; maxZ: number } | null = null;
-
-/** Is (x, z) under the building, where no rain or snow falls? */
-const sheltered = (x: number, z: number) =>
-  (x > B.minX - 0.05 && x < B.maxX + 0.05 && z > B.minZ - 0.05 && z < B.maxZ + 0.05) || (!!wingBox && x > wingBox.minX - 0.05 && x < wingBox.maxX + 0.05 && z > wingBox.minZ - 0.05 && z < wingBox.maxZ);
-
 export class Sky {
   private preview: { hour?: number; weather?: Weather; intensity?: number } = {};
   /** Lightning struck; its thunder should follow `delay` seconds later. */
@@ -599,12 +581,9 @@ export class Sky {
    * The floor you're on is built out `level` rows into the back office (see WING): lit like the
    * office inside, and out of the rain.
    */
-  setWing(level: number) {
-    const minZ = wingMinZ(level);
-    wingBox = level > 0 ? { minX: WING.minX - WALL_T, maxX: WING.maxX + WALL_T, minZ: minZ - WALL_T, maxZ: FLOOR.minZ } : null;
-    if (level > 0) uniforms.skyWing.value.set(WING.minX - 0.02, WING.maxX + 0.02, minZ - 0.02, FLOOR.minZ);
-    else uniforms.skyWing.value.set(1, 0, 1, 0);
-  }
+  setWing(level: number) { setWing(level); }
+  /** The current floor's cubby hall, including its outer walls up to the ceiling. */
+  setHall(on: boolean) { setHall(on); }
 
   /** Under a roof, out of the rain: the building, unless you're up on top of it. */
   private sheltered(x: number, z: number): boolean {
@@ -619,7 +598,7 @@ export class Sky {
   /** How lit it is at `p`, 0–1 (1 is a clear day, or a room with its lights on), for your hands. */
   lightAt(p: THREE.Vector3): number {
     if (this.indoors) return 1;
-    const inside = !this.roof && ((p.x > FLOOR.minX && p.x < FLOOR.maxX && p.z > FLOOR.minZ && p.z < FLOOR.maxZ) || (sheltered(p.x, p.z) && (p.y < 0 || p.z < FLOOR.minZ)));
+    const inside = !this.roof && (hallIndoors(p) || (p.x > FLOOR.minX && p.x < FLOOR.maxX && p.z > FLOOR.minZ && p.z < FLOOR.maxZ) || (buildingSheltered(p.x, p.z) && (p.y < 0 || p.z < FLOOR.minZ)));
     if (inside) return 1;
     let lamp = 0;
     if (!this.roof) {

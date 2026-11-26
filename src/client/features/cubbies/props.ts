@@ -30,7 +30,8 @@ const shared = <M extends THREE.Material>(m: M): M => {
   m.userData.shared = true;
   return m;
 };
-const FROST = shared(new THREE.MeshBasicMaterial({ color: '#f4f7fb', transparent: true, opacity: 0.86, depthWrite: false, side: THREE.DoubleSide }));
+// Lit, not flat: by day it reads near-white, and at night it dims with the corridor, keeping a soft warm glow from the room behind.
+const FROST = shared(new THREE.MeshLambertMaterial({ color: '#f4f7fb', emissive: '#4a3e2e', transparent: true, opacity: 0.86, depthWrite: false, side: THREE.DoubleSide }));
 const SHADOW = shared(new THREE.MeshBasicMaterial({ color: '#9aa3ad', transparent: true, opacity: 0.55, depthWrite: false }));
 const LAMPS = Object.fromEntries(Object.entries(LAMP_COLOR).map(([k, c]) => [k, shared(toon(c, { emissive: new THREE.Color(c).multiplyScalar(0.55).getStyle() }))])) as Record<keyof typeof LAMP_COLOR, THREE.MeshToonMaterial>;
 
@@ -147,16 +148,6 @@ export function wallScreen(): { group: THREE.Group; face: Face } {
   face.mesh.position.z = 0.03;
   group.add(face.mesh);
   return { group, face };
-}
-
-/** The status lamp: a little desk lamp whose bulb is the cubby's color (green, amber or grey). */
-export function lamp(): { group: THREE.Group; set(state: keyof typeof LAMP_COLOR): void } {
-  const group = new THREE.Group();
-  group.add(mesh(geo('lampBase', () => new THREE.CylinderGeometry(0.09, 0.11, 0.04, 14)), toon(INK), 0, 0.02, 0));
-  group.add(mesh(geo('lampStem', () => new THREE.CylinderGeometry(0.015, 0.015, 0.34, 6)), toon(INK), 0, 0.2, 0, false));
-  const bulb = mesh(geo('lampBulb', () => new THREE.SphereGeometry(0.085, 14, 10)), LAMPS.asleep, 0, 0.4, 0, false);
-  group.add(bulb);
-  return { group, set: (s) => void (bulb.material = LAMPS[s]) };
 }
 
 /** A small lamp dot for the outside sign, in the cubby's color. */

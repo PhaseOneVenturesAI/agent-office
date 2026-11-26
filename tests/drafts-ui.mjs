@@ -13,7 +13,7 @@ const root = realpathSync(process.env.OFFICE_DRAFTS_ROOT ?? process.cwd());
 const out = process.env.OFFICE_DRAFTS_OUTPUT ?? `${root}/.paradev/shots-drafts`;
 mkdirSync(out, { recursive: true });
 
-const server = await createServer({ configFile: root + '/vite.config.ts', root: root + '/src/client', configLoader: 'runner', cacheDir: '/tmp/agent-office-drafts-ui/.vite', logLevel: 'warn', server: { host: '127.0.0.1', port: 0, fs: { allow: [root, realpathSync(root + '/node_modules')] } } });
+const server = await createServer({ configFile: root + '/vite.config.ts', root: root + '/src/client', configLoader: 'runner', cacheDir: out + '/.vite', logLevel: 'warn', server: { host: '127.0.0.1', port: 0, fs: { allow: [root, realpathSync(root + '/node_modules')] } } });
 await server.listen();
 const browser = await chromium.launch({ executablePath: process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 2 });
@@ -105,6 +105,14 @@ try {
     };
   });
 
+  const hallLights = () => page.evaluate(() => {
+    const a = window.__audit, lights = [], bulbs = [];
+    for (const root of [a.ctx.office.cubbyHall.group, a.parts.cubbies.group]) root.traverse(o => {
+      if (o.isPointLight && o.visible) lights.push(o.intensity);
+      if (o.userData.interiorBulb) bulbs.push(o.material.emissiveIntensity);
+    });
+    return { lights, bulbs };
+  });
   // ---- Not a draft: nothing changes. ----
   await page.evaluate(() => {
     const s = window.__office.store;
@@ -117,6 +125,11 @@ try {
   push({ t: 'cubbies', state: cubbies });
   push({ t: 'drafts', state: drafts(null) });
   await page.waitForTimeout(400);
+  await page.evaluate(() => window.__office.sky.show({ hour: 21, weather: 'clear' }));
+  await page.waitForTimeout(400);
+  const hallBefore = await hallLights();
+  assert.equal(hallBefore.lights.length, 4);
+  assert.equal(hallBefore.bulbs.length, 11, 'seven pendants and four desk bulbs');
   const before = await state();
   assert.equal(before.shown, false);
   assert.equal(before.whiteboard, true);
@@ -127,6 +140,10 @@ try {
   push({ t: 'drafts', state: drafts(here()) });
   await page.waitForTimeout(1800);
   const on = await state();
+  const hallDimmed = await hallLights();
+  assert.equal(hallDimmed.lights.length, hallBefore.lights.length);
+  hallDimmed.lights.forEach((n, i) => assert.ok(n < hallBefore.lights[i] * 0.4, `hall light ${i} dims`));
+  hallDimmed.bulbs.forEach((n, i) => assert.ok(n < hallBefore.bulbs[i] * 0.4, `hall bulb ${i} dims`));
   assert.equal(on.shown, true);
   assert.equal(on.whiteboard, false);
   assert.ok(on.off > before.off, 'boards, TV, whiteboard, pod desks and kiosks are off');
@@ -164,7 +181,7 @@ try {
   assert.ok(night.meanLuma >= 60, `draft readable at 21:00 (${night.meanLuma})`);
   assert.ok(night.hemi > 0, 'draft keeps its ambient light at night');
   await shot('09-draft-at-night');
-  await page.evaluate(() => window.__office.sky.show({}));
+  await page.evaluate(() => window.__office.sky.show({ hour: 21, weather: 'clear' }));
 
   // Hints: the lead and the studio table.
   const hints = await page.evaluate(() => {
@@ -312,6 +329,9 @@ try {
   push({ t: 'drafts', state: drafts(null) });
   await page.waitForTimeout(1800);
   const after = await state();
+  const hallRestored = await hallLights();
+  hallRestored.lights.forEach((n, i) => assert.ok(Math.abs(n - hallBefore.lights[i]) < 0.05, `hall light ${i} restored`));
+  hallRestored.bulbs.forEach((n, i) => assert.ok(Math.abs(n - hallBefore.bulbs[i]) < 0.02, `hall bulb ${i} restored`));
   assert.equal(after.shown, false);
   assert.equal(after.whiteboard, true);
   assert.deepEqual(after.offIds, before.offIds);
@@ -321,7 +341,7 @@ try {
   assert.ok(Math.abs(after.hemi - before.hemi) < 0.05, `lights back (${before.hemi} → ${after.hemi})`);
 
   assert.deepEqual(errors, []);
-  const report = { out, before, on, night, hints, after, sentTypes: [...new Set(sent.map((m) => m.t))], errors, browser: browser.version() };
+  const report = { out, hallBefore, hallDimmed, hallRestored, before, on, night, hints, after, sentTypes: [...new Set(sent.map((m) => m.t))], errors, browser: browser.version() };
   writeFileSync(`${out}/report.json`, JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report));
 } finally {
