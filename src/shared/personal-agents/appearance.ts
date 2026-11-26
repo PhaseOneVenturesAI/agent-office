@@ -1,13 +1,20 @@
 /** One account colour, restricted to colours legible against the office's cream and wood. */
 export const OWNER_PALETTE = [
-  { name: 'Violet', color: '#6c4fd8' }, { name: 'Teal', color: '#1f8a7a' },
-  { name: 'Red', color: '#d1495b' }, { name: 'Orange', color: '#e07a3f' },
-  { name: 'Blue', color: '#1e40c8' }, { name: 'Green', color: '#3f8f4f' },
-  { name: 'Pink', color: '#c94f8a' }, { name: 'Slate', color: '#4a5568' },
+  { name: 'Violet', color: '#5633b5' }, { name: 'Teal', color: '#10594f' },
+  { name: 'Red', color: '#9a2038' }, { name: 'Orange', color: '#853a12' },
+  { name: 'Blue', color: '#1e40c8' }, { name: 'Green', color: '#22562e' },
+  { name: 'Pink', color: '#90265c' }, { name: 'Slate', color: '#414c60' },
 ] as const;
 export type OwnerColor = typeof OWNER_PALETTE[number]['color'];
 export function isOwnerColor(value: unknown): value is OwnerColor {
   return OWNER_PALETTE.some(p => p.color === value);
+}
+/** Preserve the selected swatch when loading records written before the contrast adjustment. */
+export function savedOwnerColor(value: unknown): OwnerColor | undefined {
+  if (isOwnerColor(value)) return value;
+  const previous = ['#6c4fd8', '#1f8a7a', '#d1495b', '#e07a3f', '#1e40c8', '#3f8f4f', '#c94f8a', '#4a5568'];
+  const index = previous.indexOf(String(value));
+  return index < 0 ? undefined : OWNER_PALETTE[index].color;
 }
 export function defaultOwnerColor(accountId: string): OwnerColor {
   let hash = 2166136261;
@@ -33,6 +40,6 @@ export function helperName(tool: string, task: string): string {
 }
 export const helperTool = (tool: string) => /^(codex|kimi)\b/i.test(tool);
 export function outfitFor(role: PersonalRole, color: OwnerColor) {
-  return { top: role === 'CEO' ? '#303449' : role === 'Design' ? '#fff3da' : role === 'Product' ? '#4577aa' : color,
+  return { top: color,
     accent: color, prop: role === 'Marketing' ? 'megaphone' : role === 'Product' ? 'clipboard' : null } as const;
 }

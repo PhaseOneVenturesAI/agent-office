@@ -14,7 +14,6 @@ import { PersonalPerson } from './personal-agents/person';
 import { PersonalHelper } from './personal-agents/helper';
 import { defaultOwnerColor, helperTool, personalRole, type OwnerColor } from '../../../shared/personal-agents/appearance';
 import { store } from '../../state';
-import { textSprite } from '../../world/toon';
 import type { Collider } from '../../world/types';
 import { Laptop } from '../workers/laptop';
 import { focusedOf, showTags, type Focus } from './focus';
@@ -38,8 +37,6 @@ export class Interior {
   private leadLook = '';
   private leadDoing = '';
   private laptop = new Laptop();
-  private computerTag: THREE.Sprite | null = null;
-  private computerName = '';
   private plan = new Face(1.6, 1.0, 512);
   private needs = new Face(1.4, 1.0, 448);
   private machine = factoryMachine();
@@ -71,6 +68,9 @@ export class Interior {
     // The lead, standing in front of it, facing the door.
     this.lead = new PersonalPerson('Lead', AVATAR_COLORS[0], { skin: 0, hair: 0, style: 0 });
     this.lead.root.position.set(f.lead.x, 0, f.lead.z);
+    this.lead.ring.floorY = place.y ?? 0;
+    // The lead stands beside the left partition; keep the whole plate inside the room.
+    this.lead.root.getObjectByName('personal-nameplate')!.position.x = 0.45;
     this.group.add(this.lead.root);
 
     // The builders' desk: two seats, the harness's limit.
@@ -133,19 +133,8 @@ export class Interior {
     }
     const project = store.project?.name ?? 'Project';
     this.lead.setUniform(ownerName, project, personalRole(it.agents.find(a => a.role === 'lead'), true), color);
-    const doing = this.asleep ? `💤 asleep on ${clip(it.computerName, 20)}` : it.error ? `⚠️ ${clip(it.error, 40)}` : watching ? 'Lead · E to listen in' : `Lead · E to talk`;
+    const doing = this.asleep ? `💤 asleep on ${clip(it.computerName, 20)}` : it.error ? `⚠️ ${clip(it.error, 40)}` : watching ? 'E to listen in' : `E to talk · ${clip(it.computerName, 20)}`;
     if (doing !== this.leadDoing) this.lead.setDoing((this.leadDoing = doing));
-    if (it.computerName !== this.computerName) {
-      this.computerName = it.computerName;
-      if (this.computerTag) {
-        this.group.remove(this.computerTag);
-        disposeTree(this.computerTag);
-      }
-      const f = furniture(this.place.width, this.place.depth);
-      this.computerTag = textSprite(`💻 ${clip(it.computerName, 28)}`, { bg: CREAM, size: 34 });
-      this.computerTag.position.set(f.computer.x, 1.75, f.computer.z);
-      this.group.add(this.computerTag);
-    }
     this.syncAgents(it.agents, ownerName, project, color);
     this.paintBoards(it);
     this.usables = this.makeUsables();
@@ -187,7 +176,7 @@ export class Interior {
         } else {
           v.model.setStatus(workerStatus(a.status, this.asleep));
           v.model.setUniform(ownerName, project, personalRole(a), color);
-          v.model.setDoing(this.asleep ? '💤 asleep' : card.title);
+          v.model.setDoing(this.asleep ? '💤 asleep' : a.status === 'needs-you' ? 'Needs you' : a.status);
         }
       }
       if (v.spot.kind === 'screen') this.paintScreen(v.spot.index, a);
@@ -198,6 +187,7 @@ export class Interior {
   private placeModel(a: CubbyAgent, spot: Spot): PersonalPerson | PersonalHelper | null {
     if (spot.kind === 'machine' || spot.kind === 'screen') return null;
     const w = helperTool(a.tool) ? new PersonalHelper(a.tool) : new PersonalPerson(a.tool, '#6c4fd8', this.interior!.look);
+    w.ring.floorY = this.place.y ?? 0;
     const seat = spot.kind === 'seat' ? this.seats[spot.index] : spot.kind === 'reviewer' ? this.reviewerSeat : spot.kind === 'bag' ? this.bagSeats[spot.index] : null;
     if (seat) {
       seat.add(w.root);
@@ -312,10 +302,11 @@ export class Interior {
     else this.laptop.update(dt, undefined, 0);
     this.lead.update(dt, t, false, false);
     const shown = this.focused(focus);
+    // Give the focused helper the reading space; the lead plate returns when focus leaves it.
+    showTags(this.lead.root, !shown);
     for (const v of this.views.values()) {
       v.model?.update(dt, t);
       if (v.model) {
-        shrinkTags(v.model.root);
         showTags(v.model.root, v === shown);
       }
       if (v.spot.kind === 'machine') {
@@ -354,20 +345,6 @@ export class Interior {
     disposeTree(this.group);
     this.group.clear();
   }
-}
-
-/**
- * A cubby is about 4.4 by 4 m, so the office's full-size name tags and task cards would fill the view
- * from its doorway. Each label a helper draws (a sprite, redrawn whenever it changes) is shown at half
- * size here, once.
- */
-const TAG_SCALE = 0.5;
-function shrinkTags(root: THREE.Object3D) {
-  root.traverse((o) => {
-    if (!(o as THREE.Sprite).isSprite || o.userData.cubbyTag === o.scale.x) return;
-    o.scale.multiplyScalar(TAG_SCALE);
-    o.userData.cubbyTag = o.scale.x;
-  });
 }
 
 export type { Focus } from './focus';

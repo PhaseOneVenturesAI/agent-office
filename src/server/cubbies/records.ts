@@ -1,4 +1,4 @@
-import { defaultOwnerColor, isOwnerColor, type OwnerColor } from '../../shared/personal-agents/appearance.js';
+import { defaultOwnerColor, isOwnerColor, savedOwnerColor, type OwnerColor } from '../../shared/personal-agents/appearance.js';
 import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { Look } from '../../shared/avatar.js';
@@ -24,7 +24,7 @@ export class CubbyRecords {
       if (slots.has(slot) || this.rows.has(r.id)) throw Error('Duplicate cubby record');
       slots.add(slot);
       this.rows.set(r.id, { id: r.id, floorId: r.floorId, owner: r.owner, nodeId: r.nodeId, slot: r.slot,
-        ownerColor: isOwnerColor(r.ownerColor) ? r.ownerColor : defaultOwnerColor(r.owner),
+        ownerColor: savedOwnerColor(r.ownerColor) ?? defaultOwnerColor(r.owner),
         leadName: r.leadName.slice(0, 32), look: sanitizeLook(r.look, lookFromSeed(r.id)),
         ...(key(r.computerId) ? { computerId: r.computerId } : {}),
         ...(typeof r.computerName === 'string' ? { computerName: r.computerName.slice(0, 60) } : {}) });
