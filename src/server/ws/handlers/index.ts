@@ -1,3 +1,4 @@
+import { hqView } from '../../hq/views.js';
 import { pitchHandlers, pitchView } from './pitch.js';
 import { cubbiesHandlers, cubbiesHooks, cubbiesView } from './cubbies.js';
 import { draftsHandlers, draftsView } from './drafts.js';
@@ -81,6 +82,7 @@ export const features: readonly FeatureHooks[] = [cubbiesHooks, deliveryHooks, c
 
 /** What someone arriving on a floor is sent (see office/views.ts): a piece from each feature, in the order it has always gone out. */
 export const views: ViewPieces = {
+  hq: hqView,
   cubbies: cubbiesView,
   pitch: pitchView,
   drafts: draftsView,

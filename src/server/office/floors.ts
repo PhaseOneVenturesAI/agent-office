@@ -13,7 +13,7 @@ import { NEW_BADGE_MS } from '../../shared/protocol/drafts.js';
 export function floorHelpers(ctx: Ctx): FloorHelpers {
   const floorVisible = (id: string, c: Pick<Client, 'accountId'>): boolean => {
     const def = ctx.floors.get(id)?.def ?? ctx.building.list().find(d => d.id === id);
-    return !def?.draft || !!ctx.drafts?.owns(id, c.accountId);
+    return (ctx.hq?.visible(id, c.accountId) ?? true) && (!def?.draft || !!ctx.drafts?.owns(id, c.accountId));
   };
   const floorOf = (c: Client): Floor | undefined => (c.peer.floor && floorVisible(c.peer.floor, c) ? ctx.floors.get(c.peer.floor) : undefined);
   /** The floor a worker sits on. Worker ids are unique across the building. */
@@ -30,7 +30,7 @@ export function floorHelpers(ctx: Ctx): FloorHelpers {
       badgeTimer?.unref();
     }
     return [
-      ...[...ctx.floors.values()].map((f) => ({ ...f.info(), ...(f.def.draft ? { draft: true as const } : {}), ...(ctx.drafts?.isNew(f.id) ? { isNew: true as const } : {}), ...(ctx.building.isLocal(f.id) ? { local: true } : {}) })),
+      ...[...ctx.floors.values()].map((f) => ({ ...f.info(), ...ctx.hq?.info(f.id, c.accountId), ...(f.def.draft ? { draft: true as const } : {}), ...(ctx.drafts?.isNew(f.id) ? { isNew: true as const } : {}), ...(ctx.building.isLocal(f.id) ? { local: true } : {}) })),
       ...ctx.building.pending().map((d) => ({ id: d.id, name: d.name, repo: d.repo, dir: d.dir, palette: d.palette, addedBy: d.addedBy, addedAt: d.addedAt, cloning: true, clone: ctx.building.cloneProgress(d.id), workers: 0, busy: 0, waiting: 0, people: 0, wing: 0 })),
     ].filter(f => floorVisible(f.id, c));
   };
@@ -156,6 +156,7 @@ export async function openFloors(ctx: Ctx, hookPort: number): Promise<FloorsOpen
   /** Whether a worker on `from` works in `on`'s project too (see WorkerInfo.repos). */
   const worksIn = (from: Floor, on: Floor) => from.workers.list().some((w) => w.repos?.some((r) => r.floor === on.id));
   const openFloor = (def: FloorDef): Floor | undefined => {
+    if (ctx.hq?.is(def.id) && !ctx.hq.enabled) return undefined;
     if (def.draft && !ctx.drafts.enabled) return undefined;
     if (!existsSync(def.dir)) {
       console.error(`agent-office: the ${def.name} floor's checkout is gone (${def.dir}) — it stays closed until it's back`);

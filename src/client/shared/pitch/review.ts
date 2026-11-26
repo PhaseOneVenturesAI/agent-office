@@ -29,7 +29,7 @@ export function openPitchPiece(deps: ReviewDeps, pieceId: string, initial = 0, a
     if (!p) { modal.close(); return; }
     title.textContent = p.title;
     notes.textContent = p.notes.join('\n');
-    stamp.textContent = p.stamp ? `${verdictLabel(p.stamp.verdict)}${p.stamp.note ? ` — ${p.stamp.note}` : ''}` : 'Awaiting your verdict';
+    stamp.textContent = p.stamp ? `${verdictLabel(p.stamp.verdict)}${p.stamp.note ? ` — ${p.stamp.note}` : ''}` : view.readOnly ? 'Awaiting the owner’s verdict · Read-only' : 'Awaiting your verdict';
     if (pending && store.pitch?.notice?.requestId === pending) status.textContent = store.pitch.notice.text;
     if (pending && p.stamp?.requestId === pending) { pending = ''; status.textContent = 'Saved on your computer.'; clearTimeout(timer); }
     const images = p.images.length ? p.images : p.image ? [p.image] : [];
@@ -50,13 +50,13 @@ export function openPitchPiece(deps: ReviewDeps, pieceId: string, initial = 0, a
   };
   const send = async (verdict: Verdict) => {
     const p = piece(), cb = store.cubbies.cubbies.find(c => c.id === view.cubbyId && c.mine);
-    if (!p || busy || pending) return;
+    if (!p || view.readOnly || busy || pending) return;
     const text = note.value.trim();
     if (verdict === 'change' && !text) { status.textContent = 'Add a note so your lead knows what to change.'; note.focus(); return; }
     busy = true; paint();
     try {
       const key = await ownerDeviceKey(account);
-      if (!deviceTrusted(cb, key)) throw Error('Add this device in your lead’s cubby chat before leaving a verdict.');
+      if (!(view.displayFloorId ? view.ownerDevices?.some(d => d.fingerprint === key.fingerprint) : deviceTrusted(cb, key))) throw Error('Add this device in your lead’s cubby chat before leaving a verdict.');
       if (cb?.lamp === 'asleep') throw Error('Reconnect your computer to save a verdict.');
       const payload = { cubbyId: view.cubbyId, floorId: view.floorId, computerId: view.computerId, version: view.pitch.version,
         pieceId, verdict, ...(text ? { note: text } : {}), requestId: crypto.randomUUID(), at: Date.now() };
@@ -68,7 +68,8 @@ export function openPitchPiece(deps: ReviewDeps, pieceId: string, initial = 0, a
     } catch (error) { status.textContent = (error as Error).message; }
     finally { busy = false; if (!closed) paint(); }
   }
-  for (const [verdict, label] of [['approve', 'Approve'], ['change', 'Change…'], ['drop', 'Drop']] as const)
+  note.hidden = view.readOnly === true;
+  if (!view.readOnly) for (const [verdict, label] of [['approve', 'Approve'], ['change', 'Change…'], ['drop', 'Drop']] as const)
     actions.append(h('button.btn', { type: 'button', onclick: () => void send(verdict) }, label));
   const el = h('div.modal.pitch-review', { role: 'dialog', 'aria-label': 'Pitch review' }, h('header', {}, title), h('div.body', {}, figure, nav, notes, stamp, note, actions, status));
   const off = store.on('pitch', paint);

@@ -1,3 +1,4 @@
+import { hq } from '../../features/hq/world';
 import { interiorLights } from './interior-lights';
 import { exteriorClearance } from './exterior-clearance';
 import * as THREE from 'three';
@@ -80,6 +81,7 @@ function floorPlan() {
     hoop,
     whiteboard,
     clearOfStairs,
+    hq,
   ] as const;
 }
 

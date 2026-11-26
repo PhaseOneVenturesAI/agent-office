@@ -1,3 +1,4 @@
+import { hqDispatch } from '../hq/dispatch.js';
 import { draftExecution } from '../drafts/visibility.js';
 import type { ClientMsg } from '../../shared/protocol.js';
 import type { Ctx } from '../office/context.js';
@@ -13,6 +14,7 @@ type AnyHandler = (ctx: Ctx, c: Client, msg: ClientMsg) => void;
  */
 export function dispatch(ctx: Ctx, c: Client, msg: ClientMsg): void {
   if (typeof msg.t !== 'string' || !Object.hasOwn(handlers, msg.t)) return;
+  if (hqDispatch(ctx, c, msg)) return;
   if (draftExecution(ctx, c, msg.t)) return;
   (handlers[msg.t] as AnyHandler)(ctx, c, msg);
 }

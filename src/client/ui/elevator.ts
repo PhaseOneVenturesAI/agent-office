@@ -136,12 +136,12 @@ export function openElevator(opts: ElevatorOptions): void {
     const btn = h(
       'button.floor-btn',
       { type: 'button', class: [here ? 'here' : '', draft ? 'draft' : ''].filter(Boolean).join(' '), disabled: f.cloning || here, title: here ? "You're on this floor" : f.cloning ? 'Still being cloned' : `Ride ${mine ? 'back up ' : ''}to ${f.name}` },
-      h('span.floor-no', { style: `background:${draft ? '#ffd166' : p.trim}` }, draft ? h('span.draft-lamp', { 'aria-hidden': 'true' }, '💡') : String(i + 1)),
+      h('span.floor-no', { style: `background:${draft ? '#ffd166' : p.trim}` }, draft ? h('span.draft-lamp', { 'aria-hidden': 'true' }, '💡') : f.hq ? '🔒' : String(i + 1)),
       h(
         'span.floor-text',
         {},
         h('span.floor-name', {}, f.name, draft ? h('span.draft-tag', {}, 'draft') : null, f.isNew && !draft ? h('span.new-tag', { title: 'Just kicked off' }, 'New') : null, here ? h('span.here-tag', {}, 'you are here') : mine ? h('span.here-tag', {}, 'your floor') : null),
-        h('span.floor-sub', {}, draft ? 'Only you · lights off until kickoff' : [f.repo ?? f.dir, f.cloning ? f.clone?.detail : ''].filter(Boolean).join(' · ')),
+        h('span.floor-sub', {}, draft ? 'Only you · lights off until kickoff' : f.hq ? `Private · ${f.hq.ownerName} and allowed managers` : [f.repo ?? f.dir, f.cloning ? f.clone?.detail : ''].filter(Boolean).join(' · ')),
         f.cloning ? cloneBar(f.clone) : null,
       ),
       h('span.floor-stats', {}, ...stats.flatMap((s, j) => (j ? [' ', s] : [s]))),
@@ -163,7 +163,7 @@ export function openElevator(opts: ElevatorOptions): void {
       stop.addEventListener('click', () => confirmDialog(`Stop cloning ${f.repo ?? f.name}?`, "What's come down so far is thrown away. You can add it again any time.", '⏹️ Stop cloning', () => net.send({ t: 'floor.cancel', floor: f.id })));
       return h('div.floor-row', {}, btn, stop);
     }
-    if (!store.me.admin) return btn;
+    if (f.hq ? !f.hq.mine : !store.me.admin) return btn;
     const off = h('button.btn.floor-off', { type: 'button', title: `Take ${f.name} off the building`, 'aria-label': `Remove ${f.name}` }, '🗑');
     off.addEventListener('click', () => confirmRemove(f));
     return h('div.floor-row', {}, btn, off);

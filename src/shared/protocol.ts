@@ -1,3 +1,5 @@
+import type { HQServerMsg } from './protocol/hq.js';
+export * from './protocol/hq.js';
 import type { PitchClientMsg, PitchServerMsg } from './protocol/pitch.js';
 export * from './protocol/pitch.js';
 import type { CubbiesClientMsg, CubbiesServerMsg } from './protocol/cubbies.js';
@@ -89,6 +91,7 @@ export type ClientMsg =
   | DogClientMsg;
 
 export type ServerMsg =
+  | HQServerMsg
   | PitchServerMsg
   | CubbiesServerMsg
   | DraftsServerMsg

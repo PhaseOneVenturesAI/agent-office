@@ -1,3 +1,4 @@
+import { hqRecords, hqCubbyPitch } from '../hq/cubbies.js';
 import { isOwnerColor } from '../../shared/personal-agents/appearance.js';
 import { PitchStore } from '../pitch/store.js';
 import { validVerdict } from '../../shared/pitch/clean.js';
@@ -16,7 +17,7 @@ import { HALL_SLOTS } from '../../shared/cubbyhall.js';
 import { relaySignature } from './wire.js';
 import { devicesOf, short, snapshot } from './snapshot.js';
 import { CubbySharing, watcherInterior } from './sharing.js';
-interface Live { admitted: boolean; binding: CubbyBinding; interior: CubbyInterior; draft?: DraftBoards; verdicts?: Map<string, number>; feedback?: Map<string, number>; pending?: { id: string; at: number }; asks?: Map<string, string>; }
+interface Live { projects?: import('../../shared/protocol/hq.js').HQProject[]; admitted: boolean; binding: CubbyBinding; interior: CubbyInterior; draft?: DraftBoards; verdicts?: Map<string, number>; feedback?: Map<string, number>; pending?: { id: string; at: number }; asks?: Map<string, string>; }
 const id = () => randomBytes(12).toString('hex');
 
 /** No transcript files, provider credentials, collectors or process launchers on the server. */
@@ -136,6 +137,9 @@ export class Cubbies {
     pending.set(requestId, this.now());
     if (!this.send(r, frame)) { pending.delete(requestId); throw Error('Your computer disconnected; feedback was not queued'); }
   }
+  private hqRecords(owner: string) { return hqRecords(this.records.rows.values(), this.live, owner, floor => this.enabled && !!this.accountName(owner) && this.floorExists(floor)); }
+  hqProjects(owner: string) { return this.live.get(this.hqRecords(owner)[0]?.id)?.projects; }
+  hqPitch(owner: string, mine: boolean) { return hqCubbyPitch(this.hqRecords(owner), this.live, this.pitches, mine); }
   pitchView(floorId?: string, owner?: string) {
     if (!this.enabled || !floorId || !owner || !this.floorExists(floorId) || !this.accountName(owner)) return;
     const records = [...this.records.rows.values()].filter(r => r.floorId === floorId && r.owner === owner).sort((a, b) => a.slot - b.slot);
@@ -307,6 +311,7 @@ export class Cubbies {
       } else if (f.t === 'cubby.snapshot') {
         const next = snapshot(f, this.now());
         if (!next || next.observedAt < (live.interior.observedAt ?? 0)) return true;
+        live.projects = next.projects;
         if (this.draftOwner(r.floorId) === owner) {
           live.draft = next.draft ?? (next.error === BOARD_TOO_BIG ? live.draft : undefined) ?? EMPTY_BOARDS;
           let images = this.images.get(r.floorId);

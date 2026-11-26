@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { HQ } from '../hq/index.js';
 import { Drafts } from '../drafts/index.js';
 import { Cubbies } from '../cubbies/index.js';
 import { cubbiesChanged } from '../ws/handlers/cubbies.js';
@@ -102,6 +103,7 @@ export function createServices(ctx: Ctx): BuildingServices {
     for (const c of clients.values()) ctx.sendTo(c, { t: 'nodes', state: nodes.state({ id: c.accountId, admin: ctx.meOf(c.accountId).admin }) });
     cubbies?.refresh();
   });
+  const hq = new HQ(cfg.dataDir, process.env.AGENT_OFFICE_HQ_OWNER, process.env.AGENT_OFFICE_HQ_MANAGERS, id => accounts.get(id), ctx.building);
   const drafts = new Drafts(cfg.dataDir, process.env.AGENT_OFFICE_CUBBIES === '1', process.env.AGENT_OFFICE_PROJECT_STARTERS, id => accounts.get(id)?.name, ctx.building);
   cubbies = new Cubbies(cfg.dataDir, process.env.AGENT_OFFICE_CUBBIES === '1', nodes, id => accounts.get(id)?.name, id => floors.has(id), () => cubbiesChanged(ctx), Date.now, id => ctx.building.list().find(d => d.id === id)?.draft ? drafts.records.rows.get(id)?.owner ?? '' : undefined);
 
@@ -174,7 +176,7 @@ export function createServices(ctx: Ctx): BuildingServices {
     });
   };
 
-  return { sky, themes, maps, prompts, leaveOnMerge, ledger, signins, deploys, hygiene, costwall, nodes, cubbies, drafts, deliveries, cloudflare, limits, accountLimits, webhook, machine, limitsOf, pumpQueues };
+  return { sky, themes, maps, prompts, leaveOnMerge, ledger, signins, deploys, hygiene, costwall, nodes, cubbies, drafts, hq, deliveries, cloudflare, limits, accountLimits, webhook, machine, limitsOf, pumpQueues };
 }
 
 /** What's made once the floors are open: the SSH team, the tailnet, workers' web servers, pictures and upgrades. */
