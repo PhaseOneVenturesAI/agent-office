@@ -70,9 +70,6 @@ export class Interior {
     this.lead = new PersonalPerson('Lead', AVATAR_COLORS[0], { skin: 0, hair: 0, style: 0 });
     this.lead.root.position.set(f.lead.x, 0, f.lead.z);
     this.lead.ring.floorY = place.y ?? 0;
-    // The lead stands beside the left partition: nudge its plate into the room, never so far that
-    // it leaves the lead's own head (the browser check holds the head inside the plate).
-    this.lead.root.getObjectByName('personal-nameplate')!.position.x = 0.4;
     this.group.add(this.lead.root);
 
     // The builders' desk: two seats, the harness's limit.
@@ -331,7 +328,10 @@ export class Interior {
         });
       }
     }
-    if (focus?.camera) declutter(plates.filter((p): p is Plate => !!p), focus.camera);
+    if (focus?.camera) {
+      const agents = [this.lead.root, ...[...this.views.values()].flatMap((v) => (v.model ? [v.model.root] : []))];
+      declutter(plates.filter((p): p is Plate => !!p), agents, focus.camera);
+    }
   }
 
   /** Every agent's id, in roster order. */
@@ -359,5 +359,5 @@ export type { Focus } from './focus';
 /** An agent's combined nameplate and its resting height, if it has one. */
 function plateOf(root: THREE.Object3D): Plate | undefined {
   const sprite = root.getObjectByName('personal-nameplate') as THREE.Sprite | undefined;
-  return sprite ? { sprite, base: sprite.userData.base ?? sprite.position.y } : undefined;
+  return sprite ? { sprite, base: new THREE.Vector3(0, sprite.userData.base ?? sprite.position.y, 0), owner: root } : undefined;
 }

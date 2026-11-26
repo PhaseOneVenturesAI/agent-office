@@ -3,7 +3,8 @@ import { disposeSprite } from '../../../world/toon';
 
 /** One bounded, two-line plate. Redrawing preserves focus layers and preview visibility. */
 export class PersonalNameplate {
-  readonly sprite = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false }));
+  // Drawn over the room (no depth test) so a partition beside its agent never cuts it off.
+  readonly sprite = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false, depthTest: false }));
   private key = '';
 
   constructor(y: number) {

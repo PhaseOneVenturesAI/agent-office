@@ -129,9 +129,21 @@ try {
           const corners = [-0.5, 0.5].flatMap(x => [-0.5, 0.5].map(y => center.clone().addScaledVector(right, x * scale.x).addScaledVector(up, y * scale.y).project(o.camera)));
           if (corners.some(p => p.z < -1 || p.z > 1)) return;
           const head = owner ? owner.getWorldPosition(new Vector3()).setY(center.y).project(o.camera) : null;
-          visible.push({ title: sprite.userData.lines?.[0] ?? sprite.name, owner: owner?.userData.personal.label ?? null, headX: head ? (head.x + 1) * innerWidth / 2 : null,
+          visible.push({ title: sprite.userData.lines?.[0] ?? sprite.name, owner: owner?.userData.personal.label ?? null, headX: head ? (head.x + 1) * innerWidth / 2 : null, dimmed: sprite.material.opacity < 1,
             left: Math.min(...corners.map(p => (p.x + 1) * innerWidth / 2)), right: Math.max(...corners.map(p => (p.x + 1) * innerWidth / 2)), top: Math.min(...corners.map(p => (1 - p.y) * innerHeight / 2)), bottom: Math.max(...corners.map(p => (1 - p.y) * innerHeight / 2)) });
         });
+        // Every agent's head on screen (the top of its body, not its plate or ring), to check no plate covers another's.
+        const heads = [];
+        for (const m of [inside.lead, ...[...inside.views.values()].map(v => v.model).filter(Boolean)]) {
+          let min = new Vector3(Infinity, Infinity, Infinity), max = new Vector3(-Infinity, -Infinity, -Infinity);
+          m.root.traverseVisible(x => { if (!x.isMesh || x.name === 'owner-ring') return; x.geometry.computeBoundingBox(); const bb = x.geometry.boundingBox;
+            for (const cx of [bb.min.x, bb.max.x]) for (const cy of [bb.min.y, bb.max.y]) for (const cz of [bb.min.z, bb.max.z]) { const w = new Vector3(cx, cy, cz).applyMatrix4(x.matrixWorld); min.min(w); max.max(w); } });
+          const c = min.clone().add(max).multiplyScalar(0.5).setY(max.y - 0.2);
+          const right = new Vector3().setFromMatrixColumn(o.camera.matrixWorld, 0), up = new Vector3().setFromMatrixColumn(o.camera.matrixWorld, 1);
+          const pts = [-0.2, 0.2].flatMap(a => [-0.2, 0.2].map(b => c.clone().addScaledVector(right, a).addScaledVector(up, b).project(o.camera)));
+          heads.push({ label: m.root.userData.personal?.label, left: Math.min(...pts.map(p => (p.x + 1) * innerWidth / 2)), right: Math.max(...pts.map(p => (p.x + 1) * innerWidth / 2)), top: Math.min(...pts.map(p => (1 - p.y) * innerHeight / 2)), bottom: Math.max(...pts.map(p => (1 - p.y) * innerHeight / 2)) });
+        }
+        visible.heads = heads;
         return visible;
       };
       const people = [inside.lead, ...[...inside.views.values()].map(v => v.model).filter(m => m && !m.constructor.name.includes('Helper'))];
@@ -139,14 +151,14 @@ try {
       for (const target of [null, ...inside.views.values()]) {
         inside.update(0, 2, Date.now(), { x: o.player.pos.x, z: o.player.pos.z, yaw: o.player.camYaw, aimed: target?.model?.root.userData.interact, camera: o.camera });
         const helper = target?.model && target.model.constructor.name.includes('Helper') ? target.model.root.userData.personal.label : null;
-        results.push({ aimed: target?.agent.id ?? null, expected: [...people.map(m => m.root.userData.personal.label), ...(helper ? [helper] : [])].sort(), visible: project() });
+        { const visible = project(); results.push({ aimed: target?.agent.id ?? null, expected: [...people.map(m => m.root.userData.personal.label), ...(helper ? [helper] : [])].sort(), visible, heads: visible.heads }); }
       }
       // A close line-up: two people half a metre apart, then one straight behind the other.
       const [a, b] = people, keep = [a.root.position.clone(), b.root.position.clone()];
       for (const [dx, dz] of [[0.5, 0], [0, 0.6]]) {
         b.root.position.copy(a.root.position).add(new Vector3(dx, 0, dz));
         inside.update(0, 2, Date.now(), { x: o.player.pos.x, z: o.player.pos.z, yaw: o.player.camYaw, aimed: null, camera: o.camera });
-        results.push({ aimed: `close ${dx},${dz}`, expected: people.map(m => m.root.userData.personal.label).sort(), visible: project() });
+        { const visible = project(); results.push({ aimed: `close ${dx},${dz}`, expected: people.map(m => m.root.userData.personal.label).sort(), visible, heads: visible.heads }); }
       }
       a.root.position.copy(keep[0]); b.root.position.copy(keep[1]);
       inside.update(0, 2, Date.now(), { x: o.player.pos.x, z: o.player.pos.z, yaw: o.player.camYaw, aimed: null, camera: o.camera });
@@ -157,6 +169,11 @@ try {
       for (const v of frame.visible) {
         assert.equal(v.title, v.owner, `${width}px ${frame.aimed}: ${v.title} hangs on its own agent`);
         assert.ok(v.headX >= v.left - 1 && v.headX <= v.right + 1, `${width}px ${frame.aimed}: ${v.title} is over its own head`);
+      }
+      for (const v of frame.visible) for (const h of frame.heads) {
+        if (h.label === v.owner || v.dimmed) continue;
+        assert.ok(v.right <= h.left || h.right <= v.left || v.bottom <= h.top || h.bottom <= v.top,
+          `${width}px ${frame.aimed}: ${v.title}'s plate covers ${h.label}'s head`);
       }
       for (let i = 0; i < frame.visible.length; i++) for (const b of frame.visible.slice(i + 1)) {
         const a = frame.visible[i];
