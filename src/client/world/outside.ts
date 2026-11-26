@@ -1,3 +1,4 @@
+import type { ExteriorClearance } from './office/exterior-clearance';
 import * as THREE from 'three';
 import { ELEVATOR, ELEVATOR_FRONT, FLOOR, ROAD, SLAB, STREET_Y, WALL_T } from '../../shared/layout';
 import { LOT, SIDE_LOT } from '../../shared/garage';
@@ -308,7 +309,7 @@ export function neighbourBoxes(): { minX: number; maxX: number; minZ: number; ma
  * Everything outside, down on the street: grass, the lot in front of the garage, a road with
  * sidewalks and street lamps, trees and neighbours' buildings, and in `sky` some clouds.
  */
-export function buildStreet(group: THREE.Group, colliders: Collider[], night: NightParts, sky: THREE.Group) {
+export function buildStreet(group: THREE.Group, colliders: Collider[], night: NightParts, sky: THREE.Group, clearance?: ExteriorClearance) {
   const lawn = new THREE.Mesh(new THREE.PlaneGeometry(REACH - LAWN_WEST, REACH * 2), toon('#a7d98b'));
   lawn.rotation.x = -Math.PI / 2;
   lawn.position.set((LAWN_WEST + REACH) / 2, G - 0.03, 0);
@@ -360,10 +361,12 @@ export function buildStreet(group: THREE.Group, colliders: Collider[], night: Ni
   for (const [x, z, s] of trees) {
     const t = tree(s);
     t.position.set(x, G, z);
-    forest.add(t);
     // Its trunk, which you (or a car) can't go through.
     const r = 0.26 * s;
-    colliders.push({ minX: x - r, maxX: x + r, minZ: z - r, maxZ: z + r, bottom: G, top: G + 2.2 * s });
+    const collider = { minX: x - r, maxX: x + r, minZ: z - r, maxZ: z + r, bottom: G, top: G + 2.2 * s };
+    colliders.push(collider);
+    if (clearance?.add(t, [collider])) group.add(t);
+    else forest.add(t);
   }
   group.add(mergeByMaterial(forest));
 
@@ -419,6 +422,6 @@ export function buildStreet(group: THREE.Group, colliders: Collider[], night: Ni
 /** The street out front, the city along it, and the clouds over it all. */
 export const street: Fixture<never, StreetSite> = (site) => {
   // The clouds stay up in the sky, however far down the street is.
-  buildStreet(site.ground, site.groundColliders, site.get('night'), site.group);
+  buildStreet(site.ground, site.groundColliders, site.get('night'), site.group, site.get('exteriorClearance'));
   return {};
 };

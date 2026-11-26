@@ -16,7 +16,7 @@ import type { Collider } from '../../world/types';
 import { Laptop } from '../workers/laptop';
 import { focusedOf, showTags, type Focus } from './focus';
 import { OVERFLOW_BAG_SCALE, agentCard, clip, colliderOf, deadlineText, furniture, toFloor, layoutAgents, layoutKey, leadColorIndex, usableAt, workerStatus, type CubbyIt, type CubbyPlacement, type Spot } from './model';
-import { CREAM, FONT, Face, INK, beanbag, builderDesk, disposeTree, factoryMachine, fitText, lamp, simpleDesk, wallScreen } from './props';
+import { CREAM, FONT, Face, INK, beanbag, builderDesk, disposeTree, factoryMachine, fitText, simpleDesk, wallScreen } from './props';
 
 /** A helper's color, by the tool it runs in. */
 const TOOL_COLOR: Record<string, string> = { claude: '#d97757', codex: '#4a7dbd', kimi: '#5b5bd6' };
@@ -39,7 +39,6 @@ export class Interior {
   private leadLook = '';
   private leadDoing = '';
   private laptop = new Laptop();
-  private lamp = lamp();
   private computerTag: THREE.Sprite | null = null;
   private computerName = '';
   private plan = new Face(1.6, 1.0, 512);
@@ -68,8 +67,6 @@ export class Interior {
     this.laptop.root.scale.setScalar(1.1);
     this.laptop.setPlaceholder('▌ lead chat');
     this.group.add(this.laptop.root);
-    this.lamp.group.position.set(f.computer.x + f.computerDesk.width / 2 - 0.14, 0.78, f.computer.z - 0.1);
-    this.group.add(this.lamp.group);
     box(f.computer.x, f.computer.z, f.computerDesk.width / 2 + 0.02, f.computerDesk.depth / 2 + 0.03, 0.8);
 
     // The lead, standing in front of it, facing the door.
@@ -130,7 +127,6 @@ export class Interior {
     this.cubbyId = cubbyId;
     this.interior = it;
     this.asleep = lampState === 'asleep';
-    this.lamp.set(lampState);
     const lookKey = `${it.leadName}|${it.look.skin}|${it.look.hair}|${it.look.style}`;
     if (lookKey !== this.leadLook) {
       this.leadLook = lookKey;
@@ -351,7 +347,7 @@ export class Interior {
 }
 
 /**
- * A cubby is about 4.4 by 2.9 m, so the office's full-size name tags and task cards would fill the view
+ * A cubby is about 4.4 by 4 m, so the office's full-size name tags and task cards would fill the view
  * from its doorway. Each label a helper draws (a sprite, redrawn whenever it changes) is shown at half
  * size here, once.
  */

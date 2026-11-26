@@ -27,6 +27,7 @@ export function installLamplight(ctx: Ctx, parts: Pick<Parts, 'stage' | 'place'>
   ctx.ticks.add('env', ({ dt }) => {
     const { sun } = parts.stage;
     const { sky } = ctx;
+    ctx.office.interiorLights.update(sky.lampsOn);
     // A map of its own (the castle) lights itself (see World.mood), and the roof's out under the sky.
     const inside = ctx.inOffice() && !ctx.upTop() && parts.place.indoors();
     indoorness += ((inside ? 1 : 0) - indoorness) * (1 - Math.exp(-dt * 3));

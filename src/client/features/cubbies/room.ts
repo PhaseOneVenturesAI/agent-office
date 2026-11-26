@@ -5,11 +5,13 @@
 // the server never sends it.
 
 import * as THREE from 'three';
+import { cubbyDecor } from './decor';
+import type { InteriorLights } from '../../world/office/interior-lights';
 import type { CubbyInfo } from '../../../shared/protocol/cubbies';
 import { textPlane } from '../../world/toon';
 import type { Collider, Interactable } from '../../world/types';
 import { Interior, type Focus } from './interior';
-import { DOOR_WIDTH, FRONT_HEIGHT, colliderOf, faceOf, signText, usableAt, type CubbyFace, type CubbyIt, type CubbyPlacement } from './model';
+import { DOOR_WIDTH, FRONT_HEIGHT, colliderOf, faceOf, furniture, signText, usableAt, type CubbyFace, type CubbyIt, type CubbyPlacement } from './model';
 import { CREAM, INK, disposeTree, front, lampDot, silhouette } from './props';
 
 export class CubbyRoom {
@@ -26,7 +28,14 @@ export class CubbyRoom {
   /** The cubby in this slot, as last synced (undefined: a free slot). */
   info: CubbyInfo | undefined;
 
-  constructor(readonly place: CubbyPlacement) {
+  private decor: ReturnType<typeof cubbyDecor>;
+  private unlight: () => void;
+  constructor(readonly place: CubbyPlacement, lights: InteriorLights, active: () => boolean) {
+    this.decor = cubbyDecor(place);
+    this.group.add(this.decor.group);
+    const offBulbs = lights.add({ active, lights: [], bulbs: this.decor.bulbs });
+    const offLight = lights.add({ active: () => active() && !!this.info, lights: [{ light: this.decor.light, power: 1.2 }], bulbs: [] });
+    this.unlight = () => { offLight(); offBulbs(); };
     const { x, z, rotY, depth } = place;
     this.group.position.set(x, place.y ?? 0, z);
     this.group.rotation.y = rotY;
@@ -66,6 +75,7 @@ export class CubbyRoom {
       changed = true;
     }
     if (interior && info && this.interior) this.interior.sync(info.id, interior, info.lamp, ownerName, face === 'watch');
+    this.decor.spareDesk.visible = !this.interior;
     return changed;
   }
 
@@ -127,7 +137,9 @@ export class CubbyRoom {
 
   /** What you bump into here. */
   colliders(): Collider[] {
-    return this.interior ? [...this.frontColliders, ...this.interior.colliders] : this.frontColliders;
+    if (this.interior) return [...this.frontColliders, ...this.interior.colliders];
+    const f = furniture(this.place.width, this.place.depth);
+    return [...this.frontColliders, colliderOf(this.place, f.computer.x, f.computer.z, f.computerDesk.width / 2 + 0.02, f.computerDesk.depth / 2 + 0.03, 0.8)];
   }
 
   /** What there is to use here: the door, and inside your own, the lead, the computer and every helper. */
@@ -144,6 +156,8 @@ export class CubbyRoom {
   }
 
   dispose() {
+    this.unlight();
+    for (const { mat } of this.decor.bulbs) mat.dispose();
     this.dropInterior();
     disposeTree(this.group);
     this.group.clear();

@@ -149,16 +149,6 @@ export function wallScreen(): { group: THREE.Group; face: Face } {
   return { group, face };
 }
 
-/** The status lamp: a little desk lamp whose bulb is the cubby's color (green, amber or grey). */
-export function lamp(): { group: THREE.Group; set(state: keyof typeof LAMP_COLOR): void } {
-  const group = new THREE.Group();
-  group.add(mesh(geo('lampBase', () => new THREE.CylinderGeometry(0.09, 0.11, 0.04, 14)), toon(INK), 0, 0.02, 0));
-  group.add(mesh(geo('lampStem', () => new THREE.CylinderGeometry(0.015, 0.015, 0.34, 6)), toon(INK), 0, 0.2, 0, false));
-  const bulb = mesh(geo('lampBulb', () => new THREE.SphereGeometry(0.085, 14, 10)), LAMPS.asleep, 0, 0.4, 0, false);
-  group.add(bulb);
-  return { group, set: (s) => void (bulb.material = LAMPS[s]) };
-}
-
 /** A small lamp dot for the outside sign, in the cubby's color. */
 export function lampDot(): { mesh: THREE.Mesh; set(state: keyof typeof LAMP_COLOR | null): void } {
   const dot = mesh(geo('dot', () => new THREE.SphereGeometry(0.11, 14, 10)), LAMPS.asleep, 0, 0, 0, false);
