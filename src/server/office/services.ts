@@ -103,7 +103,7 @@ export function createServices(ctx: Ctx): BuildingServices {
     for (const c of clients.values()) ctx.sendTo(c, { t: 'nodes', state: nodes.state({ id: c.accountId, admin: ctx.meOf(c.accountId).admin }) });
     cubbies?.refresh();
   });
-  const hq = new HQ(cfg.dataDir, process.env.AGENT_OFFICE_HQ_OWNER, process.env.AGENT_OFFICE_HQ_MANAGERS, id => accounts.get(id)?.name, ctx.building);
+  const hq = new HQ(cfg.dataDir, process.env.AGENT_OFFICE_HQ_OWNER, process.env.AGENT_OFFICE_HQ_MANAGERS, id => accounts.get(id), ctx.building);
   const drafts = new Drafts(cfg.dataDir, process.env.AGENT_OFFICE_CUBBIES === '1', process.env.AGENT_OFFICE_PROJECT_STARTERS, id => accounts.get(id)?.name, ctx.building);
   cubbies = new Cubbies(cfg.dataDir, process.env.AGENT_OFFICE_CUBBIES === '1', nodes, id => accounts.get(id)?.name, id => floors.has(id), () => cubbiesChanged(ctx), Date.now, id => ctx.building.list().find(d => d.id === id)?.draft ? drafts.records.rows.get(id)?.owner ?? '' : undefined);
 

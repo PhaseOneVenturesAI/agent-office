@@ -28,7 +28,8 @@ function fixture(t: any, owner: string | undefined = ' ALICE ') {
   const base = path.join(import.meta.dirname, '../.paradev/hq-tests'); mkdirSync(base, { recursive: true });
   const dir = mkdtempSync(path.join(base, 'case-')), building = new Building(dir, dir);
   const names: Record<string, string> = { alice: 'Alice', bob: 'Bob', eve: 'Eve' };
-  const hq = new HQ(dir, owner, ' bOB , Eddie ', id => names[id], building);
+  const acct = (id: string) => names[id] ? { name: names[id], email: `${id}@example.test` } : undefined;
+  const hq = new HQ(dir, owner, ' bOB , Eddie ', acct, building);
   const ctx = { hq, building, floors: new Map(), clients: new Map(), accounts: { get: (id: string) => names[id] ? { id, name: names[id] } : undefined },
     meOf: () => ({ admin: true }), goToFloor(c: any, f: any) { c.peer.floor = f.id; }, toLobby(c: any) { delete c.peer.floor; }, pumpQueues() {},
     chat: { add() { throw Error('Private chat reached shared history'); } },
@@ -59,15 +60,15 @@ test('HQ opt-in is idempotent, private after restart, mode 0600 and has no repos
   const f = fixture(t), d = f.building.list().find(d => f.hq.is(d.id))!;
   assert.equal(d.name, 'HQ'); assert.equal(d.repo, undefined); assert.equal(d.draft, undefined); assert.equal(existsSync(path.join(d.dir, '.git')), false);
   assert.equal(statSync(path.join(f.dir, 'hq.json')).mode & 0o777, 0o600);
-  const reloaded = new Building(f.dir, f.dir), hq = new HQ(f.dir, 'Alice', 'Bob', id => f.names[id], reloaded);
+  const reloaded = new Building(f.dir, f.dir), hq = new HQ(f.dir, 'Alice', 'Bob', id => f.names[id] ? { name: f.names[id] } : undefined, reloaded);
   assert.equal(reloaded.list().filter(d => hq.is(d.id)).length, 1);
-  const off = new HQ(f.dir, undefined, 'Bob', id => f.names[id], reloaded);
+  const off = new HQ(f.dir, undefined, 'Bob', id => f.names[id] ? { name: f.names[id] } : undefined, reloaded);
   assert.equal(off.visible(d.id, 'alice'), false); assert.equal(off.visible(d.id, 'bob'), false);
   f.ctx.hq = off; assert.equal(f.ctx.floorInfos({ accountId: 'alice' }).some(f => f.id === d.id), false);
   rmSync(path.join(f.dir, 'hq.json'));
-  const lost = new HQ(f.dir, undefined, 'Bob', id => f.names[id], reloaded);
+  const lost = new HQ(f.dir, undefined, 'Bob', id => f.names[id] ? { name: f.names[id] } : undefined, reloaded);
   assert.equal(lost.visible(d.id, 'alice'), false, 'a lost record never publishes HQ');
-  new HQ(f.dir, 'Alice', 'Bob', id => f.names[id], reloaded);
+  new HQ(f.dir, 'Alice', 'Bob', id => f.names[id] ? { name: f.names[id] } : undefined, reloaded);
   assert.equal(reloaded.list().filter(d => d.name === 'HQ').length, 1);
   const disabled = fixture(t, ''); assert.equal(existsSync(path.join(disabled.dir, 'hq.json')), false);
   assert.equal(disabled.ctx.floorInfos({ accountId: 'eve' }).length, 1);
@@ -144,4 +145,14 @@ test('HQ pitch is cross-floor, managers read only, owner verdict remains bound a
   assert.equal(verifyOwnerVerdict(key.ownerKey, ws.sent.at(-1)), true);
   b.peer.floor = 'normal'; assert.equal(hqImage(f.ctx, 'bob', cb.id, image.meta.hash), undefined);
   assert.equal(f.ctx.cubbies.pitchView('normal', 'bob'), undefined);
+});
+
+test('HQ owner and managers can be named by Cloudflare email, which survives a renamed account', t => {
+  const f = fixture(t), building = new Building(f.dir, f.dir);
+  const accounts: Record<string, { name: string; email?: string }> = { a: { name: 'Jonathan 2', email: 'boss@example.test' }, m: { name: 'Ivanh', email: 'ivanh@example.test' }, x: { name: 'Ivanh' } };
+  const hq = new HQ(f.dir, 'Boss@Example.test', 'IVANH@example.test, Eduardo@example.test', id => accounts[id], building);
+  const id = building.list().find(d => hq.is(d.id))!.id;
+  assert.equal(hq.owns('a'), true); assert.equal(hq.visible(id, 'm'), true);
+  assert.equal(hq.visible(id, 'x'), false, 'an account that only shares the name is not let in');
+  assert.equal(hq.ownerName, 'Boss', 'an email owner shows by its name, not the address');
 });
