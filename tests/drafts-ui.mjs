@@ -147,6 +147,25 @@ try {
   console.error('LIGHTS', JSON.stringify(await page.evaluate(() => { const L = []; window.__office.scene.traverse((o) => { if (o.isLight) L.push([o.type, +o.intensity.toFixed(3), o.visible]); }); return L; })));
   await shot('01-arrive-lead-greets', () => stand(8.0, -10.35, toward(8.0, -10.35, 9.8, -7.3), 0.2));
 
+  // A draft stays readable at night; measure the rendered pixels, not just the light settings.
+  await stand(8.3, -10.3, toward(8.3, -10.3, 9.8, -7.3), 0.12);
+  await page.evaluate(() => window.__office.sky.show({ hour: 21, weather: 'clear' }));
+  await page.waitForTimeout(2500);
+  const night = await page.evaluate(() => {
+    const o = window.__office;
+    o.renderer.render(o.scene, o.camera);
+    const gl = o.renderer.getContext(), width = gl.drawingBufferWidth, height = gl.drawingBufferHeight;
+    const pixels = new Uint8Array(width * height * 4);
+    gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    let luma = 0;
+    for (let i = 0; i < pixels.length; i += 4) luma += 0.2126 * pixels[i] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i + 2];
+    return { meanLuma: luma / (width * height), hemi: window.__audit.parts.stage.hemi.intensity };
+  });
+  assert.ok(night.meanLuma >= 60, `draft readable at 21:00 (${night.meanLuma})`);
+  assert.ok(night.hemi > 0, 'draft keeps its ambient light at night');
+  await shot('09-draft-at-night');
+  await page.evaluate(() => window.__office.sky.show({}));
+
   // Hints: the lead and the studio table.
   const hints = await page.evaluate(() => {
     const a = window.__audit;
@@ -235,14 +254,61 @@ try {
   await page.waitForTimeout(150);
   const made = sent.filter((m) => m.t === 'drafts.new');
   assert.deepEqual(made.map((m) => m.name), ['Plimbo Studio']);
+  await page.evaluate(() => {
+    const s = window.__office.store;
+    s.floors.push({ id: 'draft-2', name: 'Plimbo Studio', dir: '/fixture/plimbo', workers: 0, people: 1, busy: 0, waiting: 0, palette: 2, draft: true });
+    s.emit('floors');
+  });
   await stand(12, -2, 0, 0);
   push({ t: 'drafts.made', floorId: 'draft-2' });
   await page.waitForTimeout(200);
   const trip = await page.evaluate(() => window.__audit.core.trip?.floor ?? null);
   assert.equal(trip, 'draft-2', 'rides to the new draft');
-  await page.evaluate(() => { const a = window.__audit; clearTimeout(a.core.trip?.timer); a.core.trip = null; window.__office.player.enabled = true; });
+  await page.waitForTimeout(1000);
+  assert.equal(sent.filter((m) => m.t === 'floor.go' && m.floor === 'draft-2').length, 1, 'the ride requests its new floor once');
+  const arrive = () => page.evaluate(() => {
+    const a = window.__audit, s = window.__office.store;
+    s.floor = 'draft-2'; s.emit('floor'); a.parts.travel.arrive('elevator');
+  });
+  await arrive();
+  await page.waitForTimeout(500);
+
+  // Old servers sent drafts.made then arrived immediately. Also settle after the fade starts,
+  // before the inner callback can move the player or request a floor we're already on.
+  for (const afterFade of [false, true]) {
+    await page.evaluate(() => { const s = window.__office.store; s.floor = 'draft-1'; s.emit('floor'); });
+    await stand(8.5, -11.8, 0, 0);
+    const sentBefore = sent.length;
+    push({ t: 'drafts.made', floorId: 'draft-2' });
+    await page.waitForFunction(() => window.__audit.core.trip?.floor === 'draft-2');
+    if (afterFade) await page.waitForFunction(() => document.getElementById('fade').classList.contains('on'));
+    await arrive();
+    // A stale placeInCar would overwrite this position after arrival.
+    await stand(3, 6, 0, 0);
+    await page.waitForTimeout(1500);
+    const arrived = await page.evaluate(() => ({
+      fade: document.getElementById('fade').classList.contains('on'),
+      trip: window.__audit.core.trip,
+      enabled: window.__office.player.enabled,
+      x: window.__office.player.pos.x,
+      z: window.__office.player.pos.z,
+    }));
+    assert.equal(arrived.fade, false, `early arrival does not leave a black screen (afterFade=${afterFade})`);
+    assert.equal(arrived.trip, null);
+    assert.equal(arrived.enabled, true);
+    assert.ok(Math.hypot(arrived.x - 3, arrived.z - 6) < 0.1, 'settled ride does not move the player');
+    assert.equal(sent.slice(sentBefore).filter((m) => m.t === 'floor.go' && m.floor === 'draft-2').length, 0, 'settled ride does not request the current floor');
+  }
+  push({ t: 'drafts.made', floorId: 'draft-2' });
+  await page.waitForTimeout(1500);
+  assert.equal(await page.evaluate(() => window.__audit.core.trip), null, 'already on the new draft: no ride');
+  await shot('10-arrival-recovered');
 
   // ---- Leaving the draft: everything back as it was. ----
+  await page.evaluate(() => {
+    const s = window.__office.store;
+    s.floor = 'draft-1'; s.emit('floor'); window.__audit.parts.travel.arrive('back');
+  });
   push({ t: 'drafts', state: drafts(null) });
   await page.waitForTimeout(1800);
   const after = await state();
@@ -255,7 +321,7 @@ try {
   assert.ok(Math.abs(after.hemi - before.hemi) < 0.05, `lights back (${before.hemi} → ${after.hemi})`);
 
   assert.deepEqual(errors, []);
-  const report = { out, before, on, hints, after, sentTypes: [...new Set(sent.map((m) => m.t))], errors, browser: browser.version() };
+  const report = { out, before, on, night, hints, after, sentTypes: [...new Set(sent.map((m) => m.t))], errors, browser: browser.version() };
   writeFileSync(`${out}/report.json`, JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report));
 } finally {

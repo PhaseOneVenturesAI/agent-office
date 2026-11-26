@@ -135,17 +135,19 @@ export function installTravel(ctx: Ctx, core: CoreState, parts: TravelParts) {
     stopForTrip();
     const inside = inElevator(player.pos.x, player.pos.z);
     const within = floorId === store.floor;
-    core.trip = { floor: floorId, how: 'elevator', garage, timer: window.setTimeout(tripFailed, 10_000) };
+    const trip = core.trip = { floor: floorId, how: 'elevator', garage, timer: window.setTimeout(tripFailed, 10_000) };
     player.enabled = false;
     player.clearKeys();
     lift()?.setOpen(false);
     // Wait for the doors to shut on you, then dim the lights and go.
     setTimeout(
       () => {
+        if (core.trip !== trip) return;
         fade(true);
         setTimeout(() => {
+          if (core.trip !== trip) return;
           placeInCar(inside ? player.pos : undefined, garage && within);
-          if (within) setTimeout(rodeWithin, 700);
+          if (within) setTimeout(() => { if (core.trip === trip) rodeWithin(); }, 700);
           // Down to the garage from the roof: the bottom floor, and down its shaft once it's here (see arrive).
           else net.send({ t: 'floor.go', floor: floorId, ...(garage ? { at: { x: player.pos.x, y: streetBelow(0), z: player.pos.z, rotY: 0 } } : {}) });
         }, 320);

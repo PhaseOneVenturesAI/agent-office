@@ -70,6 +70,8 @@ With `AGENT_OFFICE_CUBBIES=1`, set `AGENT_OFFICE_PROJECT_STARTERS=Jonathan` to a
 
 Only the owner sees the draft in the elevator, welcome or floor view. Other accounts (including admins) cannot ride there, arrive with `?floor=`, remove it or fetch its project files. Private locations are removed from the people list, and draft checkouts are excluded from the shared hygiene report. Turning the cubbies flag off keeps saved drafts closed and invisible. Server workers, board agents, meetings and queue hiring stay idle on drafts; work runs on the owner's computer.
 
+After **New project** creates the draft, the server announces `drafts.made` without moving you. The 3D client rides the elevator and requests `floor.go`, which checks that the floor is visible to you before arrival. If you arrive some other way before the ride's delayed steps run, those steps stop, so the view doesn't go dark.
+
 Press **E** at the studio table to use the existing cubby setup flow, slot `0`. A draft has exactly one cubby, its owner's. Publish the boards from the connected project's local `.agent-office/draft.json`:
 
 ```json
