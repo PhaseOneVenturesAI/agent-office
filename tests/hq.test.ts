@@ -156,6 +156,8 @@ test('HQ owner and managers can be named by Cloudflare email, which survives a r
   assert.equal(hq.owns('a'), true); assert.equal(hq.visible(id, 'm'), true);
   assert.equal(hq.visible(id, 'x'), false, 'an account that only shares the name is not let in');
   assert.equal(hq.ownerName, 'Boss', 'an email owner shows by its name, not the address');
+  const named = new HQ(f.dir, 'Boss@Example.test', '', id => accounts[id], building, e => Object.values(accounts).find(a => a.email === e.toLowerCase()));
+  assert.equal(named.ownerName, 'Jonathan 2', 'an email owner shows by the office name of the account it signs in as');
 });
 
 test('HQ project links use the own snapshot floor, otherwise exact repo names; never guess by display name', async t => {
