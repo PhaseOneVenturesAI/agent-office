@@ -1,3 +1,4 @@
+import { talk } from './talk';
 import { hq } from './hq';
 import { pitch } from './pitch';
 // Every slice of the store, the core's included, in the one order the store runs them in: the order
@@ -79,4 +80,5 @@ export const SLICES: readonly Slice[] = [
   drafts,
   pitch,
   hq,
+  talk,
 ];

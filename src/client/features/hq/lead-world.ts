@@ -14,6 +14,7 @@ import { AREAS } from './world';
 
 export type LeadTarget = Interactable & { kind: 'hqlead' } & { lead: HQLead; card?: boolean };
 export function deskSpot(lead: HQLead) {
+  if (lead.id === 'cofounder') return { x: 2, z: -10.7 };
   const [x, z] = AREAS[lead.projectIndex % AREAS.length];
   const i = lead.departmentIndex;
   return i === undefined ? { x, z: z - 2.55 } : { x: x - 2.65 + i % 4 * 1.75, z: z + .45 + Math.floor(i / 4) * 1.55 - .65 };

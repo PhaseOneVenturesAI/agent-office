@@ -226,7 +226,7 @@ test('what the browser remembers keeps its keys and shapes', () => {
 
 test("the store's keys are its state, as window.__office shows them", () => {
   // As the office had them before its store was split into slices: methods and the slices aren't among them.
-  assert.deepEqual(Object.keys(store).sort(), ['accounts', 'ball', 'cabinet', 'cabinetFrame', 'cars', 'carsAt', 'chat', 'clock', 'costwall', 'cubbies', 'decor', 'deploys', 'dog', 'dogStart', 'drafts', 'drawing', 'floor', 'floorPlan', 'floors', 'hq', 'hygiene', 'ice', 'invites', 'issues', 'jail', 'jukebox', 'leaveOnMerge', 'limits', 'machine', 'map', 'me', 'meeting', 'nodes', 'notify', 'peers', 'pitch', 'profile', 'project', 'projectsDir', 'prompts', 'pulls', 'queue', 'repos', 'screens', 'services', 'signins', 'sky', 'subs', 'team', 'theme', 'tv', 'upgrade', 'usage', 'whiteboard', 'workers', 'you']);
+  assert.deepEqual(Object.keys(store).sort(), ['accounts', 'ball', 'cabinet', 'cabinetFrame', 'cars', 'carsAt', 'chat', 'clock', 'costwall', 'cubbies', 'decor', 'deploys', 'dog', 'dogStart', 'drafts', 'drawing', 'floor', 'floorPlan', 'floors', 'hq', 'hygiene', 'ice', 'invites', 'issues', 'jail', 'jukebox', 'leadTalk', 'leaveOnMerge', 'limits', 'machine', 'map', 'me', 'meeting', 'nodes', 'notify', 'peers', 'pitch', 'profile', 'project', 'projectsDir', 'prompts', 'pulls', 'queue', 'repos', 'screens', 'services', 'signins', 'sky', 'subs', 'team', 'theme', 'tv', 'upgrade', 'usage', 'whiteboard', 'workers', 'you']);
 });
 
 test('a new store starts every field where it always has', async () => {
@@ -257,6 +257,7 @@ test('a new store starts every field where it always has', async () => {
       drafts: { enabled: false, canStart: false },
       pitch: '<undefined>',
       hq: '<undefined>',
+      leadTalk: '<undefined>',
       costwall: {
         rows: [],
         office: { input: 0, output: 0, cacheWrite: 0, cacheRead: 0, cost: 0, calls: 0 },

@@ -1,3 +1,4 @@
+import { talkChanged } from './talk-views.js';
 import { hqProjects, hqSources } from './sources.js';
 import { selectedPitch } from './pitch.js';
 import { liveProjects } from './live.js';
@@ -32,6 +33,7 @@ export function hqPitch(ctx: Ctx, c: Client) {
 const last = new WeakMap<Client, string>();
 export function hqChanged(ctx: Ctx) {
   if (!ctx.hq || !ctx.cubbies) return;
+  talkChanged(ctx);
   for (const c of ctx.clients.values()) {
     const view = hqView(ctx, ctx.floorOf(c), c), key = JSON.stringify(view) ?? '';
     if (last.get(c) === key) continue;

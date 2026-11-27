@@ -12,4 +12,4 @@ export const hqHandlers = {
   'hq.decline'(ctx, c, msg) {
     try { declineManagerMessage(ctx, c, msg.id); } catch (e) { ctx.warn(c, (e as Error).message); }
   },
-} satisfies HandlerMap<Exclude<HQClientMsg, { t: 'cubbies.chat' }>>;
+} satisfies HandlerMap<Exclude<HQClientMsg, { t: 'cubbies.chat' } | import('../../shared/protocol/hq.js').HQTalkClientMsg>>;

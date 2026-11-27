@@ -1,0 +1,14 @@
+.modal.lead-talk { width: min(640px, 100%); min-width: 0; max-height: calc(100dvh - 24px); }
+.lead-talk > .body { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+.lead-talk .talk-log { max-height: 36dvh; min-height: 100px; overflow-y: auto; }
+.lead-talk .talk-line { padding: 12px; margin: 8px 0; border-radius: 10px; background: #f1e7d8; overflow-wrap: anywhere; }
+.lead-talk .talk-line.assistant { background: #e7e4f5; }
+.lead-talk .talk-line p { white-space: pre-wrap; margin: 7px 0; }
+.lead-talk small { display: block; opacity: .8; }
+.lead-talk .talk-form { display: flex; flex-direction: column; gap: 8px; }
+.lead-talk textarea { width: 100%; box-sizing: border-box; resize: vertical; min-height: 76px; font: inherit; padding: 10px; }
+.lead-talk .talk-status, .lead-talk .talk-note { margin: 0; }
+.lite-leads ul { list-style: none; padding: 0; display: grid; gap: 8px; }
+.lite-leads button { width: 100%; text-align: left; white-space: normal; }
+@media (max-width: 480px) { .lead-talk header h2 { font-size: 18px; } }
+.lead-talk [hidden] { display: none; }
