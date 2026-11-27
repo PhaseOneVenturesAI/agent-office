@@ -12,6 +12,8 @@ export interface HQProject {
   departmentLeads: { department: string; title: string; lead?: string }[];
 }
 export interface HQView {
+  mac?: { computerName: string; connected: boolean; lastSeen: number };
+  pitches?: (import('./pitch.js').PitchView & { project: string; projectIndex: number })[];
   floorId: string;
   ownerName: string;
   ownerColor: OwnerColor;
@@ -23,6 +25,8 @@ export interface HQView {
 export const HQ_FURNISHED_PROJECTS = 6;
 export type LeadWhere = 'hq' | 'project' | 'pitch';
 export interface HQLead {
+  mac?: boolean;
+  working?: number;
   needs?: HQNeeds;
   messages?: HQMessage[];
   messageBadge?: string;
@@ -32,7 +36,7 @@ export interface HQLead {
 }
 /** Only sent to HQ's owner/managers, on this cubby's source floor. */
 export interface HQLeadAway { hqFloorId: string; lead: HQLead; departments?: HQLead[] }
-export type HQServerMsg = { t: 'hq'; view?: HQView } | { t: 'hq.gong'; project: string; pr: number };
+export type HQServerMsg = { t: 'hq.token'; token: string; floorId: string } | { t: 'hq'; view?: HQView } | { t: 'hq.gong'; project: string; pr: number };
 const label = (v: unknown, n: number) => typeof v === 'string' ? v.replace(/[\x00-\x1f\x7f]/g, ' ').trim().slice(0, n) : '';
 export function cleanProjects(raw: unknown): HQProject[] {
   if (!Array.isArray(raw)) return [];
@@ -58,7 +62,7 @@ export interface HQMessage {
   state: 'waiting' | 'passed' | 'declined' | 'expired';
 }
 export type HQPassMessage = { t: 'cubbies.chat'; id: string; hqMessageId: string; ownerPublicKey: string } & CubbyOwnerMessage;
-export type HQClientMsg = { t: 'hq.message'; lead: string; text: string } | { t: 'hq.decline'; id: string } | HQPassMessage;
+export type HQClientMsg = { t: 'hq.pitch'; projectIndex: number } | { t: 'hq.setup' } | { t: 'hq.message'; lead: string; text: string } | { t: 'hq.decline'; id: string } | HQPassMessage;
 export function managerMessageText(item: Pick<HQMessage, 'manager' | 'text'>) {
   return `Message from ${item.manager} (HQ manager; can't approve merges, publishes or spending): ${item.text}`;
 }

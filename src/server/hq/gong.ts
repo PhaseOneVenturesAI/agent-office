@@ -1,3 +1,4 @@
+import { hqProjects, hqSources } from './sources.js';
 import type { Ctx } from '../office/context.js';
 import type { Floor } from '../floor.js';
 import type { ServerMsg } from '../../shared/protocol.js';
@@ -12,8 +13,8 @@ export function hqFloorEmit(ctx: Ctx): Ctx['toFloor'] {
     if (msg.t !== 'gong' || msg.why !== 'merged' || !msg.pr || !ctx.hq?.enabled || ctx.hq.is(floor.id)) return;
     const owner = ownerId(ctx);
     if (!owner) return;
-    const sources = ctx.cubbies.hqSources(owner);
-    const projects = ctx.cubbies.hqProjects(owner) ?? [];
+    const sources = hqSources(ctx, owner);
+    const projects = hqProjects(ctx, owner);
     const project = projects.find(p => projectFloor(p, sources[0]?.floorId, [...ctx.floors.values()].map(f => ({ id: f.id, repo: f.def.repo }))) === floor.id);
     if (!project) return;
     const key = `${floor.def.repo?.toLowerCase() ?? floor.id}:${msg.pr}`, sent = seen.get(ctx) ?? new Set<string>();

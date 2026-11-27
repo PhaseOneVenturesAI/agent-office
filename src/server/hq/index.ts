@@ -4,6 +4,7 @@ import type { Building } from '../building.js';
 
 /** Identity stays outside Building: no new repo type or implicit kickoff path. */
 export class HQ {
+  mac?: import('./mac.js').HQMac;
   private owner: string;
   private ownerStem: string;
   /** Shown to people: the configured name, or for an email the office name of the account it signs in as, else the email's name part (never the address). */

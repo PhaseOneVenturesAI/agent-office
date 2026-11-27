@@ -23,9 +23,8 @@ export function bodySpot(lead: HQLead) {
   return lead.where === 'pitch' ? { x: pitch[0], z: pitch[1] } : deskSpot(lead);
 }
 export function statusText(lead: HQLead) {
-  const c = lead.cubby, it = c?.interior;
-  const state = c ? c.lamp === 'asleep' ? '💤 asleep' : it?.error ? '⚠️ error' : it?.agents.some(a => a.role === 'lead' && a.status === 'working') ? 'working' : 'idle' : undefined;
-  return leadMessageBadge(lead) ?? (lead.needsYou ? [state, `✋ ${needsPlate(lead.needs)}`].filter(Boolean).join(' · ') : state ? `${state} · E to talk` : lead.role);
+  const role = [lead.role, lead.working ? `${lead.working} working` : ''].filter(Boolean).join(' · ');
+  return leadMessageBadge(lead) ?? (lead.needsYou ? `${role} · ✋ ${needsPlate(lead.needs)}` : role);
 }
 /** A real, readable card in the spot the lead left. E opens its conversation and Go there. */
 export function statusCard(lead: HQLead, text: string, small = false) {

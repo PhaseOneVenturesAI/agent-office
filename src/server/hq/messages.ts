@@ -59,7 +59,7 @@ export function sendManagerMessage(ctx: Ctx, c: Client, leadId: string, text: un
   const access = accessOnHQ(ctx, c);
   if (access.mine) throw Error('Only HQ managers can send a held message');
   const lead = leadsFor(ctx, access.owner, false).find(l => l.id === leadId);
-  if (!lead?.cubby?.interior || !lead.floorId) throw Error('No connected HQ lead');
+  if (!lead || (!lead.mac && (!lead.cubby?.interior || !lead.floorId))) throw Error('No connected HQ lead');
   const item = messages(ctx).send(access.owner, c.accountId!, ctx.accounts.get(c.accountId!)!.name, leadId, text);
   // No connector call: expiry only republishes the private projections.
   const timer = setTimeout(() => {

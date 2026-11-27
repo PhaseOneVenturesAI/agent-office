@@ -1,3 +1,4 @@
+import { macLeadDetails } from './mac-lead';
 import { leadNeeds } from '../../shared/hq/needs';
 import { leadMessages } from './messages';
 import type { HQLead } from '../../../shared/protocol/hq';
@@ -9,8 +10,10 @@ import { openLeadChat } from '../../shared/cubby/chat';
 export function openHQLead(ctx: Ctx, lead: HQLead, current: () => HQLead | undefined, visit?: () => void) {
   if (!lead.cubby?.interior) {
     const body = h('div.body', {}, leadNeeds(lead), h('p', {}, `Talk to ${lead.title} in the Claude app on ${lead.computer}`));
+    const details = lead.mac ? macLeadDetails(ctx, lead, current) : undefined;
+    if (details) body.append(details.el);
     if (visit) body.append(h('button.btn.hq-go', { onclick: visit }, 'Go there'));
-    return openModal(h('div.modal.hq-lead-card', { role: 'dialog', 'aria-label': lead.title }, h('header', {}, h('h2', {}, `${lead.project} · ${lead.title}`)), body));
+    return openModal(h('div.modal.hq-lead-card', { role: 'dialog', 'aria-label': lead.title }, h('header', {}, h('h2', {}, `${lead.project} · ${lead.title}`)), body), { onClose: () => details?.close() });
   }
   const messages = leadMessages(ctx, current), el = h('div');
   const extension = { ...messages, el, paint: (...args: Parameters<typeof messages.paint>) => {

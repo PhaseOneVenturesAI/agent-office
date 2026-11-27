@@ -1,5 +1,9 @@
 # Satellites and CI evidence
 
+## Whole-Mac HQ connection
+
+`agent-office join <office-url> --token '<invitation>' --hq --owner-key '<key>' [--cloudflare-access]` connects the owner's Mac directly from HQ, without `--project` or `--floor`. It reads the configured AgentHarness project registry, skips archived/remote-only entries and missing paths, and publishes at most 12 projects and 64 scoped live workers plus needs and pitches on the normal snapshot cycle. The browser key is pinned under `~/.agent-office/hq/<computer-id>/` in a `0600` record; paths and app metadata stay local, cleaned session IDs stay between connector and server, and only the owner receives needs lines. A fresh Mac observation takes priority over cubby snapshots, which remain the fallback. Existing single-cubby joins and Cloudflare Access login/reconnect behaviour are unchanged. See [HQ connection and privacy](hq.md#connect-your-mac).
+
 ## Satellite presence
 
 `agent-office join <office-url>` reports a registered machine’s connectivity and installed agent CLIs. Without `--cubbies`, it does not inspect local workspaces, sessions or transcripts, or dispatch local agents. Installed CLIs do not prove sign-in or subscription readiness.

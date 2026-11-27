@@ -1,0 +1,124 @@
+import { randomUUID } from 'node:crypto';
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import type { Nodes } from '../nodes.js';
+import type { HQ } from './index.js';
+import { snapshot, short } from '../cubbies/snapshot.js';
+import { macSignature, type MacProject, MAC_BYTES } from './wire.js';
+import type { LeadSource } from './leads.js';
+import { PitchStore } from '../pitch/store.js';
+interface Record { owner: string; floor: string; nodeId: string; computerId?: string }
+interface Observation { nodeId: string; computerName: string; observedAt: number; projects: MacProject[] }
+const id = (v: unknown): v is string => typeof v === 'string' && /^[\w-]{1,128}$/.test(v);
+/** Invitations persist; observations, workers and session identities never do. */
+export class HQMac {
+  private records = new Map<string, Record>();
+  private live = new Map<string, Observation>();
+  private admitted = new Map<string, string>();
+  private file: string;
+  readonly pitches = new PitchStore();
+  constructor(dir: string, private hq: Pick<HQ, 'owns' | 'is'>, private nodes: Nodes, private changed: () => void, private now = Date.now) {
+    this.file = path.join(dir, 'hq-macs.json');
+    if (existsSync(this.file)) {
+      const rows = JSON.parse(readFileSync(this.file, 'utf8'));
+      if (!Array.isArray(rows) || rows.length > 128) throw Error('Invalid HQ Mac invitations');
+      for (const r of rows) {
+        if (!r || !id(r.owner) || !id(r.floor) || !id(r.nodeId) || (r.computerId !== undefined && !id(r.computerId))) throw Error('Invalid HQ Mac invitation');
+        this.records.set(r.nodeId, { owner: r.owner, floor: r.floor, nodeId: r.nodeId, ...(r.computerId ? { computerId: r.computerId } : {}) });
+      }
+      chmodSync(this.file, 0o600);
+    }
+    const previous = nodes.extension;
+    nodes.extension = (node, owner, raw) => this.accept(node, owner, raw) || (previous?.(node, owner, raw) ?? false);
+  }
+  owner() { return [...this.records.values()].find(r => this.hq.owns(r.owner))?.owner; }
+  setup(owner: string, floor: string) {
+    if (!this.hq.owns(owner) || !this.hq.is(floor)) throw Error('Only the HQ owner can connect a Mac from HQ');
+    const old = [...this.records.values()].filter(r => r.owner === owner && !r.computerId);
+    if (this.records.size - old.length >= 128) throw Error('HQ Mac invitation limit reached');
+    const invite = this.nodes.invite('HQ Mac', 'private', owner, true);
+    this.records.set(invite.id, { owner, floor, nodeId: invite.id });
+    old.forEach(r => this.records.delete(r.nodeId));
+    try { this.save(); } catch (e) {
+      this.records.delete(invite.id); old.forEach(r => this.records.set(r.nodeId, r)); this.nodes.revoke(invite.id); throw e;
+    }
+    old.forEach(r => this.nodes.revoke(r.nodeId));
+    this.changed(); return { token: invite.token, floorId: floor };
+  }
+  refresh() {
+    for (const node of this.admitted.keys()) if (!this.nodes.isOnline(node)) this.admitted.delete(node);
+  }
+  private save() {
+    mkdirSync(path.dirname(this.file), { recursive: true });
+    writeFileSync(this.file + '.tmp', JSON.stringify([...this.records.values()]), { mode: 0o600 });
+    chmodSync(this.file + '.tmp', 0o600); renameSync(this.file + '.tmp', this.file);
+  }
+  private key(owner: string, computer: string) { return `${owner}:${computer}`; }
+  freshest(owner: string) {
+    return [...this.records.values()].filter(r => r.owner === owner && r.computerId && this.hq.owns(owner) && this.hq.is(r.floor))
+      .flatMap(r => { const live = this.live.get(this.key(owner, r.computerId!)); return live?.nodeId === r.nodeId && this.nodes.isOnline(r.nodeId) && this.admitted.has(r.nodeId) && this.now() - live.observedAt < 60_000 ? [{ record: r, live }] : []; })
+      .sort((a, b) => b.live.observedAt - a.live.observedAt)[0];
+  }
+  status(owner: string) {
+    const fresh = this.freshest(owner);
+    if (fresh) return { computerName: fresh.live.computerName, connected: true, lastSeen: fresh.live.observedAt };
+    const online = this.nodes.state({ id: owner }).nodes.filter(n => n.online && this.admitted.has(n.id) && this.records.get(n.id)?.owner === owner).sort((a, b) => b.lastSeen - a.lastSeen)[0];
+    if (online) return { computerName: this.admitted.get(online.id)!, connected: true, lastSeen: online.lastSeen };
+    const last = [...this.records.values()].filter(r => r.owner === owner && r.computerId).flatMap(r => this.live.get(this.key(owner, r.computerId!)) ?? []).sort((a,b) => b.observedAt - a.observedAt)[0];
+    return last && { computerName: last.computerName, connected: false, lastSeen: last.observedAt };
+  }
+  projects(owner: string) { return this.freshest(owner)?.live.projects.map(p => p.project); }
+  sources(owner: string): LeadSource[] | undefined {
+    const fresh = this.freshest(owner); if (!fresh) return;
+    const { live } = fresh;
+    return live.projects.map(row => ({ mac: true, floorId: '', projects: [row.project], agents: row.agents, pitch: row.pitch,
+      computerName: live.computerName, observedAt: live.observedAt }));
+  }
+
+  pitchViews(owner: string) {
+    const fresh = this.freshest(owner); if (!fresh) return [];
+    return fresh.live.projects.flatMap((row, i) => {
+      const view = this.pitches.view(`hq-mac-${fresh.record.nodeId}-${i}`, fresh.record.floor, 'hq');
+      return view ? [{ ...view, project: row.project.name, projectIndex: i, readOnly: true }] : [];
+    });
+  }
+  accept(nodeId: string, owner: string | undefined, raw: unknown): boolean {
+    const r = this.records.get(nodeId);
+    if (!r) return false;
+    // Consume all frames for HQ invitations: they can never become cubby connections.
+    if (!owner || owner !== r.owner || !this.hq.owns(owner) || !this.hq.is(r.floor) || !this.nodes.isOnline(nodeId) || !raw || typeof raw !== 'object') return true;
+    const f = raw as any;
+    if (f.t === 'hq.hello' && id(f.computerId) && (!r.computerId || r.computerId === f.computerId)) {
+      if (this.admitted.has(nodeId)) return true;
+      const before = r.computerId; r.computerId = f.computerId;
+      try { this.save(); } catch { r.computerId = before; return true; }
+      const binding = { t: 'hq.ready' as const, computerId: r.computerId!, owner, floor: r.floor, connection: randomUUID() };
+      if (this.nodes.sendSigned(nodeId, key => ({ ...binding, signature: macSignature(key, binding) }))) {
+        this.admitted.set(nodeId, short(f.computerName, 60) || 'Mac');
+        this.changed();
+      }
+      return true;
+    }
+    if (this.admitted.has(nodeId) && f.computerId === r.computerId && f.t === 'hq.image' && Number.isInteger(f.projectIndex) && f.projectIndex >= 0 && f.projectIndex < 12) {
+      if (this.pitches.accept(`hq-mac-${nodeId}-${f.projectIndex}`, f)) this.changed();
+      return true;
+    }
+    if (!this.admitted.has(nodeId) || f.computerId !== r.computerId || f.t !== 'hq.snapshot' || !Array.isArray(f.projects) || f.projects.length > 12 || Buffer.byteLength(JSON.stringify(f)) > MAC_BYTES ||
+      !Number.isFinite(f.observedAt) || Math.abs(this.now() - f.observedAt) > 120_000) return true;
+    let workers = 0;
+    const projects: MacProject[] = [], seen = new Set<string>();
+    for (const row of f.projects) {
+      if (!row || !Array.isArray(row.agents) || (workers += row.agents.length) > 64) return true;
+      const clean = snapshot({ agents: row.agents, projects: [row.project], pitch: row.pitch, observedAt: f.observedAt }, this.now());
+      if (!clean?.projects?.[0]) return true;
+      const { own: _own, workers: _workers, ...project } = clean.projects[0];
+      const agents = clean.agents.filter(a => a.id.startsWith('harness:') && a.role !== 'lead' && a.status === 'working' && !seen.has(a.id));
+      agents.forEach(a => seen.add(a.id));
+      projects.push({ project, agents, ...(clean.pitch ? { pitch: clean.pitch } : {}) });
+    }
+    this.live.set(this.key(owner, r.computerId!), { nodeId, computerName: this.admitted.get(nodeId)!, observedAt: Math.min(this.now(), f.observedAt), projects });
+    projects.forEach((p, i) => this.pitches.publish(`hq-mac-${nodeId}-${i}`, owner, p.pitch));
+    this.pitches.retain(key => !key.startsWith(`hq-mac-${nodeId}-`) || projects.some((_, i) => key === `hq-mac-${nodeId}-${i}`));
+    this.changed(); return true;
+  }
+}
