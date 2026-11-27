@@ -101,5 +101,5 @@ export function needsLabel(n?: HQNeeds) {
 /** Compact text for a two-line overhead plate; full observation time stays in the window. */
 export function needsPlate(n?: HQNeeds) {
   if (!n || n.open === 0) return 'Needs you';
-  return `${n.open ?? '?'} need you${n.stale ? ` · as of ${n.at.slice(5, 16).replace('T', ' ')}Z` : ''}`;
+  return `${n.open ?? '?'} need you${n.stale ? ` · as of ${asOf(n.at)}` : ''}`;
 }
