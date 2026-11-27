@@ -1,0 +1,115 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, rmSync, statSync } from 'node:fs';
+import path from 'node:path';
+import { HQTalk, talkTarget } from '../src/server/hq/talk.js';
+import { HQMessages, messages } from '../src/server/hq/messages.js';
+import { HQMac } from '../src/server/hq/mac.js';
+import { HQ } from '../src/server/hq/index.js';
+import { Nodes } from '../src/server/nodes.js';
+import { Building } from '../src/server/building.js';
+import { Cubbies } from '../src/server/cubbies/index.js';
+import { socket } from './support/draft-board.js';
+import { sendTalk, passTalk } from '../src/server/hq/talk-handlers.js';
+import { talkView } from '../src/server/hq/talk-views.js';
+import type { HQLead } from '../src/shared/protocol/hq.js';
+import type { Ctx } from '../src/server/office/context.js';
+const lead: HQLead = { id: 'main', mac: true, project: 'Project', projectIndex: 0, title: 'Main lead', role: 'CEO', computer: 'Mac', where: 'hq', needsYou: false };
+function folder(t: any) { mkdirSync('.paradev', { recursive: true }); const dir = mkdtempSync(path.resolve('.paradev/talk-test-')); t.after(() => rmSync(dir, { recursive: true, force: true })); return dir; }
+test('relay owner only; offline failure, target resolution, reply matching and in-flight/rate bounds', t => {
+  let now = 1000, online = true; const sent: any[] = [];
+  const relay = new HQTalk(folder(t), id => id === 'owner', () => online ? 'node' : undefined, (_, f) => { sent.push(f); return true; }, () => {}, () => now);
+  for (const actor of [undefined, 'manager', 'outsider']) assert.throws(() => relay.submit(actor, lead, 'Hi', 'X'), /Only Jonathan/);
+  const line = relay.submit('owner', lead, 'Hi', 'Jonathan');
+  assert.throws(() => relay.submit('owner', lead, 'Again', 'Jonathan'), /Wait for/);
+  assert.equal(relay.accept('other-node', 'owner', { t: 'lead.reply', id: line.id, text: 'Wrong' }), false);
+  assert.equal(relay.accept('node', 'manager', { t: 'lead.reply', id: line.id, text: 'Wrong' }), false);
+  assert.equal(relay.accept('node', 'owner', { t: 'lead.state', id: line.id, state: 'working', path: '/secret/path' }), true);
+  relay.accept('node', 'owner', { t: 'lead.reply', id: line.id, text: 'Hello' });
+  assert.deepEqual(relay.view('owner', 'main', 'owner')?.map(l => [l.role,l.text,l.state]), [['user','Hi','replied'],['assistant','Hello','replied']]);
+  assert.equal(relay.view('owner', 'main', 'manager'), undefined);
+  assert.doesNotMatch(JSON.stringify(relay.view('owner', 'main', 'owner')), /secret|session/);
+  assert.deepEqual(talkTarget({ ...lead, departmentIndex: 2 }), { project: 'Project', department: 2 });
+  assert.deepEqual(talkTarget({ ...lead, id: 'cofounder' }), { cofounder: true });
+  online = false;
+  assert.equal(relay.submit('owner', lead, 'Offline', 'Jonathan').error, 'Your Mac link is offline');
+  for (let i = 0; i < 8; i++) relay.submit('owner', lead, 'More', 'Jonathan');
+  assert.throws(() => relay.submit('owner', lead, 'Too many', 'Jonathan'), /Wait a minute/);
+  now += 60_000; assert.equal(relay.submit('owner', lead, 'Later', 'Jonathan').state, 'failed');
+});
+test('conversation persists last 50 entries with private mode; restart fails pending without replay', t => {
+  const dir = folder(t); let now = 1000;
+  const make = () => new HQTalk(dir, id => id === 'owner', () => 'node', () => true, () => {}, () => now);
+  const relay = make();
+  for (let i = 0; i < 30; i++) { now += 60_000; const l = relay.submit('owner', lead, `Q${i}`, 'Jonathan'); relay.accept('node', 'owner', { t: 'lead.reply', id: l.id, text: `A${i}` }); }
+  assert.equal(relay.view('owner','main','owner')?.length,50);
+  assert.equal(make().view('owner','main','owner')?.[0].text,'Q5');
+  now += 60_000; relay.submit('owner', lead, 'Pending', 'Jonathan');
+  assert.equal(make().view('owner','main','owner')?.at(-1)?.state,'failed');
+  assert.equal(statSync(path.join(dir,'hq-talk.json')).mode & 0o777,0o600);
+});
+test('held queue survives reload with cooldown, decisions and TTL', t => {
+  const dir = folder(t); let now = 1000;
+  const first = new HQMessages(() => now, dir), held = first.send('owner','manager','Ivan','main','Please check');
+  const second = new HQMessages(() => now, dir);
+  assert.equal(second.waiting(held.id,'owner').text,'Please check');
+  assert.throws(() => second.send('owner','manager','Ivan','main','again'),/30 seconds/);
+  second.decide(held.id,'owner','passed');
+  assert.equal(new HQMessages(() => now, dir).visible('owner','owner','main')[0].state,'passed');
+  assert.equal(statSync(path.join(dir,'hq-messages.json')).mode & 0o777,0o600);
+  now += 48 * 3600_000; assert.equal(new HQMessages(() => now,dir).visible('owner','owner','main').length,0);
+});
+function fixture(t: any) {
+  const dir = folder(t), building = new Building(dir, dir);
+  const account = (id: string) => ({ name: id === 'owner' ? 'Jonathan' : id === 'manager' ? 'Ivan' : 'Eve' });
+  const hq = new HQ(dir, 'Jonathan', 'Ivan', account, building);
+  let mac: HQMac;
+  const nodes = new Nodes(dir, () => mac?.refresh()); t.after(() => nodes.close());
+  const cubbies = new Cubbies(dir, true, nodes, id => id, () => true, () => {});
+  hq.mac = mac = new HQMac(dir, hq, nodes, () => {});
+  const floor = { id: 'hq', def: {} }, project = { id: 'project', def: { name: 'Project' } }, clients = new Map();
+  const ctx = { cfg: { dataDir: dir }, hq, nodes, cubbies, clients, floors: new Map([['hq',floor],['project',project]]), floorOf: (c: any) => c.floor, accounts: { get: account }, sendTo() {} } as unknown as Ctx;
+  const client = (id: string) => { const c = { id, accountId: id, floor } as any; clients.set(id,c); return c; };
+  const ws = socket(); nodes.attach(ws as any, mac.setup('owner','hq').token); ws.frame({ t: 'hello', host: 'test', providers: [] });
+  const admit = () => { ws.frame({ t: 'hq.hello', computerId: 'mac', computerName: 'Mac' }); ws.frame({ t: 'hq.snapshot', computerId: 'mac', observedAt: Date.now(), projects: [{ project: { name: 'Project', hasMainLead: true, lead: 'private-session', departmentLeads: [{ department: 'Design', title: 'Designer', lead: 'private-dept' }] }, agents: [] }] }); };
+  return { dir, ctx, mac, nodes, ws, admit, client, project };
+}
+test('admitted node only; pass on uses same relay and manager label; all client views omit private identity', t => {
+  const f = fixture(t), owner = f.client('owner'), manager = f.client('manager'), outsider = f.client('outsider');
+  const pending = sendTalk(f.ctx, owner, 'cofounder', 'Before admission');
+  assert.equal(pending.error,'Your Mac link is offline');
+  f.ws.frame({ t: 'lead.reply', id: pending.id, text: 'Unadmitted' });
+  assert.equal(f.mac.talk.view('owner','cofounder','owner')?.length,1);
+  f.admit();
+  for (const c of [manager,outsider]) assert.throws(() => sendTalk(f.ctx,c,'project:Project:ceo','Hi'),/Only Jonathan/);
+  const l = sendTalk(f.ctx,owner,'project:Project:ceo','Question');
+  f.ws.frame({ t: 'lead.state', id: l.id, state: 'working', path: 'inbox' });
+  f.ws.frame({ t: 'lead.reply', id: l.id, text: 'Answer' });
+  assert.equal(f.mac.talk.view('owner','project:Project:ceo','owner')?.at(-1)?.text,'Answer');
+  const held = messages(f.ctx).send('owner','manager','Ivan','project:Project:ceo','Review');
+  passTalk(f.ctx,owner,held.id);
+  const sent = f.ws.sent.at(-1);
+  assert.equal(sent.t,'lead.send'); assert.equal(sent.from,'Ivan (held, passed on by Jonathan)'); assert.equal(sent.text,'Review');
+  assert.equal(new HQMessages(Date.now,f.dir).visible('owner','owner','project:Project:ceo')[0].state,'passed');
+  assert.equal(talkView(f.ctx,manager)?.leads.some(l => l.conversation),false);
+  assert.equal(talkView(f.ctx,outsider),undefined);
+  outsider.floor = f.project;
+  const visible = talkView(f.ctx,outsider)!; assert.equal(visible.leads.length,2); assert.equal(visible.manager,false);
+  for (const c of [owner,manager,outsider]) assert.doesNotMatch(JSON.stringify(talkView(f.ctx,c)),/private-session|private-dept|\/Users|sessionId|computerId/);
+  f.ws.close();
+  assert.equal(f.mac.talk.view('owner','project:Project:ceo','owner')?.at(-1)?.error,'Your Mac link is offline');
+});
+
+test('simultaneous leads correlate by UUID; no reply timeout frees only the waiting lead', t => {
+  let now = 1000;
+  const relay = new HQTalk(folder(t), id => id === 'owner', () => 'node', () => true, () => {}, () => now);
+  const a = relay.submit('owner', lead, 'Main question', 'Jonathan');
+  const b = relay.submit('owner', { ...lead, id: 'design', departmentIndex: 0 }, 'Design question', 'Jonathan');
+  relay.accept('node', 'owner', { t: 'lead.reply', id: b.id, text: 'Design answer' });
+  assert.equal(relay.view('owner', 'main', 'owner')?.at(-1)?.state, 'queued');
+  assert.equal(relay.view('owner', 'design', 'owner')?.at(-1)?.text, 'Design answer');
+  now += 600_000; relay.sweep();
+  assert.equal(relay.view('owner', 'main', 'owner')?.at(-1)?.state, 'failed');
+  assert.equal(relay.accept('node', 'owner', { t: 'lead.reply', id: a.id, text: 'Late answer' }), false);
+  assert.equal(relay.submit('owner', lead, 'Try again', 'Jonathan').state, 'queued');
+});

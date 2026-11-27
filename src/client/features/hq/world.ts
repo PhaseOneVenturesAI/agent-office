@@ -45,6 +45,10 @@ export class HQWorld {
       panel.position.set(2, view.projects.length ? 1.1 : 2.25, -12.7); this.group.add(panel);
       this.target(panel, panel.position.x, -11.2, 'Link your Mac');
     }
+    if (view.leads?.some(l => l.id === 'cofounder')) {
+      const head = new THREE.Group(); head.name = 'hq-head-desk';
+      this.desk(head, 0, 0, 2, -9.85, 2.7, 1.25, 'Cofounder', view.ownerColor); this.group.add(head);
+    }
     if (!view.projects.length) return;
     view.projects.slice(0, 6).forEach((project, i) => this.area(project, i, view.ownerColor));
     const wall = this.panel(22, 4.4, 'hq-portfolio', (c, w, h) => {

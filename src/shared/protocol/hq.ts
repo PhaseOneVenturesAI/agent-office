@@ -33,6 +33,7 @@ export const HQ_FURNISHED_PROJECTS = 6;
 export type LeadWhere = 'hq' | 'project' | 'pitch';
 export interface HQLead {
   mac?: boolean;
+  conversation?: HQTalkLine[];
   leadStatus?: LeadStatus;
   working?: number;
   needs?: HQNeeds;
@@ -44,7 +45,10 @@ export interface HQLead {
 }
 /** Only sent to HQ's owner/managers, on this cubby's source floor. */
 export interface HQLeadAway { hqFloorId: string; lead: HQLead; departments?: HQLead[] }
-export type HQServerMsg = { t: 'hq'; view?: HQView } | { t: 'hq.gong'; project: string; pr: number };
+export interface HQTalkLine { id: string; role: 'user' | 'assistant'; text: string; from?: string; at: number; state: import('./lead-talk.js').LeadState; path?: 'inbox' | 'headless'; error?: string }
+export type HQTalkClientMsg = { t: 'hq.talk'; lead: string; text: string } | { t: 'hq.pass'; id: string } | { t: 'hq.leads.get' };
+export interface HQTalkView { ownerName: string; ownerColor: OwnerColor; mine: boolean; manager: boolean; leads: HQLead[] }
+export type HQServerMsg = { t: 'hq.leads'; view?: HQTalkView } | { t: 'hq'; view?: HQView } | { t: 'hq.gong'; project: string; pr: number };
 const label = (v: unknown, n: number) => typeof v === 'string' ? v.replace(/[\x00-\x1f\x7f]/g, ' ').trim().slice(0, n) : '';
 export function cleanProjects(raw: unknown): HQProject[] {
   if (!Array.isArray(raw)) return [];
@@ -70,7 +74,7 @@ export interface HQMessage {
   state: 'waiting' | 'passed' | 'declined' | 'expired';
 }
 export type HQPassMessage = { t: 'cubbies.chat'; id: string; hqMessageId: string; ownerPublicKey: string } & CubbyOwnerMessage;
-export type HQClientMsg = { t: 'hq.pitch'; projectIndex: number } | { t: 'hq.message'; lead: string; text: string } | { t: 'hq.decline'; id: string } | HQPassMessage;
+export type HQClientMsg = HQTalkClientMsg | { t: 'hq.pitch'; projectIndex: number } | { t: 'hq.message'; lead: string; text: string } | { t: 'hq.decline'; id: string } | HQPassMessage;
 export function managerMessageText(item: Pick<HQMessage, 'manager' | 'text'>) {
   return `Message from ${item.manager} (HQ manager; can't approve merges, publishes or spending): ${item.text}`;
 }

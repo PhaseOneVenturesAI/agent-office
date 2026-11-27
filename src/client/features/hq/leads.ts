@@ -26,7 +26,7 @@ export function wireHQLeads(ctx: Ctx, deps: HQLeadDeps) {
   away.name = 'hq-away-cards'; const group = new THREE.Group(); group.name = 'hq-lead-layer'; group.add(world.group, away); ctx.scene.add(group);
   let hqKey = '', awayKey = '', faces: Face[] = [], cards: LeadTarget[] = [];
   let pending: { floor: string; lead: HQLead; toHQ: boolean; until: number } | undefined;
-  const current = (id: string) => store.cubbies.cubbies.flatMap(c => c.hqLead?.departments ?? []).find(l => l.id === id) ?? store.hq?.leads?.find(l => l.id === id) ?? store.cubbies.cubbies.find(c => c.hqLead?.lead.id === id)?.hqLead?.lead;
+  const current = (id: string) => store.leadTalk?.leads.find(l => l.id === id) ?? store.cubbies.cubbies.flatMap(c => c.hqLead?.departments ?? []).find(l => l.id === id) ?? store.hq?.leads?.find(l => l.id === id) ?? store.cubbies.cubbies.find(c => c.hqLead?.lead.id === id)?.hqLead?.lead;
   const go = (lead: HQLead, hqFloor: string, toHQ: boolean) => {
     const floor = toHQ ? hqFloor : lead.floorId;
     if (!floor || !store.floors.some(f => f.id === floor)) return;
