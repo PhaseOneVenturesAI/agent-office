@@ -4,12 +4,14 @@ import type { Building } from '../building.js';
 
 /** Identity stays outside Building: no new repo type or implicit kickoff path. */
 export class HQ {
+  mac?: import('./mac.js').HQMac;
   private owner: string;
   private ownerStem: string;
   /** Shown to people: the configured name, or for an email the office name of the account it signs in as, else the email's name part (never the address). */
   get ownerName(): string { return (this.owner.includes('@') && this.byEmail?.(this.owner)?.name) || this.ownerStem; }
   private managers: Set<string>;
   private id?: string;
+  get floorId() { return this.id; }
   get enabled() { return !!this.owner; }
   constructor(dir: string, owner: string | undefined, managers: string | undefined,
     private account: (id: string) => { name: string; email?: string } | undefined, building: Building,

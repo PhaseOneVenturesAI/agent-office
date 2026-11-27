@@ -34,13 +34,18 @@ export class HQWorld {
     disposeTree(this.group); this.group.clear(); this.colliders.length = 0; this.interactables.length = 0;
     const entry = sign('🔒 HQ', 1.2); entry.name = 'hq-entry-label'; entry.position.set(7.4, 1, ELEVATOR_FRONT + 0.3); this.group.add(entry);
     const pitch = sign('102 · Pitch room', 1.9); pitch.name = 'hq-pitch-label'; pitch.position.set(12.5, 2.7, 6); this.group.add(pitch);
-    if (!view.projects.length) {
-      const empty = this.panel(4.4, 2, 'hq-empty', (c, w) => {
-        c.fillStyle = INK; c.font = 'bold 40px sans-serif'; c.textAlign = 'center';
-        c.fillText('Connect your Mac', w / 2, 160); c.fillText('in your cubby', w / 2, 225); c.fillText('to fill HQ', w / 2, 290);
+    if (view.mine) {
+      const connected = view.mac;
+      const panel = this.panel(4.4, 1.5, 'hq-connect-panel', (c, w) => {
+        c.fillStyle = INK; c.font = 'bold 38px sans-serif'; c.textAlign = 'center';
+        fitText(c, connected?.computerName ?? 'Link your Mac', w / 2, 95, w - 40);
+        c.font = '28px sans-serif';
+        fitText(c, connected ? connected.connected ? 'Connected' : `Offline since ${new Date(connected.lastSeen).toLocaleString()}` : 'E · Link your Mac', w / 2, 175, w - 40);
       });
-      empty.position.set(2, 2.25, -6); this.group.add(empty); return;
+      panel.position.set(2, view.projects.length ? 1.1 : 2.25, -12.7); this.group.add(panel);
+      this.target(panel, panel.position.x, -11.2, 'Link your Mac');
     }
+    if (!view.projects.length) return;
     view.projects.slice(0, 6).forEach((project, i) => this.area(project, i, view.ownerColor));
     const wall = this.panel(22, 4.4, 'hq-portfolio', (c, w, h) => {
       c.fillStyle = view.ownerColor; c.fillRect(0, 0, w, 92);

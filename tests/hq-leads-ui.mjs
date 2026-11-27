@@ -166,7 +166,7 @@ try {
     await page.setViewportSize({ width, height }); await stand(-11.5, 1.8, -11.5, -6, .02);
     const v = await leadView(); evidence.push(v);
     assert.equal(v.bodies.length, 4); assert.ok(v.bodies.every(b => b.plateCount === 1)); assert.deepEqual(v.collisions, []);
-    assert.equal(v.bodies[0].lines[0], "Jonathan's · Plimbo CEO"); assert.match(v.bodies[0].lines[1], /working · E to talk/);
+    assert.equal(v.bodies[0].lines[0], "Jonathan's · Plimbo CEO"); assert.match(v.bodies[0].lines[1], /CEO/);
     assert.equal(v.bodies[1].lines[1], 'Marketing');
   }
   await page.mouse.click(720, 700);

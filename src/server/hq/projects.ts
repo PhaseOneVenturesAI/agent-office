@@ -9,6 +9,7 @@ export function readProjects(file: string, scope?: { project: string; roots: str
   return cleanProjects(Object.values(registry.projects).slice(0, 12).flatMap((raw: unknown) => {
     if (!raw || typeof raw !== 'object') return [];
     const p = raw as Record<string, unknown>;
+    if (p.office === 'hidden' || p.localState === 'archived' || p.localState === 'remote-only') return [];
     const departments = p.departmentLeads;
     const entries = Array.isArray(departments) ? departments.map(d => ['', d] as const)
       : departments && typeof departments === 'object' ? Object.entries(departments) : [];

@@ -44,7 +44,7 @@ export function wireHQLeads(ctx: Ctx, deps: HQLeadDeps) {
       const hqFloor = store.hq?.floorId ?? store.cubbies.cubbies.find(c => (c.hqLead?.lead.id === lead.id || c.hqLead?.departments?.some(d => d.id === lead.id)))?.hqLead?.hqFloorId;
       const onHQ = store.floor === hqFloor;
       // Desk cards lead to the pitch room; a pitch-room body offers the way back to its project door.
-      const visit = hqFloor && lead.floorId ? () => go(lead, hqFloor, !onHQ || (!!target.card && lead.where === 'pitch')) : undefined;
+      const visit = !lead.mac && hqFloor && lead.floorId ? () => go(lead, hqFloor, !onHQ || (!!target.card && lead.where === 'pitch')) : undefined;
       openHQLead(ctx, lead, () => current(lead.id), visit);
     }),
   });

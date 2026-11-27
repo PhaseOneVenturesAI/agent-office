@@ -4,7 +4,7 @@ import { departmentLabel } from './labels';
 import type { HQView } from '../../../shared/protocol/hq';
 import { h, openModal } from '../../ui/dom';
 /** The same factual board text in a readable window for touch and narrow screens. */
-export function openHQBoard(view: HQView, project?: string) {
+export function openHQBoard(view: HQView, project?: string, onPitch?: (projectIndex: number, pieceId: string) => void) {
   const projects = project ? view.projects.filter(p => p.name === project) : view.projects;
   const body = h('div.body');
   for (const p of projects) {
@@ -12,6 +12,11 @@ export function openHQBoard(view: HQView, project?: string) {
     if (p.hasMainLead) section.append(h('p', {}, 'CEO'));
     for (const d of p.departmentLeads) section.append(h('p', {}, departmentLabel(d)));
     section.append(h('h4', {}, `${p.name} tasks`), projectElement(p));
+    const pitch = view.pitches?.find(q => q.projectIndex === view.projects.indexOf(p));
+    if (pitch && onPitch) {
+      section.append(h('h4', {}, `${p.name} pitch · ${pitch.pitch.status}`));
+      for (const piece of pitch.pitch.pieces) section.append(h('button.btn', { onclick: () => onPitch(pitch.projectIndex, piece.id) }, piece.title));
+    }
     body.append(section);
   }
   openModal(h('div.modal.hq-board', { role: 'dialog', 'aria-label': project ? `${project} tasks` : 'HQ portfolio' },

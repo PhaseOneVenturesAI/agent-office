@@ -27,6 +27,10 @@ if (argv[0] === 'cubby') {
   const { cubbyCommand } = await import('./cubbies/local/cli.js');
   process.exit(await cubbyCommand(argv.slice(1)));
 }
+if (argv[0] === 'link') {
+  const { linkCommand } = await import('./link/cli.js');
+  process.exit(await linkCommand(argv.slice(1)));
+}
 if (argv[0] === 'join') {
   const { joinCommand } = await import('./join.js');
   process.exit(await joinCommand(argv.slice(1)));

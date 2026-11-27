@@ -130,6 +130,7 @@ export async function joinCommand(argv: string[]): Promise<number> {
       } else if (a === '--token') token = value();
       else if (a === '--name') name = value();
       else if (a === '--cloudflare-access') cloudflareAccess = true;
+      else if (a === '--hq') throw Error('Use agent-office link <office-url> instead of join --hq');
       else if (a === '--cubbies') cubbies = true;
       else if (a === '--owner-key') local.ownerKey = value();
       else if (a === '--replace-owner-key') local.replaceOwnerKey = true;
@@ -157,7 +158,7 @@ export async function joinCommand(argv: string[]): Promise<number> {
     return 2;
   }
   if (!cubbies && Object.keys(local).length) {
-    console.error('Local cubby options require --cubbies; default join is presence-only.'); return 2;
+    console.error('Local options require --cubbies; default join is presence-only.'); return 2;
   }
 
   try { url = officeOrigin(url); } catch { console.error('Use an http(s) office origin without credentials, path, query or fragment'); return 2; }

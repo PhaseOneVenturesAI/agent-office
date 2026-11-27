@@ -1,3 +1,5 @@
+import { hqProjects, hqSources } from './sources.js';
+import { selectedPitch } from './pitch.js';
 import { liveProjects } from './live.js';
 import { publicProjects } from '../../shared/protocol/hq.js';
 import { messageLeads } from './messages.js';
@@ -7,23 +9,25 @@ import type { Client } from '../office/client.js';
 import type { ViewPieces } from '../ws/handlers/types.js';
 /** Select only the configured owner's records, regardless of their project floor. */
 export function ownerId(ctx: Ctx) {
-  return [...ctx.cubbies.records.rows.values()].find(r => ctx.hq.owns(r.owner))?.owner;
+  return ctx.hq.mac?.owner() ?? [...ctx.cubbies.records.rows.values()].find(r => ctx.hq.owns(r.owner))?.owner;
 }
 export const hqView: ViewPieces['hq'] = (ctx, floor, c) => {
   if (!ctx.hq?.is(floor?.id) || c.out || !ctx.hq.visible(floor!.id, c.accountId)) return;
-  const owner = ownerId(ctx);
+  const owner = ctx.hq.owns(c.accountId) ? c.accountId : ownerId(ctx);
   return { floorId: floor!.id, ownerName: ctx.hq.ownerName, mine: ctx.hq.owns(c.accountId),
-    ownerColor: ctx.cubbies.records.color(owner ?? ctx.hq.ownerName), projects: owner ? publicProjects(liveProjects(ctx.cubbies.hqProjects(owner) ?? [], ctx.cubbies.hqSources(owner)), ctx.hq.owns(c.accountId)) : [], leads: owner ? messageLeads(ctx, c, owner, leadsFor(ctx, owner, ctx.hq.owns(c.accountId)), true) : [] };
+    ...(owner && ctx.hq.owns(c.accountId) ? { mac: ctx.hq.mac?.status(owner) } : {}),
+    ...(owner ? { pitches: ctx.hq.mac?.pitchViews(owner) } : {}),
+    ownerColor: ctx.cubbies.records.color(owner ?? ctx.hq.ownerName), projects: owner ? publicProjects(liveProjects(hqProjects(ctx, owner), hqSources(ctx, owner)), ctx.hq.owns(c.accountId)) : [], leads: owner ? messageLeads(ctx, c, owner, leadsFor(ctx, owner, ctx.hq.owns(c.accountId)), true) : [] };
 };
 export function hqPitch(ctx: Ctx, c: Client) {
   const floor = ctx.floorOf(c);
   if (!ctx.hq?.is(floor?.id) || c.out || !ctx.hq.visible(floor!.id, c.accountId)) return;
   const owner = ownerId(ctx);
   if (!owner) return;
-  const view = ctx.cubbies.hqPitch(owner, ctx.hq.owns(c.accountId));
+  const view = ctx.hq.mac?.freshest(owner) ? selectedPitch(ctx, c, owner) : ctx.cubbies.hqPitch(owner, ctx.hq.owns(c.accountId));
   if (!view) return;
   const { notice, ...publicView } = view;
-  return { ...publicView, ...(ctx.hq.owns(c.accountId) && notice ? { notice } : {}), displayFloorId: floor!.id, readOnly: !ctx.hq.owns(c.accountId) };
+  return { ...publicView, ...(ctx.hq.owns(c.accountId) && notice ? { notice } : {}), displayFloorId: floor!.id, readOnly: view.readOnly || !ctx.hq.owns(c.accountId) };
 }
 const last = new WeakMap<Client, string>();
 export function hqChanged(ctx: Ctx) {
@@ -40,7 +44,9 @@ export function hqChanged(ctx: Ctx) {
 export function hqImage(ctx: Ctx, account: string, cubby: string, hash: string) {
   if (!ctx.hq) return;
   const c = [...ctx.clients.values()].find(c => c.accountId === account && !c.out && ctx.hq?.is(ctx.floorOf(c)?.id));
-  if (!c || hqPitch(ctx, c)?.cubbyId !== cubby) return;
+  if (!c || !ctx.hq.visible(ctx.floorOf(c)!.id, account)) return;
   const owner = ownerId(ctx);
-  return owner && ctx.cubbies.pitchImage(cubby, owner, hash);
+  if (!owner) return;
+  if (ctx.hq.mac?.pitchViews(owner).some(p => p.cubbyId === cubby)) return ctx.hq.mac.pitches.image(cubby, hash);
+  if (hqPitch(ctx, c)?.cubbyId === cubby) return ctx.cubbies.pitchImage(cubby, owner, hash);
 }
