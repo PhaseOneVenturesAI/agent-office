@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, rmSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { HQTalk, talkTarget } from '../src/server/hq/talk.js';
+import { HQTalk, talkTarget, PENDING_MS } from '../src/server/hq/talk.js';
 import { HQMessages, messages } from '../src/server/hq/messages.js';
 import { HQMac } from '../src/server/hq/mac.js';
 import { HQ } from '../src/server/hq/index.js';
@@ -108,7 +108,7 @@ test('simultaneous leads correlate by UUID; no reply timeout frees only the wait
   relay.accept('node', 'owner', { t: 'lead.reply', id: b.id, text: 'Design answer' });
   assert.equal(relay.view('owner', 'main', 'owner')?.at(-1)?.state, 'queued');
   assert.equal(relay.view('owner', 'design', 'owner')?.at(-1)?.text, 'Design answer');
-  now += 600_000; relay.sweep();
+  now += PENDING_MS; relay.sweep();
   assert.equal(relay.view('owner', 'main', 'owner')?.at(-1)?.state, 'failed');
   assert.equal(relay.accept('node', 'owner', { t: 'lead.reply', id: a.id, text: 'Late answer' }), false);
   assert.equal(relay.submit('owner', lead, 'Try again', 'Jonathan').state, 'queued');
