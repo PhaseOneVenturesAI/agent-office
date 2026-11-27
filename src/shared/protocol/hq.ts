@@ -90,10 +90,12 @@ export function publicProjects(projects: HQProject[], mine: boolean): HQProject[
   return projects.map(({ lead: _lead, needs, departmentLeads, ...p }) => ({ ...p,
     departmentLeads: departmentLeads.map(({ lead: _id, ...d }) => d), ...(needs ? { needs: visibleNeeds(needs, mine) } : {}) }));
 }
+/** A short local time for people ("Nov 26, 06:16"); the ISO value stays in the data. */
+export const asOf = (at: string) => new Date(at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
 export function needsLabel(n?: HQNeeds) {
   if (!n) return '';
   const count = n.open === null ? 'Needs you: unknown' : `${n.open} need you`;
-  return `${count}${n.stale ? ` · stale · as of ${n.at}` : ''}`;
+  return `${count}${n.stale ? ` · stale · as of ${asOf(n.at)}` : ''}`;
 }
 
 /** Compact text for a two-line overhead plate; full observation time stays in the window. */
