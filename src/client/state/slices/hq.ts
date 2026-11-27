@@ -7,7 +7,7 @@ declare module '../store' {
 }
 function clean(v?: HQView): HQView | undefined {
   if (!v || typeof v.floorId !== 'string' || typeof v.ownerName !== 'string' || !isOwnerColor(v.ownerColor)) return;
-  return { floorId: v.floorId, ownerName: v.ownerName.slice(0, 60), ownerColor: v.ownerColor, mine: v.mine === true, projects: cleanProjects(v.projects) };
+  return { floorId: v.floorId, ownerName: v.ownerName.slice(0, 60), ownerColor: v.ownerColor, mine: v.mine === true, projects: cleanProjects(v.projects), leads: v.leads };
 }
 export const hq: Slice = {
   init(s) { s.hq = undefined; },

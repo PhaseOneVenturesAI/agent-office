@@ -1,5 +1,5 @@
 import './chat.css';
-import type { CubbyAgent, CubbyDeviceAction, CubbyInfo, CubbyOwnerMessage } from '../../../shared/protocol/cubbies';
+import type { CubbyChatLine, CubbyAgent, CubbyDeviceAction, CubbyInfo, CubbyOwnerMessage } from '../../../shared/protocol/cubbies';
 import { store } from '../../state';
 import { ownerDeviceKey, signOwnerChat, type OwnerDeviceKey } from './keys';
 import { deviceSection, deviceTrusted } from './devices';
@@ -12,6 +12,16 @@ import { STATUS_TEXT, ROLE_LABEL, clip, deadlineText, agentCard, helperName } fr
 // windows read-only: the lines, never a box to type in.
 
 export interface CubbyWindows {
+  /** Optional feature-owned UI, composed without changing ordinary cubby access. */
+  extension?: {
+    el: HTMLElement;
+    paint(c: CubbyInfo | undefined, key: OwnerDeviceKey | undefined): void;
+    close(): void;
+    label?(line: CubbyChatLine): string | undefined;
+    compose?: { allowed(): boolean; note(c: CubbyInfo): string; maxLength: number; send(text: string): void };
+  };
+  sourceFloor?(id: string): string | undefined;
+  visit?: { label: string; go(): void };
   /** Your cubby with this id, as the store has it now (only yours has an inside). */
   cubby(id: string): CubbyInfo | undefined;
   /** Hears the store's cubbies change; returns how to stop. */
@@ -62,6 +72,8 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string): { close(): void 
   const form = h('form.cb-send', {}, text, send) as HTMLFormElement;
   const el = h('div.modal.cubby-chat', { role: 'dialog', 'aria-label': 'Talk to your lead' }, h('header', {}, title, sub), h('div.cb-body', {}, h('div.cb-main', {}, log, note, form), side));
 
+  if (w.extension) log.after(w.extension.el);
+  if (w.visit) el.querySelector('header')!.append(h('button.btn.hq-go', { type: 'button', onclick: () => w.visit!.go() }, w.visit.label));
   const account = store.me.account?.name;
   let deviceKey: OwnerDeviceKey | undefined;
   let keyError = '';
@@ -76,6 +88,7 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string): { close(): void 
   const paint = () => {
     const c = w.cubby(cubbyId);
     const mode = chatMode(c);
+    w.extension?.paint(c, deviceKey);
     const it = mode ? c!.interior : undefined;
     if (!c || !it) {
       title.textContent = '💬 Your lead';
@@ -119,13 +132,19 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string): { close(): void 
       note.textContent = asleep ? `💤 ${clip(it.computerName, 32)} is asleep. ${lead} can't hear you until it wakes.` : 'Chat only: tools, commands and approvals stay on your computer.';
       note.classList.toggle('asleep', asleep);
     }
-    const key = it.chat.map((l) => `${l.id}:${l.text.length}`).join('|');
+    const composer = w.extension?.compose;
+    if (mode === 'watching' && composer?.allowed()) {
+      form.style.display = ''; text.disabled = send.disabled = false;
+      text.maxLength = composer.maxLength; text.placeholder = `Message ${lead}…`;
+      note.textContent = composer.note(c);
+    }
+    const key = it.chat.map((l) => `${l.id}:${l.text.length}:${w.extension?.label?.(l) ?? ""}`).join('|');
     if (key !== lines) {
       lines = key;
       const atEnd = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
       log.replaceChildren(
         ...(it.chat.length ? [] : [h('p.cb-empty', {}, mode === 'owner' ? `Say hello to ${lead}.` : `Nothing said yet.`)]),
-        ...it.chat.map((l) => h(`div.cb-line.${l.role}`, {}, h('b', {}, l.role === 'user' ? (mode === 'owner' ? 'You' : clip(c.ownerName, 24)) : l.role === 'assistant' ? lead : 'Note'), h('span', {}, l.text))),
+        ...it.chat.map((l) => h(`div.cb-line.${l.role}`, {}, h('b', {}, w.extension?.label?.(l) ?? (l.role === 'user' ? (mode === 'owner' ? 'You' : clip(c.ownerName, 24)) : l.role === 'assistant' ? lead : 'Note')), h('span', {}, l.text))),
       );
       if (atEnd) log.scrollTop = log.scrollHeight;
     }
@@ -155,7 +174,12 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string): { close(): void 
     e.preventDefault();
     const body = text.value.trim();
     const c = w.cubby(cubbyId);
-    const floorId = store.floor;
+    const composer = w.extension?.compose;
+    if (body && chatMode(c) === 'watching' && composer?.allowed()) {
+      composer.send(body.slice(0, composer.maxLength)); text.value = ''; return;
+    }
+    const viewingFloor = store.floor;
+    const floorId = w.sourceFloor?.(cubbyId) ?? viewingFloor;
     const computerId = c?.interior?.computerId;
     if (!body || !floorId || !computerId || chatMode(c) !== 'owner' || c.lamp === 'asleep' || signing ||
       !deviceKey || !deviceTrusted(c, deviceKey) || store.me.account?.name !== account) return;
@@ -164,7 +188,7 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string): { close(): void 
       const message = { text: body.slice(0, MAX_CHAT), requestId: crypto.randomUUID(), at: Date.now() };
       const ownerSig = await signOwnerChat(deviceKey, { ...message, cubbyId, floorId, computerId });
       const current = w.cubby(cubbyId);
-      if (closed || store.floor !== floorId || store.me.account?.name !== account || !current?.mine ||
+      if (closed || store.floor !== viewingFloor || store.me.account?.name !== account || !current?.mine ||
         current.lamp === 'asleep' || current.interior?.computerId !== computerId || !deviceTrusted(current, deviceKey)) return;
       w.sendChat(cubbyId, { ...message, ownerSig });
       text.value = '';
@@ -184,7 +208,7 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string): { close(): void 
   paint();
   const c = w.cubby(cubbyId);
   const owner = chatMode(c) === 'owner';
-  const modal = openModal(el, { doing: owner ? '💬 talking to their lead' : '👀 watching a cubby', onClose: () => { closed = true; off(); } });
+  const modal = openModal(el, { doing: owner ? '💬 talking to their lead' : '👀 watching a cubby', onClose: () => { closed = true; off(); w.extension?.close(); } });
   // Only the owner signs: a watcher's browser never makes or uses an owner key.
   if (owner) void ownerDeviceKey(account).then((key) => { deviceKey = key; if (!closed) paint(); })
     .catch((error: Error) => { keyError = error.message; if (!closed) paint(); });

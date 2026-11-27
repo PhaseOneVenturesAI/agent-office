@@ -20,7 +20,7 @@ import { floorParam } from '../src/server/http/routes/files.js';
 import { socket, png, imageFrames } from './support/draft-board.js';
 import { cleanImage } from '../src/server/drafts/image-format.js';
 import { testOwnerKey } from './support/cubby-keys.js';
-import { verifyOwnerVerdict } from '../src/server/cubbies/wire.js';
+import { verifyOwnerVerdict, verifyOwner, ownerFingerprint } from '../src/server/cubbies/wire.js';
 import type { Ctx } from '../src/server/office/context.js';
 const registry = path.join(import.meta.dirname, 'fixtures/hq/projects.json');
 const projects = readProjects(registry);
@@ -155,4 +155,166 @@ test('HQ owner and managers can be named by Cloudflare email, which survives a r
   assert.equal(hq.owns('a'), true); assert.equal(hq.visible(id, 'm'), true);
   assert.equal(hq.visible(id, 'x'), false, 'an account that only shares the name is not let in');
   assert.equal(hq.ownerName, 'Boss', 'an email owner shows by its name, not the address');
+});
+
+test('HQ project links use the own snapshot floor, otherwise exact repo names; never guess by display name', async t => {
+  const { projectFloor, projectLeads, leadWhere } = await import('../src/server/hq/leads.js');
+  const { githubRepo } = await import('../src/server/hq/projects.js');
+  const p = { name: 'Plimbo', hasMainLead: true, departmentLeads: [{ department: 'Marketing', title: 'Marketing lead' }] };
+  const floors = [{ id: 'local' }, { id: 'repo', repo: 'Owner/Plimbo' }, { id: 'Plimbo' }];
+  assert.equal(projectFloor({ ...p, own: true, repo: 'owner/plimbo' }, 'local', floors), 'local');
+  assert.equal(projectFloor({ ...p, repo: 'owner/plimbo' }, undefined, floors), 'repo');
+  assert.equal(projectFloor(p, 'local', floors), undefined);
+  assert.equal(projectFloor({ ...p, repo: 'other/plimbo' }, undefined, floors), undefined);
+  assert.equal(githubRepo('https://user:secret@github.com/owner/plimbo.git?token=secret#secret'), 'owner/plimbo');
+  for (const raw of ['https://evil.test/owner/plimbo', 'https://github.com/owner/plimbo/tree/main', 'file:///owner/plimbo', null]) assert.equal(githubRepo(raw), undefined);
+  const own = readProjects(registry, { project: '/missing', roots: [] });
+  assert.ok(own.every(p => !p.own));
+  const raw = JSON.parse(readFileSync(registry, 'utf8')).projects;
+  const entry = Object.values(raw).find((p: any) => p.path) as any;
+  if (entry) assert.equal(readProjects(registry, { project: entry.path, roots: [] }).filter(p => p.own).length, 1);
+  const clean = cleanProjects([{ ...p, own: 'true', repo: 'https://github.com/o/r', path: '/secret' }, { ...p, own: true, repo: 'o/r' }, { ...p, own: true }]);
+  assert.equal(clean[0].own, undefined); assert.equal(clean[0].repo, undefined); assert.equal(clean[1].own, true); assert.equal(clean[2].own, undefined);
+  assert.equal(JSON.stringify(clean).includes('secret'), false);
+  const snap = snapshot({ t: 'cubby.snapshot', floorId: 'local', observedAt: Date.now(), agents: [], projects: [{ ...p, own: true, repo: 'o/r' }] }, Date.now())!;
+  assert.equal(snap.projects![0].own, true); assert.equal(snap.projects![0].repo, 'o/r');
+  const f = fixture(t), { cb, ws } = f.publish('normal', Date.now(), [{ ...p, own: true }]);
+  const a = f.client('alice'); a.peer.floor = 'hq';
+  const leads = hqView(f.ctx, f.ctx.floorOf(a), a)!.leads!;
+  assert.equal(leads[0].floorId, 'normal'); assert.equal(leads[0].cubby?.id, cb.id); assert.equal(leads[0].where, 'hq'); assert.equal(leads[1].cubby, undefined);
+  const pitch: any = { department: 'Marketing', lead: 'Marketing lead', status: 'ready', version: 'v1', pieces: [{ id: 'site', kind: 'site', title: 'Page', notes: [], images: [] }] };
+  assert.equal(leadWhere(), 'hq'); assert.equal(leadWhere({ ...pitch, status: 'building' }), 'hq'); assert.equal(leadWhere(pitch), 'pitch');
+  ws.frame({ t: 'cubby.snapshot', floorId: 'normal', observedAt: Date.now(), agents: [], plan: [], needsYou: ['Review'], projects: [{ ...p, own: true }], pitch });
+  const pending = hqView(f.ctx, f.ctx.floorOf(a), a)!.leads!;
+  assert.equal(pending[0].where, 'pitch'); assert.equal(pending[1].where, 'hq'); assert.equal(pending[0].needsYou, true);
+  const stamped = { ...pitch, pieces: pitch.pieces.map((p: any) => ({ ...p, stamp: { requestId: 'verdict', verdict: 'approve', at: Date.now() } })) };
+  assert.equal(leadWhere(stamped), 'hq');
+  ws.frame({ t: 'cubby.snapshot', floorId: 'normal', observedAt: Date.now(), agents: [], plan: [], needsYou: [], projects: [{ ...p, own: true }], pitch: stamped });
+  assert.equal(hqView(f.ctx, f.ctx.floorOf(a), a)!.leads![0].where, 'hq');
+  const sources = f.ctx.cubbies.hqSources('alice');
+  const reordered = projectLeads([{ name: 'Other', hasMainLead: true, departmentLeads: [] }, { ...p, own: true }], sources, [{ id: 'normal' }], true);
+  assert.equal(reordered.find(l => l.cubby)?.id, leads[0].id, 'conversation identity survives registry reordering');
+  assert.equal(projectLeads([{ ...p, own: true }, { ...p, repo: 'o/r' }], sources, [{ id: 'normal', repo: 'o/r' }], true).filter(l => l.cubby).length, 1);
+});
+
+test('HQ lead chat preserves source signatures; managers read but cannot send; other cubbies and outsiders stay unchanged', async t => {
+  const { cubbiesView } = await import('../src/server/ws/handlers/cubbies.js');
+  const { hqChat } = await import('../src/server/hq/leads.js');
+  const f = fixture(t), { cb, ws } = f.publish('normal', Date.now(), [{ name: 'Plimbo', own: true, hasMainLead: true, departmentLeads: [] }]);
+  const a = f.client('alice'), m = f.client('bob'), e = f.client('eve');
+  a.peer.floor = m.peer.floor = 'hq'; e.peer.floor = 'normal';
+  const owner = testOwnerKey();
+  ws.frame({ t: 'cubby.devices', floorId: 'normal', devices: [{ fingerprint: ownerFingerprint(owner.ownerKey), label: 'Owner', addedAt: Date.now() }], requests: [] });
+  const manager = hqView(f.ctx, f.ctx.floorOf(m), m)!.leads![0].cubby!;
+  assert.equal(manager.mine, false); assert.equal(manager.watching, true); assert.ok(manager.interior); assert.equal(manager.interior.ownerDevices, undefined); assert.equal(manager.interior.computerId, undefined);
+  const payload = { cubbyId: cb.id, floorId: 'normal', computerId: 'computer-normal', requestId: 'message', at: Date.now(), text: 'Same lead' };
+  const message = { id: cb.id, ...payload, ownerSig: owner.sign(payload) };
+  assert.throws(() => hqChat(f.ctx, m, message), /Only the cubby owner/);
+  assert.throws(() => hqChat(f.ctx, e, message), /Only the cubby owner/);
+  hqChat(f.ctx, a, message);
+  assert.equal(ws.sent.at(-1).t, 'cubby.chat'); assert.equal(ws.sent.at(-1).floorId, 'normal'); assert.equal(ws.sent.at(-1).ownerSig, message.ownerSig);
+  assert.equal(verifyOwner(owner.ownerKey, ws.sent.at(-1)), true);
+  assert.equal(verifyOwner(owner.ownerKey, { ...ws.sent.at(-1), floorId: 'hq' }), false);
+  a.peer.floor = m.peer.floor = 'normal';
+  const mine = cubbiesView(f.ctx, f.ctx.floorOf(a), a)!;
+  assert.equal(mine.cubbies[0].hqLead?.lead.where, 'hq');
+  const watched = cubbiesView(f.ctx, f.ctx.floorOf(m), m)!.cubbies[0];
+  assert.ok(watched.hqLead); assert.equal(watched.interior, undefined); assert.equal(watched.watching, undefined, 'HQ does not admit managers to cubby interiors');
+  assert.equal(watched.hqLead.lead.cubby?.mine, false);
+  assert.equal(cubbiesView(f.ctx, f.ctx.floorOf(e), e)!.cubbies[0].hqLead, undefined);
+  f.ctx.cubbies.setup('normal', 'bob', 1, 'Other lead', {} as any);
+  assert.equal(cubbiesView(f.ctx, f.ctx.floorOf(a), a)!.cubbies[1].hqLead, undefined);
+  f.ctx.hq = new HQ(f.dir, '', '', () => undefined, f.building);
+  assert.equal(cubbiesView(f.ctx, f.ctx.floorOf(a), a)!.cubbies[0].hqLead, undefined);
+});
+
+test('portfolio overflow never removes a cubby body without a furnished HQ desk', async t => {
+  const { cubbiesView } = await import('../src/server/ws/handlers/cubbies.js');
+  const f = fixture(t);
+  f.publish('normal', Date.now(), Array.from({ length: 8 }, (_, i) => ({ name: `Project ${i}`, hasMainLead: true, departmentLeads: [], ...(i === 7 ? { own: true as const } : {}) })));
+  const a = f.client('alice'); a.peer.floor = 'hq';
+  const hq = hqView(f.ctx, f.ctx.floorOf(a), a)!;
+  assert.equal(hq.projects.length, 8); assert.equal(hq.leads!.length, 6);
+  a.peer.floor = 'normal';
+  assert.equal(cubbiesView(f.ctx, f.ctx.floorOf(a), a)!.cubbies[0].hqLead, undefined);
+});
+
+test('held manager messages are private; only a trusted owner signature passes the exact labelled chat to the connector', async t => {
+  const { sendManagerMessage, declineManagerMessage, passManagerMessage, messages } = await import('../src/server/hq/messages.js');
+  const { managerMessageText } = await import('../src/shared/protocol/hq.js');
+  const { cubbiesView } = await import('../src/server/ws/handlers/cubbies.js');
+  const f = fixture(t), { cb, ws } = f.publish('normal', Date.now(), [{ name: 'Plimbo', own: true, hasMainLead: true, departmentLeads: [] }]);
+  f.names.eddie = 'Eddie';
+  const a = f.client('alice'), m = f.client('bob'), other = f.client('eddie'), e = f.client('eve');
+  a.peer.floor = m.peer.floor = other.peer.floor = e.peer.floor = 'hq';
+  const lead = hqView(f.ctx, f.ctx.floorOf(a), a)!.leads![0];
+  const visible = (c: any) => hqView(f.ctx, f.ctx.floorOf(c), c)?.leads?.[0].messages;
+  const before = ws.sent.length;
+  const item = sendManagerMessage(f.ctx, m, lead.id, '  Please review this idea.  ');
+  assert.equal(item.text, 'Please review this idea.'); assert.equal(ws.sent.length, before, 'held send reaches no connector');
+  for (const c of [a, m]) assert.equal(visible(c)?.[0].state, 'waiting');
+  assert.deepEqual(visible(other), []); assert.equal(visible(e), undefined);
+  assert.equal(JSON.stringify(visible(m)).includes('managerId'), false);
+  for (const c of [m, other, e]) assert.throws(() => declineManagerMessage(f.ctx, c, item.id));
+  for (const c of [a, e]) assert.throws(() => sendManagerMessage(f.ctx, c, lead.id, 'No'));
+  assert.throws(() => sendManagerMessage(f.ctx, m, 'unrelated-lead', 'No'), /connected/);
+  assert.throws(() => sendManagerMessage(f.ctx, m, lead.id, 'Too soon'), /30 seconds/);
+  a.peer.floor = m.peer.floor = 'normal';
+  assert.match(cubbiesView(f.ctx, f.ctx.floorOf(a), a)!.cubbies[0].hqLead!.lead.messageBadge!, /1 message from Bob/);
+  assert.equal(cubbiesView(f.ctx, f.ctx.floorOf(a), a)!.cubbies[0].hqLead!.lead.messages, undefined);
+  assert.equal(cubbiesView(f.ctx, f.ctx.floorOf(m), m)!.cubbies[0].hqLead!.lead.messageBadge, undefined);
+  assert.throws(() => sendManagerMessage(f.ctx, m, lead.id, 'Wrong floor'), /HQ only/);
+  assert.throws(() => declineManagerMessage(f.ctx, a, item.id), /HQ only/);
+  a.peer.floor = m.peer.floor = 'hq';
+  const owner = testOwnerKey(), attacker = testOwnerKey();
+  ws.frame({ t: 'cubby.devices', floorId: 'normal', devices: [{ fingerprint: ownerFingerprint(owner.ownerKey), label: 'Owner', addedAt: Date.now() }], requests: [] });
+  const payload = { cubbyId: cb.id, floorId: 'normal', computerId: 'computer-normal', requestId: item.id, at: Date.now(), text: managerMessageText(item) };
+  const pass = { t: 'cubbies.chat' as const, id: cb.id, ...payload, hqMessageId: item.id, ownerPublicKey: owner.ownerKey, ownerSig: owner.sign(payload) };
+  const count = ws.sent.length;
+  for (const c of [m, other, e]) assert.throws(() => passManagerMessage(f.ctx, c, pass));
+  for (const forged of [
+    { ...pass, ownerSig: 'A'.repeat(86) },
+    { ...pass, ownerSig: attacker.sign(payload), ownerPublicKey: attacker.ownerKey },
+    { ...pass, text: 'Unlabelled text' },
+    { ...pass, ownerSig: owner.sign({ ...payload, floorId: 'hq' }) },
+    { ...pass, requestId: 'different-id' },
+  ]) assert.throws(() => passManagerMessage(f.ctx, a, forged), /trusted device/);
+  assert.equal(ws.sent.length, count); assert.equal(visible(a)?.[0].state, 'waiting');
+  dispatch(f.ctx, a, pass);
+  const delivered = ws.sent.at(-1);
+  assert.equal(delivered.t, 'cubby.chat'); assert.equal(delivered.text, "Message from Bob (HQ manager; can't approve merges, publishes or spending): Please review this idea.");
+  assert.equal(delivered.ownerSig, pass.ownerSig); assert.equal(verifyOwner(owner.ownerKey, delivered), true, 'connector verifier accepts the full labelled text');
+  assert.equal(delivered.hqMessageId, undefined); assert.equal(delivered.ownerPublicKey, undefined);
+  for (const c of [a, m, other]) assert.equal(visible(c)?.[0].state, 'passed');
+  assert.throws(() => passManagerMessage(f.ctx, a, pass), /No waiting/);
+  ws.frame({ t: 'cubby.reply', floorId: 'normal', requestId: item.id, text: 'I will review the idea.' });
+  assert.equal(hqView(f.ctx, f.ctx.floorOf(m), m)!.leads![0].cubby!.interior!.chat.at(-1)!.text, 'I will review the idea.');
+  const declined = sendManagerMessage(f.ctx, other, lead.id, 'Another idea');
+  const prior = ws.sent.length;
+  declineManagerMessage(f.ctx, a, declined.id);
+  assert.equal(ws.sent.length, prior); assert.equal(visible(other)?.find(i => i.id === declined.id)?.state, 'declined');
+  assert.equal(visible(m)?.some(i => i.id === declined.id), false);
+  assert.throws(() => messages(f.ctx).waiting(declined.id, 'alice'), /No waiting/);
+  assert.equal(e.ws.sent.some((frame: any) => frame.t === 'hq'), false);
+});
+
+test('held queue trims and caps text, caps five waiting per manager, expires after 24 hours and discards old memory', async () => {
+  const { HQMessages, MESSAGE_TTL } = await import('../src/server/hq/messages.js');
+  let now = 1000;
+  const queue = new HQMessages(() => now);
+  const first = queue.send('owner', 'bob', 'Bob', 'lead', `  ${'a'.repeat(5000)}  `);
+  assert.equal(first.text.length, 4000);
+  assert.throws(() => queue.send('owner', 'bob', 'Bob', 'lead', 'next'), /30 seconds/);
+  for (let i = 0; i < 4; i++) { now += 30_000; queue.send('owner', 'bob', 'Bob', 'lead', 'next'); }
+  now += 30_000;
+  assert.throws(() => queue.send('owner', 'bob', 'Bob', 'other-lead', 'six'), /5 waiting/);
+  assert.throws(() => queue.send('owner', 'eve', 'Eve', 'lead', ' \n '), /Write/);
+  assert.deepEqual(queue.visible('owner', 'other', 'lead'), []);
+  assert.deepEqual(queue.visible('another-owner', 'bob', 'lead'), []);
+  now = first.at + MESSAGE_TTL;
+  assert.equal(queue.visible('owner', 'bob', 'lead')[0].state, 'expired');
+  assert.throws(() => queue.waiting(first.id, 'owner'), /No waiting/);
+  assert.doesNotThrow(() => queue.send('owner', 'bob', 'Bob', 'lead', 'room again'));
+  now += 2 * MESSAGE_TTL;
+  assert.deepEqual(queue.visible('owner', 'owner', 'lead'), []);
 });

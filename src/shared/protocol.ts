@@ -1,4 +1,4 @@
-import type { HQServerMsg } from './protocol/hq.js';
+import type { HQClientMsg, HQServerMsg } from './protocol/hq.js';
 export * from './protocol/hq.js';
 import type { PitchClientMsg, PitchServerMsg } from './protocol/pitch.js';
 export * from './protocol/pitch.js';
@@ -56,6 +56,7 @@ export * from './protocol/usage.js';
 export * from './protocol/workers.js';
 
 export type ClientMsg =
+  | HQClientMsg
   | PitchClientMsg
   | CubbiesClientMsg
   | DraftsClientMsg

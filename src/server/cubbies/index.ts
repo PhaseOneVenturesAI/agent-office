@@ -138,6 +138,11 @@ export class Cubbies {
     if (!this.send(r, frame)) { pending.delete(requestId); throw Error('Your computer disconnected; feedback was not queued'); }
   }
   private hqRecords(owner: string) { return hqRecords(this.records.rows.values(), this.live, owner, floor => this.enabled && !!this.accountName(owner) && this.floorExists(floor)); }
+  hqSources(owner: string) {
+    return this.hqRecords(owner).map(r => ({ floorId: r.floorId, projects: this.live.get(r.id)?.projects ?? [],
+      cubby: this.state(r.floorId, owner).cubbies.find(c => c.id === r.id)!,
+      pitch: r.computerId ? this.pitches.view(r.id, r.floorId, r.computerId)?.pitch : undefined }));
+  }
   hqProjects(owner: string) { return this.live.get(this.hqRecords(owner)[0]?.id)?.projects; }
   hqPitch(owner: string, mine: boolean) { return hqCubbyPitch(this.hqRecords(owner), this.live, this.pitches, mine); }
   pitchView(floorId?: string, owner?: string) {

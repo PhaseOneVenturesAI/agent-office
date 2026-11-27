@@ -1,3 +1,4 @@
+import { hqHandlers } from '../../hq/handlers.js';
 import { hqView } from '../../hq/views.js';
 import { pitchHandlers, pitchView } from './pitch.js';
 import { cubbiesHandlers, cubbiesHooks, cubbiesView } from './cubbies.js';
@@ -39,6 +40,7 @@ import type { FeatureHooks, HandlerMap, ViewPieces } from './types.js';
 
 /** Each domain's handlers put together, in alphabetical order. */
 export const handlers: HandlerMap<ClientMsg> = {
+  ...hqHandlers,
   ...pitchHandlers,
   ...cubbiesHandlers,
   ...draftsHandlers,
