@@ -5,7 +5,7 @@ import { localDesign } from './design.js';
 import os from 'node:os';
 import path from 'node:path';
 import type { CubbyAgent, CubbyNodeFrame } from '../../../shared/protocol/cubbies.js';
-import { projectScope, type LocalConfig } from './config.js';
+import { projectScope, registryFile, type LocalConfig } from './config.js';
 import { canonical, clean, jsonFile, run, type Run } from './io.js';
 import { processes, type ProcessScan } from './processes.js';
 import { presence, runsDir } from './presence.js';
@@ -110,7 +110,7 @@ export async function roster(config: LocalConfig, deps: RosterDeps = {}): Promis
   const needs = readNeeds(path.join(home, 'Library/Application Support/AgentHarness/needs.json'));
   if (needs.error) errors.push('Harness needs unavailable');
   let projects: Snapshot['projects'];
-  try { projects = readProjects(config.projectsFile ?? path.join(home, 'Documents/AgentHarness/projects.json'), config, needs); }
+  try { projects = readProjects(config.projectsFile ?? registryFile(home), config, needs); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') errors.push('Project registry unavailable'); }
   const snapshot: Snapshot = { t: 'cubby.snapshot', floorId: config.floor, agents, plan, needsYou, ...(projects ? { projects } : {}), ...(draft ? { draft } : {}), ...(pitch ? { pitch } : {}), observedAt: Date.now(),
     ...(errors.length ? { error: errors.join('; ') } : {}) };

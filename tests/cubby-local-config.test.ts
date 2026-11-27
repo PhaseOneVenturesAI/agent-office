@@ -60,3 +60,16 @@ test('native environment strips API routing and inherited approval overrides, pr
     CLAUDE_CODE_PERMISSION_MODE: 'bypassPermissions', CLAUDECODE: '1', CLAUDE_CONFIG_DIR: '/native', AGENT_OFFICE_NODE_TOKEN: 'secret' });
   assert.deepEqual(env, { PATH: '/bin', HOME: '/home', CLAUDE_CONFIG_DIR: '/native' });
 });
+
+test('the harness registry is read from ~/Documents/GitHub/AgentHarness, falling back to ~/Documents/AgentHarness', async (t) => {
+  const { registryFile } = await import('../src/server/cubbies/local/config.js');
+  const f = fixture(t);
+  assert.equal(registryFile(f.home), path.join(f.home, 'Documents/GitHub/AgentHarness/projects.json'), 'new location when neither exists');
+  f.registry({ leadSessionId: session });
+  assert.equal(registryFile(f.home), path.join(f.home, 'Documents/AgentHarness/projects.json'), 'old location while only it exists');
+  const dir = path.join(f.home, 'Documents/GitHub/AgentHarness'); mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, 'projects.json'), JSON.stringify({ projects: { Example: { path: f.project, leadThreadId: session } } }));
+  assert.equal(registryFile(f.home), path.join(dir, 'projects.json'), 'new location wins once it exists');
+  const c = await configure({ ownerKey: owner.ownerKey, floor: 'floor', project: f.project }, f.home, f.execute);
+  assert.equal(c.provider, 'codex', 'the entry comes from the new registry');
+});

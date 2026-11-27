@@ -37,6 +37,13 @@ export async function projectScope(project: string, execute: Run = run) {
   return { project: resolved, roots: [...branches.keys()], branches };
 }
 
+/** The AgentHarness project registry: ~/Documents/GitHub/AgentHarness since 2026-11-27, with the old ~/Documents/AgentHarness as a fallback. */
+export function registryFile(home = os.homedir()): string {
+  const current = path.join(home, 'Documents/GitHub/AgentHarness/projects.json');
+  const old = path.join(home, 'Documents/AgentHarness/projects.json');
+  return existsSync(current) || !existsSync(old) ? current : old;
+}
+
 export async function configure(options: LocalOptions, home = os.homedir(), execute: Run = run): Promise<LocalConfig> {
   if (!options.floor || options.floor.length > 128 || !options.project) throw new Error('--cubbies requires --floor and --project');
   if (!options.ownerKey) throw new Error('--cubbies requires --owner-key from the owner browser');
@@ -47,7 +54,7 @@ export async function configure(options: LocalOptions, home = os.homedir(), exec
   if (options.session && options.newLead) throw new Error('Choose an existing session or --new-lead, not both');
   if (options.bridge && options.newLead) throw new Error('--lead-bridge talks to the running lead; it never starts a new one');
   const scope = await projectScope(options.project, execute);
-  const registryPath = path.join(home, 'Documents/AgentHarness/projects.json');
+  const registryPath = registryFile(home);
   let entry: any;
   if (existsSync(registryPath)) {
     let registry: any;

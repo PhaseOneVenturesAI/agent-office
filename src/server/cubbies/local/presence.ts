@@ -7,7 +7,7 @@ import { leadId } from '../../../shared/protocol/hq.js';
 import { alive } from './lock.js';
 
 // AgentHarness presence records: one small JSON file per running agent-worker or factory-run, in
-// ~/Library/Application Support/AgentHarness/runs (format: ~/Documents/AgentHarness/presence.py,
+// ~/Library/Application Support/AgentHarness/runs (format: ~/Documents/GitHub/AgentHarness/presence.py,
 // schema 1). Presence only: provider, role, a short title, folder, branch and process id. A record
 // counts only while its process is alive, so a crashed worker never lingers in the cubby.
 
