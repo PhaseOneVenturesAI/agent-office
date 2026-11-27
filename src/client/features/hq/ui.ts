@@ -1,4 +1,5 @@
 import './ui.css';
+import { projectElement } from '../../shared/hq/needs';
 import { departmentLabel } from './labels';
 import type { HQView } from '../../../shared/protocol/hq';
 import { h, openModal } from '../../ui/dom';
@@ -10,7 +11,7 @@ export function openHQBoard(view: HQView, project?: string) {
     const section = h('section', {}, h('h3', {}, p.name));
     if (p.hasMainLead) section.append(h('p', {}, 'CEO'));
     for (const d of p.departmentLeads) section.append(h('p', {}, departmentLabel(d)));
-    section.append(h('h4', {}, `${p.name} tasks`), h('p', {}, 'Tasks appear here when the live loop is on'));
+    section.append(h('h4', {}, `${p.name} tasks`), projectElement(p));
     body.append(section);
   }
   openModal(h('div.modal.hq-board', { role: 'dialog', 'aria-label': project ? `${project} tasks` : 'HQ portfolio' },

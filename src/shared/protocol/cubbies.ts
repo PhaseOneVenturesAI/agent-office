@@ -9,6 +9,8 @@ export interface CubbyAgent {
   tool: string;
   department?: string;
   harnessRole?: string;
+  lead?: string;
+  startedAt?: number;
   leadTitle?: string;
   role: CubbyRole;
   task: string;

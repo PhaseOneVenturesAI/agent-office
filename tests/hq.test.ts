@@ -1,3 +1,4 @@
+import { publicProjects } from '../src/shared/protocol/hq.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, rmSync, statSync, readFileSync, existsSync } from 'node:fs';
@@ -106,8 +107,8 @@ test('HQ office chat and positions reach HQ occupants only and never enter share
 test('projects reader and snapshot cleaner whitelist types, fields and lengths and preserve the frame cap', () => {
   const before = readFileSync(registry); assert.equal(projects.length, 3); assert.equal(projects[1].name, 'agent-office');
   assert.equal(projects[0].hasMainLead, true); assert.equal(projects[2].hasMainLead, false);
-  assert.deepEqual(projects[0].departmentLeads, [{ department: 'Marketing', title: 'Marketing lead' }, { department: 'Design', title: 'Design lead' }]);
-  assert.doesNotMatch(JSON.stringify(projects), /private|session|app|path/i); assert.deepEqual(readFileSync(registry), before);
+  assert.deepEqual(publicProjects(projects, true)[0].departmentLeads, [{ department: 'Marketing', title: 'Marketing lead' }, { department: 'Design', title: 'Design lead' }]);
+  assert.doesNotMatch(JSON.stringify(publicProjects(projects, true)), /private|session|app|path/i); assert.deepEqual(readFileSync(registry), before);
   assert.deepEqual(cleanProjects([null, { name: 2 }, { name: 'bad', hasMainLead: 'yes', departmentLeads: [] }]), []);
   const raw = Array(20).fill({ name: 'n'.repeat(100), hasMainLead: true, path: 'SECRET', departmentLeads: Array(20).fill({ department: 'd'.repeat(70), title: 't'.repeat(90), sessionId: 'SECRET' }) });
   const now = Date.now(), s = snapshot({ projects: raw, agents: [], observedAt: now }, now)!;
@@ -317,4 +318,32 @@ test('held queue trims and caps text, caps five waiting per manager, expires aft
   assert.doesNotThrow(() => queue.send('owner', 'bob', 'Bob', 'lead', 'room again'));
   now += 2 * MESSAGE_TTL;
   assert.deepEqual(queue.visible('owner', 'owner', 'lead'), []);
+});
+
+test('HQ live projections hide lines and matching IDs from managers/outsiders; existing merge emission rings HQ exactly once', async t => {
+  const { hqFloorEmit } = await import('../src/server/hq/gong.js');
+  const { cubbiesView } = await import('../src/server/ws/handlers/cubbies.js');
+  const f = fixture(t), p = { name: 'Live project', own: true as const, hasMainLead: true, lead: 'private-session', departmentLeads: [],
+    needs: { open: 2, items: ['SECRET_NEEDS'], stale: true, at: new Date().toISOString() } };
+  const { ws } = f.publish('normal', Date.now(), [p]);
+  const a = f.client('alice'), m = f.client('bob'), e = f.client('eve'), elsewhere = f.client('alice');
+  a.peer.floor = m.peer.floor = e.peer.floor = 'hq'; elsewhere.peer.floor = 'normal';
+  ws.frame({ t: 'cubby.snapshot', floorId: 'normal', observedAt: Date.now(), agents: [{ id: 'harness:123', tool: 'codex', role: 'builder', status: 'working', task: 'HQ live', branch: 'main', lead: 'private-session', startedAt: 1 }], plan: [], needsYou: [], projects: [p] });
+  const owner = hqView(f.ctx, f.ctx.floorOf(a), a)!;
+  assert.equal(owner.projects[0].workers?.[0].title, 'HQ live'); assert.equal(owner.leads?.[0].where, 'project'); assert.equal(owner.leads?.[0].needs?.items[0], 'SECRET_NEEDS');
+  assert.doesNotMatch(JSON.stringify(owner), /private-session/);
+  const manager = hqView(f.ctx, f.ctx.floorOf(m), m)!;
+  assert.equal(manager.projects[0].needs?.open, 2); assert.doesNotMatch(JSON.stringify(manager), /SECRET_NEEDS|private-session/);
+  assert.equal(hqView(f.ctx, f.ctx.floors.get('hq'), e), undefined);
+  e.peer.floor = m.peer.floor = 'normal';
+  assert.doesNotMatch(JSON.stringify(cubbiesView(f.ctx, f.ctx.floorOf(e), e)), /SECRET_NEEDS|private-session|hqLead|HQ live/);
+  assert.doesNotMatch(JSON.stringify(cubbiesView(f.ctx, f.ctx.floorOf(m), m)), /SECRET_NEEDS|private-session/);
+  assert.equal(cubbiesView(f.ctx, f.ctx.floorOf(elsewhere), elsewhere)?.cubbies[0].hqLead?.lead.needs?.open, 2);
+  m.peer.floor = 'hq';
+  const emit = hqFloorEmit(f.ctx), floor = f.ctx.floors.get('normal')!;
+  emit(floor, { t: 'gong', why: 'merged', pr: 17, by: 'Owner' }); emit(floor, { t: 'gong', why: 'merged', pr: 17, by: 'Owner' });
+  for (const c of [a, m]) assert.deepEqual(c.ws.sent.filter((m: any) => m.t === 'hq.gong'), [{ t: 'hq.gong', project: 'Live project', pr: 17 }]);
+  for (const c of [e, elsewhere]) assert.equal(c.ws.sent.some((m: any) => m.t === 'hq.gong'), false);
+  emit(floor, { t: 'gong', why: 'hit', by: 'Owner' });
+  assert.equal(a.ws.sent.filter((m: any) => m.t === 'hq.gong').length, 1);
 });

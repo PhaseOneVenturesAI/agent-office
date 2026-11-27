@@ -1,3 +1,4 @@
+import { cubbyWithoutHQMetadata } from '../hq/privacy.js';
 import { hqRecords, hqCubbyPitch } from '../hq/cubbies.js';
 import { isOwnerColor } from '../../shared/personal-agents/appearance.js';
 import { PitchStore } from '../pitch/store.js';
@@ -45,7 +46,7 @@ export class Cubbies {
         const live = this.live.get(r.id), online = !!this.accountName(r.owner) && !!live?.admitted && this.nodes.isOnline(r.nodeId);
         const stale = online && live.interior.observedAt !== undefined && this.now() - live.interior.observedAt > 60_000;
         const working = online && !stale ? live.interior.agents.filter(a => a.status === 'working').length : 0;
-        const interior = live?.interior ?? this.empty(r);
+        const interior = cubbyWithoutHQMetadata(live?.interior ?? this.empty(r));
         const privateView = stale ? { ...interior, agents: interior.agents.map(a => ({ ...a, status: 'unknown' as const })), error: 'Local roster has not refreshed. Check the connector on your computer.' } : interior;
         return { id: r.id, slot: r.slot, ownerColor: this.records.color(r.owner), ownerName: this.accountName(r.owner) ?? 'Former account', mine,
           lamp: !online ? 'asleep' as const : working ? 'working' as const : 'online' as const, working,
@@ -140,7 +141,7 @@ export class Cubbies {
   private hqRecords(owner: string) { return hqRecords(this.records.rows.values(), this.live, owner, floor => this.enabled && !!this.accountName(owner) && this.floorExists(floor)); }
   hqSources(owner: string) {
     return this.hqRecords(owner).map(r => ({ floorId: r.floorId, projects: this.live.get(r.id)?.projects ?? [],
-      cubby: this.state(r.floorId, owner).cubbies.find(c => c.id === r.id)!,
+      agents: this.live.get(r.id)?.interior.agents, cubby: this.state(r.floorId, owner).cubbies.find(c => c.id === r.id)!,
       pitch: r.computerId ? this.pitches.view(r.id, r.floorId, r.computerId)?.pitch : undefined }));
   }
   hqProjects(owner: string) { return this.live.get(this.hqRecords(owner)[0]?.id)?.projects; }

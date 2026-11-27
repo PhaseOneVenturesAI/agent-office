@@ -34,7 +34,7 @@ export class Interior {
   colliders: Collider[] = [];
   usables: CubbyIt[] = [];
   private agentsGroup = new THREE.Group();
-  private lead: PersonalPerson;
+  readonly lead: PersonalPerson;
   setLeadPresent(present: boolean) { this.lead.root.visible = present; }
   private leadLook = '';
   private leadDoing = '';

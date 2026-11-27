@@ -1,3 +1,4 @@
+import { hqFloorEmit } from '../hq/gong.js';
 import { canViewTerminal } from '../worker-ownership.js';
 import { existsSync } from 'node:fs';
 import { WebSocket } from 'ws';
@@ -110,7 +111,7 @@ export async function openFloors(ctx: Ctx, hookPort: number): Promise<FloorsOpen
     ledger: ctx.ledger,
     capacity: ctx.machine,
     prompts: ctx.prompts,
-    emit: ctx.toFloor,
+    emit: hqFloorEmit(ctx),
     toast: ctx.toastFloor,
     termData: (workerId, data, viewers) => {
       const json = JSON.stringify({ t: 'term.data', workerId, data } satisfies ServerMsg);

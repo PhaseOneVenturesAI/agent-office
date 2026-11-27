@@ -1,3 +1,5 @@
+import { liveProjects } from './live.js';
+import { publicProjects } from '../../shared/protocol/hq.js';
 import { messageLeads } from './messages.js';
 import { leadsFor } from './leads.js';
 import type { Ctx } from '../office/context.js';
@@ -11,7 +13,7 @@ export const hqView: ViewPieces['hq'] = (ctx, floor, c) => {
   if (!ctx.hq?.is(floor?.id) || c.out || !ctx.hq.visible(floor!.id, c.accountId)) return;
   const owner = ownerId(ctx);
   return { floorId: floor!.id, ownerName: ctx.hq.ownerName, mine: ctx.hq.owns(c.accountId),
-    ownerColor: ctx.cubbies.records.color(owner ?? ctx.hq.ownerName), projects: owner ? ctx.cubbies.hqProjects(owner) ?? [] : [], leads: owner ? messageLeads(ctx, c, owner, leadsFor(ctx, owner, ctx.hq.owns(c.accountId)), true) : [] };
+    ownerColor: ctx.cubbies.records.color(owner ?? ctx.hq.ownerName), projects: owner ? publicProjects(liveProjects(ctx.cubbies.hqProjects(owner) ?? [], ctx.cubbies.hqSources(owner)), ctx.hq.owns(c.accountId)) : [], leads: owner ? messageLeads(ctx, c, owner, leadsFor(ctx, owner, ctx.hq.owns(c.accountId)), true) : [] };
 };
 export function hqPitch(ctx: Ctx, c: Client) {
   const floor = ctx.floorOf(c);

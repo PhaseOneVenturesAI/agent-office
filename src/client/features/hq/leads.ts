@@ -1,3 +1,5 @@
+import { projectLive } from './project-live';
+import { needsLabel } from '../../../shared/protocol/hq';
 import * as THREE from 'three';
 import type { HQLead } from '../../../shared/protocol/hq';
 import type { Ctx } from '../../core/context';
@@ -24,7 +26,7 @@ export function wireHQLeads(ctx: Ctx, deps: HQLeadDeps) {
   away.name = 'hq-away-cards'; const group = new THREE.Group(); group.name = 'hq-lead-layer'; group.add(world.group, away); ctx.scene.add(group);
   let hqKey = '', awayKey = '', faces: Face[] = [], cards: LeadTarget[] = [];
   let pending: { floor: string; lead: HQLead; toHQ: boolean; until: number } | undefined;
-  const current = (id: string) => store.hq?.leads?.find(l => l.id === id) ?? store.cubbies.cubbies.find(c => c.hqLead?.lead.id === id)?.hqLead?.lead;
+  const current = (id: string) => store.cubbies.cubbies.flatMap(c => c.hqLead?.departments ?? []).find(l => l.id === id) ?? store.hq?.leads?.find(l => l.id === id) ?? store.cubbies.cubbies.find(c => c.hqLead?.lead.id === id)?.hqLead?.lead;
   const go = (lead: HQLead, hqFloor: string, toHQ: boolean) => {
     const floor = toHQ ? hqFloor : lead.floorId;
     if (!floor || !store.floors.some(f => f.id === floor)) return;
@@ -35,17 +37,18 @@ export function wireHQLeads(ctx: Ctx, deps: HQLeadDeps) {
   ctx.usables.add({ usable: () => [...(world.group.visible ? world.targets : []), ...(away.visible ? cards : [])], pickable: () => group });
   ctx.interactions.define('hqlead', {
     reach: 3.5,
-    hint: it => ({ k: `hq-lead-${(it as LeadTarget).lead.id}`, parts: [hintTitle((it as LeadTarget).lead.title), key('E', 'Talk')] }),
+    hint: it => ({ k: `hq-lead-${(it as LeadTarget).lead.id}`, parts: [hintTitle([(it as LeadTarget).lead.title, needsLabel((it as LeadTarget).lead.needs), (it as LeadTarget).lead.needs?.items[0]].filter(Boolean).join(' · ')), key('E', 'Talk')] }),
     use: onE(it => {
       const target = it as LeadTarget, lead = current(target.lead.id);
       if (!lead) return;
-      const hqFloor = store.hq?.floorId ?? store.cubbies.cubbies.find(c => c.hqLead?.lead.id === lead.id)?.hqLead?.hqFloorId;
+      const hqFloor = store.hq?.floorId ?? store.cubbies.cubbies.find(c => (c.hqLead?.lead.id === lead.id || c.hqLead?.departments?.some(d => d.id === lead.id)))?.hqLead?.hqFloorId;
       const onHQ = store.floor === hqFloor;
       // Desk cards lead to the pitch room; a pitch-room body offers the way back to its project door.
-      const visit = hqFloor && lead.floorId ? () => go(lead, hqFloor, !onHQ || !!target.card) : undefined;
+      const visit = hqFloor && lead.floorId ? () => go(lead, hqFloor, !onHQ || (!!target.card && lead.where === 'pitch')) : undefined;
       openHQLead(ctx, lead, () => current(lead.id), visit);
     }),
   });
+  projectLive(ctx, deps);
   ctx.ticks.add('world', f => {
     const active = ctx.inOffice() && !ctx.upTop();
     world.group.visible = active && !!store.hq && store.hq.floorId === store.floor;
@@ -94,7 +97,9 @@ export function wireHQLeads(ctx: Ctx, deps: HQLeadDeps) {
         }
       }
       else if (!pending.toHQ && store.cubbies.floorId === store.floor) {
-        const place = rooms.get(lead.cubby?.slot ?? 0)?.place ?? HALL_PLACES[lead.cubby?.slot ?? 0];
+        const cubby = store.cubbies.cubbies.find(c => c.id === lead.cubby?.id || c.hqLead?.departments?.some(d => d.id === lead.id));
+        const slot = cubby?.slot ?? lead.cubby?.slot ?? 0;
+        const place = rooms.get(slot)?.place ?? HALL_PLACES[slot];
         if (place) at = { ...toFloor(place, 0, place.depth / 2 + 1.3), rotY: place.rotY };
       }
       if (at) { ctx.player.pos.set(at.x, 0, at.z); ctx.player.vy = 0; ctx.player.camYaw = at.rotY; ctx.player.lookPitch = 0; ctx.player.updateCamera(true); pending = undefined; }
