@@ -9,7 +9,7 @@ mkdirSync(out, { recursive: true });
 const server = await createServer({ configFile: `${root}/vite.config.ts`, root: `${root}/src/client`, configLoader: 'runner', cacheDir: `${root}/.paradev/hq-live-vite`, logLevel: 'warn', server: { host: '127.0.0.1', port: 0, fs: { allow: [root, realpathSync(`${root}/node_modules`)] } } });
 await server.listen();
 const browser = await chromium.launch({ executablePath: process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true });
-const errors = [], sockets = new Map(), sent = [];
+const errors = [], sockets = new Map(), sent = [], labelEvidence = [];
 const projects = [
   { name: 'Plimbo', hasMainLead: true, departmentLeads: [{ department: 'Marketing', title: 'Marketing lead' }, { department: 'Design', title: 'Design lead' }] },
   { name: 'Agent Office', hasMainLead: true, departmentLeads: [] },
@@ -86,6 +86,17 @@ async function shot(name, phone) {
     if (!await page.locator('.modal:visible').count()) { await page.keyboard.press('Shift'); await page.evaluate(() => window.__audit.parts.focus.backToGame()); }
     await page.waitForTimeout(250);
     assert.equal(await page.locator('#fade').evaluate(el => getComputedStyle(el).opacity), '0', 'screenshots must not capture an unfinished elevator transition');
+    if (['01-helpers-at-desks', '03-lead-on-project-floor-hq', '04-needs-you-hq'].includes(name)) {
+      const labels = await projectedLabels();
+      labelEvidence.push({ name, viewport: suffix, ...labels });
+      assert.deepEqual(labels.overlaps, [], `${name} ${suffix}: helper plates must not overlap status cards or lead plates`);
+      assert.deepEqual(labels.oversized, [], `${name} ${suffix}: close plates must stay within 1.3× their size at 3 m`);
+      if (name === '03-lead-on-project-floor-hq') {
+        assert.ok(labels.cards.some(c => c.name === 'On the Plimbo floor'), 'CEO status card is in view');
+        assert.ok(labels.cards.find(c => c.name === 'On the Plimbo floor').text.includes('✋ 2 need you'));
+      }
+      if (name === '04-needs-you-hq') assert.ok(labels.leads.some(l => l.name.includes('Plimbo CEO')), 'CEO plate is in view');
+    }
     if (name.startsWith('10-') || name.startsWith('11-') || name.startsWith('12-')) {
       assert.equal(await page.locator('.cb-send button').evaluate(el => {
         const r = el.getBoundingClientRect(), parent = el.closest('.cb-main').getBoundingClientRect();
@@ -179,9 +190,47 @@ async function helperView() {
     return { helpers, overflow };
   });
 }
+async function projectedLabels() {
+  return page.evaluate(async () => {
+    const { screenBox, overlaps } = await import('/features/cubbies/personal-agents/declutter.ts');
+    const { camera, scene } = window.__office, helpers = [], leads = [], cards = [], oversized = [];
+    const onScreen = b => b.maxX > -1 && b.minX < 1 && b.maxY > -1 && b.minY < 1;
+    scene.getObjectByName('hq-leads').traverseVisible(o => {
+      if (o.name === 'personal-nameplate') {
+        const depth = -o.getWorldPosition(camera.position.clone()).applyMatrix4(camera.matrixWorldInverse).z;
+        const box = screenBox(o, camera);
+        if (depth <= 0 || !onScreen(box)) return;
+        const entry = { name: o.userData.lines[0], box };
+        (o.parent.name.startsWith('hq-helper-') ? helpers : leads).push(entry);
+        const parentScale = o.parent.getWorldScale(camera.position.clone());
+        const at3m = o.material.map.image.width * .003 * parentScale.x * camera.projectionMatrix.elements[0] / 3;
+        if (box.maxX - box.minX > at3m * 1.31) oversized.push(entry.name);
+      }
+      if (o.name === 'hq-lead-status') {
+        const vertices = o.geometry.attributes.position, points = [];
+        for (let i = 0; i < vertices.count; i++) points.push(camera.position.clone().fromBufferAttribute(vertices, i).applyMatrix4(o.matrixWorld));
+        if (points.every(p => p.clone().applyMatrix4(camera.matrixWorldInverse).z >= 0)) return;
+        points.forEach(p => p.project(camera));
+        const box = { minX: Math.min(...points.map(p => p.x)), maxX: Math.max(...points.map(p => p.x)), minY: Math.min(...points.map(p => p.y)), maxY: Math.max(...points.map(p => p.y)) };
+        if (onScreen(box)) cards.push({ name: o.userData.statusText, box, text: o.material.map.image.__texts });
+      }
+    });
+    return { helpers, leads, cards, oversized, overlaps: helpers.flatMap(h => [...leads, ...cards].filter(p => overlaps(h.box, p.box)).map(p => [h.name, p.name])) };
+  });
+}
 async function close() { await page.locator('.modal button.close').click(); await page.waitForFunction(() => window.__office.player.hasMouse); }
 try {
   publish(); await setup('owner'); await enter();
+  const badges = await page.evaluate(async () => {
+    const { statusCard } = await import('/features/hq/lead-world.ts');
+    const lead = window.__office.store.hq.leads[0], at = '2026-11-26T12:16:00.000Z';
+    const text = [2, null].flatMap(open => [false, true].map(stale => {
+      const face = statusCard({ ...lead, needsYou: true, needs: { open, stale, at, items: [] } }, 'On the Plimbo floor');
+      const badge = face.mesh.material.map.image.__texts.at(-1); face.dispose(); return badge;
+    }));
+    return { text, time: new Date(at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) };
+  });
+  assert.deepEqual(badges.text, ['✋ 2 need you', `✋ 2 need you · as of ${badges.time}`, '✋ Needs you · unknown', `✋ Needs you · unknown · as of ${badges.time}`]);
   const first = leads()[0].id, dept = leads()[1].id;
   const helpers = await helperView();
   assert.equal(helpers.helpers.length, 6); assert.equal(new Set(helpers.helpers.map(w => w.id)).size, 6); assert.equal(helpers.overflow.length, 1);
@@ -224,6 +273,6 @@ try {
   push(lite, { t: 'hq', view: hq(false) }); await lite.waitForTimeout(100); assert.doesNotMatch(await lite.locator('.body').innerText(), /literal text/);
   push(lite, { t: 'hq' }); await lite.waitForTimeout(100); assert.equal(await lite.locator('#btn-hq').isVisible(), false); assert.doesNotMatch(await lite.locator('.body').innerText(), /Live task|literal text/);
   await lite.close(); assert.deepEqual(errors, []);
-  writeFileSync(`${out}/report.json`, JSON.stringify({ helpers, rows, errors, screenshots: out }, null, 2));
+  writeFileSync(`${out}/report.json`, JSON.stringify({ helpers, rows, labelEvidence, errors, screenshots: out }, null, 2));
   console.log(`HQ live UI checks passed. Screenshots: ${out}`);
 } finally { await browser.close(); await server.close(); }
