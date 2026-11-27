@@ -7,6 +7,7 @@ import { clean } from '../../cubbies/local/io.js';
 import { verifyMac, type MacReady } from '../wire.js';
 import { type MacConfig } from './config.js';
 import { macSnapshot } from './snapshot.js';
+import type { LeadReply, LeadStateFrame } from '../../../shared/protocol/lead-talk.js';
 export class MacConnector {
   private images = new Map<number, Map<string, DesignImage>>();
   private sentImages = new Map<number, Set<string>>();
@@ -19,7 +20,7 @@ export class MacConnector {
   private release: () => void;
   private key: string;
   private closed = false;
-  constructor(private config: MacConfig, token: string, private collect?: () => ReturnType<typeof macSnapshot>) {
+  constructor(private config: MacConfig, token: string, private collect?: () => ReturnType<typeof macSnapshot>, private talk?: (frame: unknown) => void) {
     this.release = projectLock(config.state);
     this.key = cubbyKey(token);
   }
@@ -29,16 +30,18 @@ export class MacConnector {
     send({ t: 'hq.hello', computerId: this.config.computerId, computerName: clean(name, 60) });
   }
   receive(data: string | Buffer | ArrayBuffer | Buffer[]) {
-    if (!this.send || this.ready || this.closed) return;
+    if (!this.send || this.closed) return;
     let f: MacReady;
     try { const text = typeof data === 'string' ? data : Array.isArray(data) ? Buffer.concat(data).toString() : Buffer.from(data as ArrayBuffer).toString();
-      if (text.length > 4096) return; f = JSON.parse(text); } catch { return; }
+      if (text.length > 32768) return; f = JSON.parse(text); } catch { return; }
+    if (this.ready) { this.talk?.(f); return; }
     if (f?.t !== 'hq.ready' || f.computerId !== this.config.computerId || !verifyMac(this.key, f) || typeof f.connection !== 'string' || this.connections.has(f.connection)) return;
     if (this.connections.size >= 256) this.connections.delete(this.connections.values().next().value!);
     this.connections.add(f.connection);
     this.ready = true; void this.snapshot();
     this.timer = setInterval(() => void this.snapshot(), 15_000);
   }
+  sendLead(frame: LeadStateFrame | LeadReply) { return this.ready && !this.closed ? this.send?.(frame) : false; }
   private async snapshot() {
     if (this.polling) return;
     const generation = this.generation; this.polling = true;
