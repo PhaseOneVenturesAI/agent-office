@@ -1,3 +1,4 @@
+import { toast } from '../../ui/dom';
 import { wireHQLeads, type HQLeadDeps } from './leads';
 import { hintTitle, key, onE } from '../../core/hint';
 import { openHQBoard } from './ui';
@@ -14,6 +15,11 @@ declare module '../../world/types' {
 /** An overlay with exact restoration, including the colliders of hidden desks. */
 export function installHQ(ctx: Ctx, deps: { idleAgents(): IdleAgent[] } & HQLeadDeps) {
   wireHQLeads(ctx, deps);
+  ctx.messages.on('hq.gong', msg => {
+    if (store.hq?.floorId !== store.floor) return;
+    ctx.world().gong?.strike(1); ctx.sound.gong('merged');
+    toast(`${msg.project}: PR #${msg.pr} merged`);
+  });
   const world = ctx.office.hq;
   let undo: (() => void)[] = [], content = '', shown = false;
   let quiet: THREE.Object3D[] = [];

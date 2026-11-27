@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { CubbyAgent, CubbyRole } from '../../../shared/protocol/cubbies.js';
 import { canonical, clean, jsonFile } from './io.js';
+import { leadId } from '../../../shared/protocol/hq.js';
 import { alive } from './lock.js';
 
 // AgentHarness presence records: one small JSON file per running agent-worker or factory-run, in
@@ -48,6 +49,8 @@ export function presence(roots: readonly string[], dir = runsDir(), isAlive: (pi
         tool,
         role,
         harnessRole: clean(r.role, 60),
+        ...(leadId(r.lead) ? { lead: leadId(r.lead) } : {}),
+        ...(typeof r.startedAt === 'string' && Number.isFinite(Date.parse(r.startedAt)) ? { startedAt: Date.parse(r.startedAt) } : {}),
         ...(typeof r.department === 'string' ? { department: clean(r.department, 60) } : {}),
         ...(typeof r.leadTitle === 'string' ? { leadTitle: clean(r.leadTitle, 60) } : {}),
         task: clean(r.title, 80) || (role === 'reviewer' ? 'Review' : 'Harness task'),

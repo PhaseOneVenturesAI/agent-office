@@ -153,7 +153,7 @@ try {
   assert.equal(on.names.filter(n => /^hq-area-/.test(n)).length, 3); assert.equal(on.names.filter(n => /^hq-desk-(?!label)/.test(n)).length, 5);
   assert.ok(on.openDesks.every(v => !v)); assert.ok(on.furniture.length >= 4); assert.ok(on.furniture.every(v => !v)); assert.equal(on.signs, false); assert.deepEqual(on.plants, baseline.plants);
   assert.ok(on.labels.length >= 11 && on.labels.every(l => l.mesh));
-  assert.equal(on.boards.length, 3); assert.ok(on.boards.every(b => b.width === 1.4 && b.x > 3 && b.top < 1.3 && b.interact === 'hqboard'));
+  assert.equal(on.boards.length, 3); assert.ok(on.boards.every(b => b.width === 1.9 && b.x > 3 && b.top < 2.2 && b.interact === 'hqboard'));
   assert.ok(on.wallRuns.some(r => r.text === 'Kindly' && r.font === 'bold 72px sans-serif'));
   assert.ok(on.wallRuns.some(r => r.text === 'Marketing' && r.font === '40px sans-serif'));
   assert.ok(!on.wallText.includes('CEO · Main lead') && !on.wallText.includes('Marketing · Marketing lead'));

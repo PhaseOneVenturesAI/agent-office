@@ -1,3 +1,4 @@
+import { installLiteHQ } from './shared/hq/phone';
 import { installLitePitch } from './lite-pitch';
 // The 2D view (/lite): the office without the 3D, for a phone or a computer the 3D office is too
 // much for. Every worker on the floor and how it's doing, the ones waiting on someone first; its
@@ -48,6 +49,7 @@ const saved = loadProfile();
 store.profile = { name: saved?.name ?? 'Guest', color: saved?.color ?? AVATAR_COLORS[1], look: saved?.look ?? randomLook() };
 const net = new Net(() => store.profile, () => null, true);
 installLitePitch(net);
+installLiteHQ();
 const settings = loadSettings();
 const notifier = new DesktopNotifier(() => settings.notify, (id) => openWorker(id));
 

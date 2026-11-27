@@ -1,3 +1,4 @@
+import { taskBoard } from './task-board';
 import * as THREE from 'three';
 import { departmentLabel } from './labels';
 import type { HQProject, HQView } from '../../../shared/protocol/hq';
@@ -88,19 +89,15 @@ export class HQWorld {
     this.desk(g, x, z, 0, -1.7, 2.7, 1.25, 'CEO', color);
     // Eight bounded departments fit as two rows of four; no people or fabricated activity.
     project.departmentLeads.forEach((d, i) => this.desk(g, x, z, -2.65 + i % 4 * 1.75, .45 + Math.floor(i / 4) * 1.55, 1.35, .7, d.department, color, i < 4 ? .6 : .38));
-    const board = this.panel(1.4, .65, `hq-tasks-${index}`, (c, w) => {
-      c.fillStyle = INK; c.font = 'bold 84px sans-serif'; c.fillText('Tasks', 40, 112);
-      c.font = '66px sans-serif'; c.fillText('Tasks appear here', 40, 230);
-      c.fillText('when the live loop is on', 40, 320, w - 80);
-    });
+    const board = this.panel(1.9, 1.6, `hq-tasks-${index}`, (c, w) => taskBoard(c, w, project));
     const easel = new THREE.Group(); easel.name = `hq-easel-${index}`;
     easel.position.set(3.45, 0, -.7); easel.rotation.y = Math.PI / 2;
-    board.position.set(0, .85, .04); easel.add(board);
+    board.position.set(0, 1.3, .04); easel.add(board);
     const reverse = board.clone(); reverse.name += '-back'; reverse.rotation.y = Math.PI; reverse.position.z = -.04; easel.add(reverse);
-    easel.add(mesh(new THREE.BoxGeometry(1.48, .73, .06), toon(color), 0, .85, 0));
+    easel.add(mesh(new THREE.BoxGeometry(1.98, 1.68, .06), toon(color), 0, 1.3, 0));
     for (const dx of [-.5, .5]) easel.add(mesh(new THREE.BoxGeometry(.055, .5, .38), toon('#765135'), dx, .25, 0));
     g.add(easel);
-    this.colliders.push({ minX: x + 3.26, maxX: x + 3.64, minZ: z - 1.44, maxZ: z + .04, top: 1.215 });
+    this.colliders.push({ minX: x + 3.26, maxX: x + 3.64, minZ: z - 1.69, maxZ: z + .29, top: 2.14 });
     this.target(easel, x + 3.45, z - .7, project.name);
     this.group.add(g);
   }
