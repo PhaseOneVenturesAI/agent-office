@@ -25,6 +25,7 @@ import type { Ctx } from './context';
 import type { CoreState } from './ctx';
 import { builtFloors, pastTheWing } from './floors';
 import type { Parts } from './parts';
+const ARRIVED_TO_APPROVE = new URL(location.href).searchParams.has('link');
 
 export type ArrivalParts = Pick<Parts, 'worlds' | 'place' | 'travel' | 'maps' | 'views' | 'cards' | 'hoops' | 'bar' | 'golf' | 'bargames' | 'cars' | 'focus'>;
 
@@ -156,7 +157,8 @@ export function installArrival(ctx: Ctx, core: CoreState, parts: ArrivalParts) {
     // Someone who just joined starts here: their workers need their own Claude sign-in first.
     if (!signInsGreeted) {
       signInsGreeted = true;
-      if (needsSigningIn()) openSignIns(net, 'Welcome! Sign in to Claude so the workers you hire run on your own plan, and to GitHub so what you do on the boards is yours.');
+      // Opened from a Mac link approval: that dialog comes first; Menu → Your sign-ins stays available.
+      if (needsSigningIn() && !ARRIVED_TO_APPROVE) openSignIns(net, 'Welcome! Sign in to Claude so the workers you hire run on your own plan, and to GitHub so what you do on the boards is yours.');
     }
   });
   ctx.messages.on('signins.needed', (msg) => openSignIns(net, msg.why));

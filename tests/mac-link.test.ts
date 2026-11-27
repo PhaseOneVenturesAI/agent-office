@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import http from 'node:http';
 import { once } from 'node:events';
 import { Pairings, PAIRING_TTL } from '../src/server/link/pairings.js';
@@ -84,13 +85,19 @@ test('reconnect doubles to 30 seconds forever; Access refusals keep retrying eve
   assert.equal(code, 0); assert.deepEqual(waits, [1000,2000,300000,300000,300000,300000]);
   assert.match(logs.at(-1)!, /Cloudflare sign-in needed: run `cloudflared access login https:\/\/office.example`/);
 });
-test('needs refresh executes only the constant local command with no shell and a 60 second timeout', async () => {
+test('needs refresh executes only the constant local command with no shell, discards output and ignores the exit code', async () => {
   let call: any[] = [];
-  await refreshNeeds('/local home', ((...args: any[]) => { call = args; args[3](null); }) as any);
+  await refreshNeeds('/local home', ((...args: any[]) => { call = args; args[3](0); }) as any);
   assert.match(call[0], /(^|\/)python3$/); assert.deepEqual(call[1], ['/local home/Documents/GitHub/AgentHarness/doctor.py']);
-  assert.equal(call[2].shell, false); assert.equal(call[2].timeout, 60_000); assert.ok(Object.isFrozen(NEEDS_COMMAND));
-  await refreshNeeds('/local', ((...args: any[]) => args[3](Object.assign(Error('exit 1'), { code: 1 }))) as any); // a failed health check still wrote needs.json
-  await assert.rejects(refreshNeeds('/local', ((...args: any[]) => args[3](Object.assign(Error('secret stderr'), { code: 'ENOENT' }))) as any), /^Error: Needs refresh failed$/);
+  assert.equal(call[2].timeout, 60_000); assert.ok(Object.isFrozen(NEEDS_COMMAND));
+  await refreshNeeds('/local', ((...args: any[]) => args[3](1)) as any); // a failed health check still wrote needs.json
+  await assert.rejects(refreshNeeds('/local', ((...args: any[]) => args[3](null, Error('secret stderr'))) as any), /^Error: Needs refresh failed$/);
+});
+test('needs refresh survives a command that prints far more than any buffer', async t => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'needs-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const script = path.join(dir, 'Documents/GitHub/AgentHarness/doctor.py'); mkdirSync(path.dirname(script), { recursive: true });
+  writeFileSync(script, "import sys\nsys.stdout.write('x' * 1_000_000)\nsys.exit(1)\n");
+  await refreshNeeds(dir);
 });
 async function listen(t: any, server: http.Server) {
   server.listen(0, '127.0.0.1'); await once(server, 'listening');

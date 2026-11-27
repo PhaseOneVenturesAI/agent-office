@@ -40,6 +40,8 @@ function openLinks(initial: LinkState, approval?: string) {
     if (approval && !data.pending.some(p => p.id === approval)) body.append(h('p', {}, 'This pairing has expired or was already decided.'));
     for (const link of data.links) body.append(h('section.hq-link-record', {}, h('h3', {}, link.computerName),
       h('p', {}, link.connected ? 'Connected' : `Offline since ${new Date(link.lastSeen).toLocaleString()}`),
+      // The office can't see why a Mac is away; an expired Cloudflare sign-in is the usual reason, and the Mac can't report it past Access.
+      ...(link.connected ? [] : [h('p.note', {}, 'Mac link needs sign-in? If it stays offline, run ', h('code', {}, `cloudflared access login ${location.origin}`), ' on that Mac.')]),
       h('button.btn', { onclick: () => void act(link.id, 'revoke') }, 'Revoke')));
   };
   const refresh = async () => {
