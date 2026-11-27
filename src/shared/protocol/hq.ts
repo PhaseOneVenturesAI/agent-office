@@ -1,9 +1,9 @@
 import type { CubbyInfo, CubbyOwnerMessage } from './cubbies.js';
 import type { OwnerColor } from '../personal-agents/appearance.js';
-export interface LeadStatus { status: 'busy' | 'idle' | 'off'; updatedAt: number }
+export interface LeadStatus { status: 'busy' | 'idle' | 'off' | 'unknown'; updatedAt: number }
 export function cleanLeadStatus(raw: unknown): LeadStatus | undefined {
   const r = raw as LeadStatus | undefined;
-  return r && ['busy', 'idle', 'off'].includes(r.status) && Number.isFinite(r.updatedAt) && r.updatedAt >= 0
+  return r && ['busy', 'idle', 'off', 'unknown'].includes(r.status) && Number.isFinite(r.updatedAt) && r.updatedAt >= 0
     ? { status: r.status, updatedAt: r.updatedAt } : undefined;
 }
 /** Connector metadata is projected by publicProjects before reaching a browser. */

@@ -16,7 +16,7 @@ function fixture(t: any) {
   const runs = path.join(home, 'Library/Application Support/AgentHarness/runs'); mkdirSync(runs, { recursive: true });
   return { home, sessions, registry, runs };
 }
-test('session registry uses only busy/idle/off, handles malformed/dead/missing files and bounds files', t => {
+test('session registry uses only busy/idle/off/unknown, handles malformed/dead/missing files and bounds files', t => {
   const f = fixture(t), now = Date.now();
   const write = (name: string, row: unknown) => writeFileSync(path.join(f.sessions, name + '.json'), JSON.stringify(row));
   write('busy', { sessionId: 'busy-id', status: 'busy', updatedAt: now, pid: 100, cwd: '/private', socketPath: '/secret/socket' });
@@ -28,7 +28,12 @@ test('session registry uses only busy/idle/off, handles malformed/dead/missing f
   const get = sessionStatuses(f.home, pid => pid !== 102, now);
   assert.deepEqual(get(['busy-id']), { status: 'busy', updatedAt: now });
   assert.deepEqual(get(['app-id']), { status: 'idle', updatedAt: now });
-  for (const id of ['dead-id','unknown-id','large-id','missing']) assert.equal(get([id]).status, 'off');
+  // Unreadable or unrecognised records exist, so an unmatched lead is unknown, never inferred off.
+  for (const id of ['unknown-id','large-id','missing']) assert.equal(get([id]).status, 'unknown');
+  assert.equal(get(['dead-id']).status, 'off', 'a recorded session whose process ended is off');
+  rmSync(f.sessions, { recursive: true }); mkdirSync(f.sessions);
+  write('only', { sessionId: 'only-id', status: 'idle', updatedAt: now, pid: 100 });
+  assert.equal(sessionStatuses(f.home, () => true, now)(['missing']).status, 'off', 'a clean registry with no match is off');
   assert.doesNotMatch(JSON.stringify(get(['busy-id'])), /pid|cwd|socket|sessionId/);
   for (let i = 0; i < 300; i++) write(`extra-${i}`, { sessionId: `extra-${i}`, status: 'busy', updatedAt: now, pid: 1000 + i });
   let calls = 0; sessionStatuses(f.home, () => { calls++; return true; }, now); assert.ok(calls <= 256);

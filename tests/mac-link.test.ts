@@ -87,9 +87,10 @@ test('reconnect doubles to 30 seconds forever; Access refusals keep retrying eve
 test('needs refresh executes only the constant local command with no shell and a 60 second timeout', async () => {
   let call: any[] = [];
   await refreshNeeds('/local home', ((...args: any[]) => { call = args; args[3](null); }) as any);
-  assert.equal(call[0], 'python3'); assert.deepEqual(call[1], ['/local home/Documents/GitHub/AgentHarness/doctor.py', '--write-needs']);
+  assert.match(call[0], /(^|\/)python3$/); assert.deepEqual(call[1], ['/local home/Documents/GitHub/AgentHarness/doctor.py']);
   assert.equal(call[2].shell, false); assert.equal(call[2].timeout, 60_000); assert.ok(Object.isFrozen(NEEDS_COMMAND));
-  await assert.rejects(refreshNeeds('/local', ((...args: any[]) => args[3](Error('secret stderr'))) as any), /^Error: Needs refresh failed$/);
+  await refreshNeeds('/local', ((...args: any[]) => args[3](Object.assign(Error('exit 1'), { code: 1 }))) as any); // a failed health check still wrote needs.json
+  await assert.rejects(refreshNeeds('/local', ((...args: any[]) => args[3](Object.assign(Error('secret stderr'), { code: 'ENOENT' }))) as any), /^Error: Needs refresh failed$/);
 });
 async function listen(t: any, server: http.Server) {
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
