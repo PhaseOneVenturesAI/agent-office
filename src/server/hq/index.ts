@@ -5,16 +5,18 @@ import type { Building } from '../building.js';
 /** Identity stays outside Building: no new repo type or implicit kickoff path. */
 export class HQ {
   private owner: string;
-  /** Shown to people: the configured name, or an email's name part (never the address). */
-  readonly ownerName: string;
+  private ownerStem: string;
+  /** Shown to people: the configured name, or for an email the office name of the account it signs in as, else the email's name part (never the address). */
+  get ownerName(): string { return (this.owner.includes('@') && this.byEmail?.(this.owner)?.name) || this.ownerStem; }
   private managers: Set<string>;
   private id?: string;
   get enabled() { return !!this.owner; }
   constructor(dir: string, owner: string | undefined, managers: string | undefined,
-    private account: (id: string) => { name: string; email?: string } | undefined, building: Building) {
+    private account: (id: string) => { name: string; email?: string } | undefined, building: Building,
+    private byEmail?: (email: string) => { name: string } | undefined) {
     this.owner = owner?.trim() ?? '';
     const stem = this.owner.split('@')[0];
-    this.ownerName = stem.charAt(0).toUpperCase() + stem.slice(1);
+    this.ownerStem = stem.charAt(0).toUpperCase() + stem.slice(1);
     this.managers = new Set((managers ?? '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean));
     const file = path.join(dir, 'hq.json');
     // A lost record must not turn a previously private data-directory floor public.
