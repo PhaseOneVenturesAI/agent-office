@@ -1,3 +1,4 @@
+import { statusText } from './lead-world';
 import { macLeadDetails } from './mac-lead';
 import { leadNeeds } from '../../shared/hq/needs';
 import { leadMessages } from './messages';
@@ -9,7 +10,7 @@ import { openLeadChat } from '../../shared/cubby/chat';
 
 export function openHQLead(ctx: Ctx, lead: HQLead, current: () => HQLead | undefined, visit?: () => void) {
   if (!lead.cubby?.interior) {
-    const body = h('div.body', {}, leadNeeds(lead), h('p', {}, `Talk to ${lead.title} in the Claude app on ${lead.computer}`));
+    const body = h('div.body', {}, leadNeeds(lead), h('p', {}, statusText(lead)), h('p', {}, `Talk to ${lead.title} in the Claude app on ${lead.computer}`));
     const details = lead.mac ? macLeadDetails(ctx, lead, current) : undefined;
     if (details) body.append(details.el);
     if (visit) body.append(h('button.btn.hq-go', { onclick: visit }, 'Go there'));

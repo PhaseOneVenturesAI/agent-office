@@ -1,3 +1,6 @@
 .hq-connect { width: min(640px, calc(100vw - 24px)); }
 .hq-connect .body { display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
 .hq-connect .cb-cmd { display: block; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; padding: 14px; background: #f4eddf; color: #292638; }
+.hq-connect .hq-link-actions { display: flex; gap: 12px; }
+.hq-connect .hq-link-record, .hq-connect .hq-link-request { border-top: 1px solid #d9c6ab; padding-top: 12px; }
+.hq-connect .body h3 { margin: 0; }

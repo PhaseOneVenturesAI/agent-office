@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { configureMac, pinMac } from '../src/server/hq/local/config.js';
+import { configureMac } from '../src/server/hq/local/config.js';
 import { macEntries, macSnapshot } from '../src/server/hq/local/snapshot.js';
 import { MacConnector } from '../src/server/hq/local/connector.js';
 import { HQMac } from '../src/server/hq/mac.js';
@@ -16,8 +16,6 @@ import { hqView, hqPitch, hqImage } from '../src/server/hq/views.js';
 import { hqHandlers } from '../src/server/hq/handlers.js';
 import { projectLeads } from '../src/server/hq/leads.js';
 import { liveProjects } from '../src/server/hq/live.js';
-import { pinFile, readPins } from '../src/server/cubbies/local/devices.js';
-import { testOwnerKey } from './support/cubby-keys.js';
 import { socket, png, imageFrames } from './support/draft-board.js';
 import { cleanImage } from '../src/server/drafts/image-format.js';
 import { MAC_BYTES, macSignature } from '../src/server/hq/wire.js';
@@ -48,7 +46,7 @@ test('Mac registry projection touches only allowed fields; skips archived, remot
   assert.deepEqual(rows[0].project.departmentLeads, [{ department: 'Design', title: 'Design lead' }]);
 });
 
-test('--hq all-project snapshot scopes workers to exact worktrees, caps projects/workers, reads needs and pitches', async t => {
+test('Mac link all-project snapshot scopes workers to exact worktrees, caps projects/workers, reads needs and pitches', async t => {
   const f = files(t), projects: Record<string, any> = {}, roots = new Map<string, string[]>();
   for (let i = 0; i < 14; i++) {
     const repo = path.join(f.home, `repo${i}`), tree = path.join(f.home, `tree${i}`); mkdirSync(repo); mkdirSync(tree);
@@ -62,7 +60,7 @@ test('--hq all-project snapshot scopes workers to exact worktrees, caps projects
   writeFileSync(f.registry, JSON.stringify({ projects }));
   writeFileSync(path.join(path.dirname(f.runs), 'needs.json'), JSON.stringify({ schema: 1, generatedAt: new Date().toISOString(), staleAfterHours: 24, projects: { one: { path: [...roots.values()][0][1], open: 1, items: ['Owner-only line'] } } }));
   const first = [...roots.keys()][0]; mkdirSync(path.join(first, '.agent-office')); writeFileSync(path.join(first, '.agent-office/pitch.json'), JSON.stringify(pitch));
-  const before = readFileSync(f.registry), config = configureMac({ ownerKey: testOwnerKey().ownerKey }, f.home);
+  const before = readFileSync(f.registry), config = configureMac(f.home);
   const frame = await macSnapshot(config, { isAlive: () => true, run: async (_bin, args, cwd) => args[0] === 'rev-parse' ? cwd! : roots.get(cwd!)!.map(r => `worktree ${r}\0branch refs/heads/main\0`).join('') });
   assert.equal(frame.projects.length, 12); assert.equal(frame.projects.reduce((n,p) => n + p.agents.length, 0), 64);
   assert.equal(frame.projects[0].project.needs?.items[0], 'Owner-only line'); assert.equal(frame.projects[0].pitch?.status, 'ready');
@@ -71,20 +69,15 @@ test('--hq all-project snapshot scopes workers to exact worktrees, caps projects
   assert.deepEqual(readFileSync(f.registry), before);
 });
 
-test('HQ owner pin is private, stable, rejects replacement; connector requires authenticated readiness and survives reconnect', async t => {
-  const f = files(t), key = testOwnerKey(), other = testOwnerKey();
+test('Mac identity is private and stable; token-authenticated readiness survives reconnect', async t => {
+  const f = files(t);
   writeFileSync(f.registry, JSON.stringify({ projects: {} }));
-  assert.throws(() => configureMac({ ownerKey: key.ownerKey, project: f.home }, f.home), /no project/);
-  assert.throws(() => configureMac({}, f.home), /owner-key/);
-  const config = configureMac({ ownerKey: key.ownerKey }, f.home); pinMac(config);
-  assert.equal(statSync(pinFile(config.state, 'hq')).mode & 0o777, 0o600);
-  assert.equal(config.computerId, configureMac({ ownerKey: key.ownerKey }, f.home).computerId);
-  assert.throws(() => pinMac({ ...config, ownerKey: other.ownerKey }), /Different/);
-  assert.equal(readPins(config.state, 'hq')![0].key, key.ownerKey);
-  pinMac({ ...config, ownerKey: other.ownerKey, replaceOwnerKey: true });
-  assert.equal(readPins(config.state, 'hq')![0].key, other.ownerKey);
+  const config = configureMac(f.home);
+  assert.equal(statSync(path.join(f.home, '.agent-office/link/computer.json')).mode & 0o777, 0o600);
+  assert.equal(statSync(path.join(f.home, '.agent-office/link')).mode & 0o777, 0o700);
+  assert.equal(config.computerId, configureMac(f.home).computerId);
   const sent: any[] = [], token = 'local-token', frame = { t: 'hq.snapshot' as const, computerId: config.computerId, observedAt: Date.now(), projects: [] };
-  const connector = new MacConnector({ ...config, ownerKey: other.ownerKey }, token, async () => frame); t.after(() => connector.close());
+  const connector = new MacConnector(config, token, async () => frame); t.after(() => connector.close());
   connector.connected(f => { sent.push(f); }); assert.equal(sent[0].t, 'hq.hello');
   const ready = { t: 'hq.ready' as const, computerId: config.computerId, owner: 'alice', floor: 'hq', connection: 'one' };
   connector.receive(JSON.stringify({ ...ready, signature: '0'.repeat(64) })); await new Promise(r => setTimeout(r, 5)); assert.equal(sent.length, 1);
@@ -110,9 +103,9 @@ function server(t: any) {
 
 test('HQ invitations are owner-only, single pending, re-setup revokes, account/computer binding persists', t => {
   const f = server(t), a = f.client('alice'), b = f.client('bob'), e = f.client('eve');
-  hqHandlers['hq.setup'](f.ctx, b, { t: 'hq.setup' }); hqHandlers['hq.setup'](f.ctx, e, { t: 'hq.setup' });
-  assert.ok([b,e].every(c => c.ws.sent[0].t === 'warn'));
-  hqHandlers['hq.setup'](f.ctx, a, { t: 'hq.setup' }); const first = a.ws.sent.at(-1).token;
+  assert.throws(() => f.mac.setup('bob', 'hq'), /Only/);
+  assert.throws(() => f.mac.setup('eve', 'hq'), /Only/);
+  const first = f.mac.setup('alice', 'hq').token;
   const next = f.mac.setup('alice', 'hq'); assert.equal(f.nodes.known(first), false); assert.equal(f.nodes.known(next.token), true);
   assert.throws(() => f.mac.setup('alice', 'normal'), /Only/);
   assert.equal(f.nodes.state({ id: 'bob', admin: true }).nodes.length, 0);

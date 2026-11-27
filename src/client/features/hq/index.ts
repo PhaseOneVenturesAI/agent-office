@@ -29,8 +29,8 @@ export function installHQ(ctx: Ctx, deps: { idleAgents(): IdleAgent[] } & HQLead
   ctx.usables.add({ usable: () => shown ? world.interactables : [], pickable: () => world.group });
   ctx.interactions.define('hqboard', {
     reach: 5,
-    hint: it => ({ k: 'hq-board', parts: [hintTitle(it.label ?? 'Portfolio'), key('E', it.label === 'Connect your Mac' ? 'Connect your Mac' : 'Read board')] }),
-    use: onE(it => { if (shown && store.hq && it.label === 'Connect your Mac') { connectMac(ctx); return; } if (shown && store.hq) openHQBoard(store.hq, it.label === 'Portfolio' ? undefined : it.label, (index, piece) => selectMacPitch(ctx, index, piece)); }),
+    hint: it => ({ k: 'hq-board', parts: [hintTitle(it.label ?? 'Portfolio'), key('E', it.label === 'Link your Mac' ? 'Link your Mac' : 'Read board')] }),
+    use: onE(it => { if (shown && store.hq && it.label === 'Link your Mac') { connectMac(ctx); return; } if (shown && store.hq) openHQBoard(store.hq, it.label === 'Portfolio' ? undefined : it.label, (index, piece) => selectMacPitch(ctx, index, piece)); }),
   });
   const restore = () => { for (const fn of undo.reverse()) fn(); undo = []; quiet = []; shown = false; world.group.visible = false; };
   store.on('hq', () => { if (!store.hq || store.hq.floorId !== store.floor) { restore(); content = ''; } });

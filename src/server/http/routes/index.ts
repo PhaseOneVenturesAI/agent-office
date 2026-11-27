@@ -1,3 +1,4 @@
+import { linkRoutes } from '../../link/routes.js';
 import { pitchImageRoute } from './pitch-images.js';
 import { draftImageRoute } from './draft-images.js';
 // Every HTTP route the office answers, in the order they're tried: a new route goes where it has to
@@ -14,6 +15,7 @@ import { serviceRoutes } from './services.js';
 import { projectContextRoute } from './project-context.js';
 
 export const routes: readonly Route[] = [
+  ...linkRoutes,
   // Anyone.
   authRoutes.login,
   authRoutes.loginOptions,

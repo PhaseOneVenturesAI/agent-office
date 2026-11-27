@@ -4,22 +4,27 @@ import { createServer } from 'vite';
 import { chromium } from 'playwright-core';
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
-const root = realpathSync(process.cwd()), out = `${root}/.paradev/shots-hq-mac`;
+const root = realpathSync(process.cwd()), out = `${root}/.paradev/shots-mac-link`;
 mkdirSync(out, { recursive: true });
 const server = await createServer({ configFile: `${root}/vite.config.ts`, root: `${root}/src/client`, configLoader: 'runner', cacheDir: `${root}/.paradev/hq-mac-vite`, logLevel: 'warn', server: { host: '127.0.0.1', port: 0, fs: { allow: [root, realpathSync(`${root}/node_modules`)] } } });
 await server.listen();
 const browser = await chromium.launch({ executablePath: process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true });
 const errors = [], sockets = new Map(), sent = [];
+let roleNow = 'owner';
+const pairingId = 'a'.repeat(48);
+let linkState = { pending: [{ id: pairingId, computerName: 'Mac mini', expiresAt: Date.now() + 600000 }], links: [] };
+const actions = [];
 const projects = [
   { name: 'Kindly', hasMainLead: true, departmentLeads: [{ department: 'Marketing', title: 'Marketing lead' }, { department: 'Design', title: 'Design lead' }] },
   { name: 'Agent Office', hasMainLead: true, departmentLeads: [] },
   { name: 'Garden', hasMainLead: true, departmentLeads: [] },
+  { name: 'Skedaddle', hasMainLead: true, departmentLeads: [] },
 ];
 const { tsImport } = await import('tsx/esm/api');
 const { projectLeads } = await tsImport('../src/server/hq/leads.ts', import.meta.url);
 const { liveProjects } = await tsImport('../src/server/hq/live.ts', import.meta.url);
 const { publicProjects } = await tsImport('../src/shared/protocol/hq.ts', import.meta.url);
-const macSnapshot = { projects: projects.map((p, i) => ({ project: { ...p, lead: `private-lead-${i}` }, agents: [{ id: `harness:${100 + i}`, role: 'builder', tool: 'codex', task: `Build ${p.name}`, branch: 'feature', status: 'working', lead: `private-lead-${i}` }] })) };
+const macSnapshot = { projects: projects.map((p, i) => ({ project: { ...p, lead: `private-lead-${i}`, leadStatus: { status: ['busy', 'idle', 'off', 'busy'][i], updatedAt: Date.now() } }, agents: [{ id: `harness:${100 + i}`, role: 'builder', tool: 'codex', task: `Build ${p.name}`, branch: 'feature', status: 'working', lead: `private-lead-${i}` }] })) };
 const sources = macSnapshot.projects.map(row => ({ mac: true, floorId: '', projects: [row.project], agents: row.agents, computerName: 'Mac mini', observedAt: Date.now() }));
 const hq = mine => ({ floorId: 'hq', ownerName: 'Jonathan', ownerColor: '#5b3cc4', mine,
   ...(mine ? { mac: { computerName: 'Mac mini', connected: true, lastSeen: Date.now() } } : {}),
@@ -30,6 +35,7 @@ const pitch = { cubbyId: 'jonathan-cubby', floorId: 'source-project', displayFlo
 const push = (page, m) => sockets.get(page).send(JSON.stringify(m));
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 async function setup(role) {
+  roleNow = role;
   page.on('pageerror', e => errors.push(e.message));
   await page.addInitScript(() => {
     const p = CanvasRenderingContext2D.prototype, draw = p.fillText;
@@ -39,10 +45,20 @@ async function setup(role) {
     if (navigator.mediaDevices) navigator.mediaDevices.getUserMedia = async () => { throw Error('Disabled in fixture'); };
   });
   await page.route('**/api/**', r => r.fulfill({ contentType: 'application/json', body: '{}' }));
+  await page.route('**/api/mac-link', async r => {
+    if (roleNow !== 'owner') return r.fulfill({ status: 403, contentType: 'application/json', body: '{}' });
+    if (r.request().method() === 'POST') {
+      const action = r.request().postDataJSON(); actions.push(action);
+      if (action.action === 'approve') { linkState.pending = []; linkState.links = [{ id: 'node-fixture', computerName: 'Mac mini', connected: true, lastSeen: Date.now() }]; }
+      if (action.action === 'deny') linkState.pending = [];
+      if (action.action === 'revoke') linkState.links = [];
+    }
+    return r.fulfill({ contentType: 'application/json', body: JSON.stringify(linkState) });
+  });
   await page.route('**/api/whoami', r => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ me: { admin: false, account: { id: role, name: role === 'owner' ? 'Jonathan' : role === 'manager' ? 'Ivan' : 'Outsider', role: 'member' } } }) }));
   await page.route('**/main.ts*', async r => { const response = await r.fetch(); await r.fulfill({ response, body: (await response.text()) + '\nwindow.__audit = { ctx, core, parts };' }); });
-  await page.routeWebSocket(/\/ws(?:\?|$)/, ws => { sockets.set(page, ws); ws.onMessage(raw => { const m = JSON.parse(String(raw)); sent.push(m); if (m.t === 'hq.setup') ws.send(JSON.stringify({ t: 'hq.token', floorId: 'hq', token: 'ao_node_fixture-private-invitation' })); }); });
-  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?3d=1`);
+  await page.routeWebSocket(/\/ws(?:\?|$)/, ws => { sockets.set(page, ws); ws.onMessage(raw => { const m = JSON.parse(String(raw)); sent.push(m); }); });
+  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?3d=1&link=${pairingId}`);
   await page.waitForFunction(() => window.__audit && window.__office?.net.up);
   await account(role);
   await page.evaluate(() => {
@@ -55,6 +71,7 @@ async function setup(role) {
   });
 }
 async function account(role) {
+  roleNow = role;
   await page.evaluate(role => {
     const s = window.__office.store;
     s.me = { admin: false, account: { id: role, name: role === 'owner' ? 'Jonathan' : role === 'manager' ? 'Ivan' : 'Outsider', role: 'member' } };
@@ -96,24 +113,27 @@ async function shot(name, phone) {
 
 try {
   await setup('owner'); await enter(true, []);
-  await stand(2, -7, 2, -11.8, .12);
-  await shot('01-connect-panel');
-  const usePanel = () => page.evaluate(() => {
-    const a = window.__audit, target = a.ctx.office.hq.interactables.find(it => it.label === 'Connect your Mac');
-    if (!target) throw Error('Missing Connect your Mac'); a.ctx.interactions.use(target, 'E');
-  });
-  await usePanel(); await page.waitForSelector('.hq-connect code');
-  await page.waitForFunction(() => document.querySelector('.hq-connect code')?.textContent.includes('--owner-key'));
+  await page.waitForSelector('.hq-connect');
+  assert.match(await page.locator('.hq-connect').innerText(), /Link Mac mini to your office\?/);
+  await shot('02-approve');
+  await page.getByRole('button', { name: 'Approve', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('.hq-link-record')?.textContent.includes('Connected'));
+  assert.deepEqual(actions, [{ id: pairingId, action: 'approve' }]);
   const command = await page.locator('.hq-connect code').innerText();
-  assert.match(command, /agent-office join .* --token 'ao_node_fixture-private-invitation' --hq --owner-key '/);
-  assert.doesNotMatch(command, /--project|--floor/);
-  assert.match(await page.locator('.hq-connect').innerText(), /Owner key fingerprint: [a-f0-9-]+/);
-  await shot('02-command-window');
+  assert.match(command, /agent-office link http:\/\/127.0.0.1:/);
+  assert.doesNotMatch(command, /owner-key|token|--hq/);
+  await shot('01-link-panel');
   await page.keyboard.press('Escape'); await page.waitForFunction(() => window.__office.player.hasMouse);
-  await page.route('**/api/login', r => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ cloudflare: true }) }));
+  const usePanel = () => page.evaluate(() => {
+    const a = window.__audit, target = a.ctx.office.hq.interactables.find(it => it.label === 'Link your Mac');
+    if (!target) throw Error('Missing Link your Mac'); a.ctx.interactions.use(target, 'E');
+  });
+  linkState.links[0].connected = false;
   await usePanel(); await page.waitForSelector('.hq-connect');
-  await page.waitForFunction(() => document.querySelector('.hq-connect code')?.textContent.includes('--cloudflare-access'));
+  assert.match(await page.locator('.hq-connect').innerText(), /Offline since/);
+  await page.screenshot({ path: `${out}/01-link-panel-offline-desktop.png` });
   await page.locator('.hq-connect .close').click(); await page.waitForFunction(() => window.__office.player.hasMouse);
+  linkState.links[0].connected = true;
   await enter();
   await page.waitForFunction(() => window.__office.scene.getObjectByName('hq-body-project:Kindly:ceo'));
   const objects = await page.evaluate(() => {
@@ -121,23 +141,25 @@ try {
     o.scene.traverse(obj => { if (obj.name.startsWith('hq-')) names.push(obj.name); if (obj.name === 'personal-nameplate') labels.push(obj.userData.lines); });
     return { names, labels, projects: o.store.hq.projects, mac: o.store.hq.mac };
   });
-  for (let i = 0; i < 3; i++) { assert.ok(objects.names.includes(`hq-area-${i}`)); assert.ok(objects.names.includes(`hq-tasks-${i}`)); assert.ok(objects.names.includes(`hq-helper-harness:${100 + i}`)); }
-  assert.match(await page.evaluate(() => window.__office.office.hq.group.getObjectByName('hq-connect-panel').material.map.image.__texts.join(' ')), /Mac mini.*Connected · last seen/);
-  assert.equal(objects.mac.computerName, 'Mac mini'); assert.ok(objects.labels.flat().some(l => l?.includes('1 working')));
+  for (let i = 0; i < 4; i++) { assert.ok(objects.names.includes(`hq-area-${i}`)); assert.ok(objects.names.includes(`hq-tasks-${i}`)); assert.ok(objects.names.includes(`hq-helper-harness:${100 + i}`)); }
+  assert.match(await page.evaluate(() => window.__office.office.hq.group.getObjectByName('hq-connect-panel').material.map.image.__texts.join(' ')), /Mac mini.*Connected/);
+  assert.equal(objects.mac.computerName, 'Mac mini'); assert.ok(objects.labels.flat().some(l => l?.includes('1 helper')));
   assert.doesNotMatch(JSON.stringify(objects.projects), /private-lead/);
-  await stand(-3, 9, -3, -5, .03); await shot('03-hq-all-projects');
+  for (const status of ['working', 'idle', 'offline']) assert.ok(objects.labels.flat().some(l => l?.includes(status)), status);
+  await stand(-3, 9, -3, -5, .03); await shot('03-hq-live-projects');
   await stand(-11.5, -2, -11.5, -7.5, .02); await shot('04-phone', () => stand(-11.5, -.4, -11.5, -7.5, .02));
   // A Mac connection does not remove the existing cubby-only HQ projection.
   const fallback = { ...hq(true), mac: undefined, projects: [projects[0]], leads: [{ ...hq(true).leads[0], mac: undefined, working: undefined }] };
   push(page, { t: 'hq', view: fallback }); await page.waitForTimeout(200);
   assert.equal(await page.evaluate(() => window.__office.store.hq.projects.length), 1);
   await account('manager'); await enter(false);
-  assert.equal(await page.evaluate(() => window.__office.office.hq.interactables.some(it => it.label === 'Connect your Mac')), false);
-  push(page, { t: 'hq.token', floorId: 'hq', token: 'must-not-open' }); await page.waitForTimeout(100);
+  assert.equal(await page.evaluate(() => window.__office.office.hq.interactables.some(it => it.label === 'Link your Mac')), false);
+  await page.evaluate(async id => { history.replaceState(null, '', `/?3d=1&link=${id}`); const m = await import('/features/hq/connection.ts'); m.wireMacConnection(window.__audit.ctx); }, pairingId);
+  await page.waitForTimeout(150);
   assert.equal(await page.locator('.hq-connect').count(), 0);
   await account('outsider'); await leave();
   assert.equal(await page.evaluate(() => !!window.__office.store.hq), false);
   assert.deepEqual(errors, []);
   writeFileSync(`${out}/report.json`, JSON.stringify({ command: command.replace(/--token '[^']+'/, "--token '<fixture>'"), objects, errors }, null, 2));
-  console.log(`HQ Mac UI checks passed. Screenshots: ${out}`);
+  console.log(`Mac link UI checks passed. Screenshots: ${out}`);
 } finally { await browser.close(); await server.close(); }

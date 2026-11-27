@@ -2,7 +2,7 @@
 
 ## Whole-Mac HQ connection
 
-`agent-office join <office-url> --token '<invitation>' --hq --owner-key '<key>' [--cloudflare-access]` connects the owner's Mac directly from HQ, without `--project` or `--floor`. It reads the configured AgentHarness project registry, skips archived/remote-only entries and missing paths, and publishes at most 12 projects and 64 scoped live workers plus needs and pitches on the normal snapshot cycle. The browser key is pinned under `~/.agent-office/hq/<computer-id>/` in a `0600` record; paths and app metadata stay local, cleaned session IDs stay between connector and server, and only the owner receives needs lines. A fresh Mac observation takes priority over cubby snapshots, which remain the fallback. Existing single-cubby joins and Cloudflare Access login/reconnect behaviour are unchanged. See [HQ connection and privacy](hq.md#connect-your-mac).
+Owners connect their Mac with `agent-office link <office-url>`, open the printed approval link while signed in as the HQ owner, and choose Approve. The harness LaunchAgent uses `link <office-url> --run` with the saved private token. One link publishes up to 12 visible local projects and 64 scoped live workers, registry-based lead statuses, needs, pitches and draft boards; hidden, archived and remote-only projects are excluded. Managers cannot approve or revoke links. Fresh link snapshots take priority over cubby snapshots; `join --cubbies` remains supported. See [Mac linking and privacy](hq.md#link-your-mac).
 
 ## Satellite presence
 
@@ -120,16 +120,6 @@ Aim at a card and the hint says **[E] Open <title>**. The card window shows the 
 On `/lite`, **🧩 Draft board** appears on your own draft floor. It lists the ideas and screens with their thumbnails, and tapping one opens the same card window, feedback included.
 
 The page loads each image from `/api/drafts/<floorId>/images/<hash>` with its own session cookie, checks the 16-million-pixel limit before fetching, and keeps at most 24 decoded bitmaps by floor and hash in a least-recently-used cache. Eviction closes the bitmap; removing a card, leaving a draft or kicking it off closes its cached images and cancels pending loads. Images exist only on the owner's page and are never sent over the socket. `tests/design-board-ui.mjs` covers the wall, the card window, signing and the phone, using generated PNGs and no server.
-
-### PR #97 review worker status (2026-11-25)
-
-Owner: the Agent Office lead; implementation worker on `feat/cubbies-step-five-design-board-20261125`, based on `34a307e`. Current brief: Jonathan's 2026-11-25 finding-3 request and lead decision to use an aggregate feedback budget, with no snapshot trimming or chunked feedback transfer. Findings 1 and 2 remain intact. Finding 3 adds a 16 KiB aggregate budget, the same full-board notice on the computer and office, and visible overflow snapshots that retain roster/device updates and the last complete office board. The budget size is the worker's within-scope choice; 40 KiB would not leave enough room for maximum ASCII card metadata. The existing latest-20-per-card retention is unchanged.
-
-Verification: `npm run typecheck` passed; focused tests passed 37/37; `npm test` passed 940/942, with only the two known clone-recovery failures caused by denied `ps` (excluded by the worker brief). Six regression tests were added. The maximum ASCII board fixture, including the full feedback budget, is 60,098 bytes, leaving 5,438 bytes below the frame cap; kickoff exports every fixture note. `node tests/design-board-ui.mjs` and `node tests/drafts-ui.mjs` both passed with zero browser errors. Desktop and phone card screenshots were reviewed under `.paradev/shots-board`. The normal build hit the existing symlinked Vite-cache permission error; `npx vite build --configLoader runner` and `npm run build:server` passed. The size guard passed in the full suite; docs check found two existing Markdown files changed and no new Markdown. Logs are under `.paradev/finding3-*.log`. Startup harness health and other-worker process inspection are unverified because this environment denied them. Next step: the lead reviews and integrates this local finding-3 commit. No push, merge, release or deployment was performed.
-
-## Needs Jonathan
-
-None. The aggregate budget constrains the combined card/note maxima; the overflow fallback covers larger local board text.
 
 ### Kickoff
 

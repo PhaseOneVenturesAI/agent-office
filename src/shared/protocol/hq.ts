@@ -1,15 +1,22 @@
 import type { CubbyInfo, CubbyOwnerMessage } from './cubbies.js';
 import type { OwnerColor } from '../personal-agents/appearance.js';
+export interface LeadStatus { status: 'busy' | 'idle' | 'off'; updatedAt: number }
+export function cleanLeadStatus(raw: unknown): LeadStatus | undefined {
+  const r = raw as LeadStatus | undefined;
+  return r && ['busy', 'idle', 'off'].includes(r.status) && Number.isFinite(r.updatedAt) && r.updatedAt >= 0
+    ? { status: r.status, updatedAt: r.updatedAt } : undefined;
+}
 /** Connector metadata is projected by publicProjects before reaching a browser. */
 export interface HQProject {
   own?: true;
   lead?: string;
+  leadStatus?: LeadStatus;
   needs?: HQNeeds;
   workers?: HQWorker[];
   repo?: string;
   name: string;
   hasMainLead: boolean;
-  departmentLeads: { department: string; title: string; lead?: string }[];
+  departmentLeads: { department: string; title: string; lead?: string; leadStatus?: LeadStatus }[];
 }
 export interface HQView {
   mac?: { computerName: string; connected: boolean; lastSeen: number };
@@ -26,6 +33,7 @@ export const HQ_FURNISHED_PROJECTS = 6;
 export type LeadWhere = 'hq' | 'project' | 'pitch';
 export interface HQLead {
   mac?: boolean;
+  leadStatus?: LeadStatus;
   working?: number;
   needs?: HQNeeds;
   messages?: HQMessage[];
@@ -36,7 +44,7 @@ export interface HQLead {
 }
 /** Only sent to HQ's owner/managers, on this cubby's source floor. */
 export interface HQLeadAway { hqFloorId: string; lead: HQLead; departments?: HQLead[] }
-export type HQServerMsg = { t: 'hq.token'; token: string; floorId: string } | { t: 'hq'; view?: HQView } | { t: 'hq.gong'; project: string; pr: number };
+export type HQServerMsg = { t: 'hq'; view?: HQView } | { t: 'hq.gong'; project: string; pr: number };
 const label = (v: unknown, n: number) => typeof v === 'string' ? v.replace(/[\x00-\x1f\x7f]/g, ' ').trim().slice(0, n) : '';
 export function cleanProjects(raw: unknown): HQProject[] {
   if (!Array.isArray(raw)) return [];
@@ -51,7 +59,7 @@ export function cleanProjects(raw: unknown): HQProject[] {
     return [{ ...(own ? { own: true as const } : {}), ...(repo ? { repo } : {}), name, hasMainLead: p.hasMainLead, ...cleanLiveProject(p), departmentLeads: p.departmentLeads.slice(0, 8).flatMap((d: unknown) => {
       if (!d || typeof d !== 'object') return [];
       const r = d as Record<string, unknown>, department = label(r.department, 40), title = label(r.title, 60);
-      return department && title ? [{ department, title, ...(leadId(r.lead) ? { lead: leadId(r.lead) } : {}) }] : [];
+      return department && title ? [{ department, title, ...(cleanLeadStatus(r.leadStatus) ? { leadStatus: cleanLeadStatus(r.leadStatus) } : {}), ...(leadId(r.lead) ? { lead: leadId(r.lead) } : {}) }] : [];
     }) }];
   });
 }
@@ -62,7 +70,7 @@ export interface HQMessage {
   state: 'waiting' | 'passed' | 'declined' | 'expired';
 }
 export type HQPassMessage = { t: 'cubbies.chat'; id: string; hqMessageId: string; ownerPublicKey: string } & CubbyOwnerMessage;
-export type HQClientMsg = { t: 'hq.pitch'; projectIndex: number } | { t: 'hq.setup' } | { t: 'hq.message'; lead: string; text: string } | { t: 'hq.decline'; id: string } | HQPassMessage;
+export type HQClientMsg = { t: 'hq.pitch'; projectIndex: number } | { t: 'hq.message'; lead: string; text: string } | { t: 'hq.decline'; id: string } | HQPassMessage;
 export function managerMessageText(item: Pick<HQMessage, 'manager' | 'text'>) {
   return `Message from ${item.manager} (HQ manager; can't approve merges, publishes or spending): ${item.text}`;
 }
@@ -86,7 +94,7 @@ function cleanLiveProject(p: Record<string, any>) {
       startedAt: typeof w.startedAt === 'number' && Number.isFinite(w.startedAt) ? w.startedAt : 0,
       ...(Number.isInteger(w.departmentIndex) && w.departmentIndex >= 0 && w.departmentIndex < 8 ? { departmentIndex: w.departmentIndex } : {}) }];
   }) : undefined;
-  return { ...(lead ? { lead } : {}), ...(needs ? { needs } : {}), ...(workers ? { workers } : {}) };
+  return { ...(cleanLeadStatus(p.leadStatus) ? { leadStatus: cleanLeadStatus(p.leadStatus) } : {}), ...(lead ? { lead } : {}), ...(needs ? { needs } : {}), ...(workers ? { workers } : {}) };
 }
 /** Owner-only prose; count and observation age remain visible to managers. */
 export const visibleNeeds = (needs: HQNeeds | undefined, mine: boolean): HQNeeds | undefined => needs && { ...needs, items: mine ? needs.items : [] };

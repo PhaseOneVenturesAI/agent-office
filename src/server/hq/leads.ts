@@ -40,10 +40,10 @@ export function projectLeads(projects: HQProject[], sources: LeadSource[], floor
     const identity = p.repo?.toLowerCase() ?? p.name;
     const base = { ...(source?.mac ? { mac: true, working: liveWorkers(source).filter(a => !p.departmentLeads.some(d => !!d.lead && d.lead === a.lead)).length } : {}), project: p.name, projectIndex, ...(floorId ? { floorId } : {}), computer: sourceComputer(source) ?? sourceComputer(sources[0]) ?? 'your computer' };
     return [
-      ...(p.hasMainLead ? [{ ...base, id: info ? `cubby:${info.id}` : `project:${identity}:ceo`, role: 'CEO', title: 'Main lead',
+      ...(p.hasMainLead ? [{ ...base, id: info ? `cubby:${info.id}` : `project:${identity}:ceo`, role: 'CEO', title: 'Main lead', ...(source?.mac ? { leadStatus: p.leadStatus ?? { status: 'off' as const, updatedAt: source.observedAt } } : {}),
         where: leadWhere(source?.pitch, !source?.mac && !!source && !!floorId, working(registered.lead)), needsYou: !!info?.interior?.needsYou.length || (needs?.open ?? 0) > 0, ...(needs ? { needs } : {}), ...(cubby ? { cubby } : {}) }] : []),
       ...p.departmentLeads.map((d, departmentIndex) => ({ ...base, id: `project:${identity}:department:${d.department}:${d.title}`, departmentIndex,
-        role: d.department, title: d.title, ...(source?.mac ? { working: liveWorkers(source).filter(a => !!d.lead && a.lead === d.lead).length } : {}), where: leadWhere(undefined, !source?.mac && !!source && !!floorId, working(registered.departmentLeads.find(q => q.department === d.department && q.title === d.title)?.lead)), needsYou: false })),
+        role: d.department, title: d.title, ...(source?.mac ? { leadStatus: d.leadStatus ?? { status: 'off' as const, updatedAt: source.observedAt } } : {}), ...(source?.mac ? { working: liveWorkers(source).filter(a => !!d.lead && a.lead === d.lead).length } : {}), where: leadWhere(undefined, !source?.mac && !!source && !!floorId, working(registered.departmentLeads.find(q => q.department === d.department && q.title === d.title)?.lead)), needsYou: false })),
     ];
   });
 }

@@ -3,6 +3,9 @@ import { MAC_BYTES, type MacSnapshot } from '../wire.js';
 export function boundMacSnapshot(frame: MacSnapshot): MacSnapshot {
   const fits = () => Buffer.byteLength(JSON.stringify(frame)) <= MAC_BYTES;
   if (fits()) return frame;
+  for (const row of frame.projects) if (row.draft) {
+    row.draft.ideas = row.draft.ideas.slice(0, 4); row.draft.screens = row.draft.screens.slice(0, 4);
+  }
   for (const row of frame.projects) if (row.pitch) row.pitch = { ...row.pitch,
     pieces: row.pitch.pieces.map(({ image: _image, ...p }) => ({ ...p, notes: [], images: [] })) };
   if (fits()) return frame;
@@ -14,7 +17,7 @@ export function boundMacSnapshot(frame: MacSnapshot): MacSnapshot {
   }
   if (fits()) return frame;
   for (const row of frame.projects) {
-    delete row.pitch;
+    delete row.pitch; delete row.draft;
     if (row.project.needs) row.project.needs.items = [];
     row.project.departmentLeads = row.project.departmentLeads.map(d => ({ ...d, department: d.department.slice(0, 20), title: d.title.slice(0, 30) }));
   }

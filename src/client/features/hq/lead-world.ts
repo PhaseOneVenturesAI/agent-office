@@ -23,7 +23,7 @@ export function bodySpot(lead: HQLead) {
   return lead.where === 'pitch' ? { x: pitch[0], z: pitch[1] } : deskSpot(lead);
 }
 export function statusText(lead: HQLead) {
-  const role = [lead.role, lead.working ? `${lead.working} working` : ''].filter(Boolean).join(' · ');
+  const role = [lead.role, lead.leadStatus ? ({ busy: 'working', idle: 'idle', off: 'offline' }[lead.leadStatus.status]) : '', lead.working ? `${lead.working} ${lead.mac ? (lead.working === 1 ? 'helper' : 'helpers') : 'working'}` : ''].filter(Boolean).join(' · ');
   return leadMessageBadge(lead) ?? (lead.needsYou ? `${role} · ✋ ${needsPlate(lead.needs)}` : role);
 }
 /** A real, readable card in the spot the lead left. E opens its conversation and Go there. */

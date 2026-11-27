@@ -170,7 +170,7 @@ try {
   }
   await page.evaluate(() => window.__audit.wideOff());
   await page.setViewportSize({ width: 1280, height: 800 });
-  await enter(true, []); assert.match((await state()).texts.join(' '), /Connect your Mac/);
+  await enter(true, []); assert.match((await state()).texts.join(' '), /Link your Mac/);
   await stand(2, -6.5, 2, -11.8, .07); await shot('07-empty');
   await enter();
   await page.evaluate(async () => { const { openHQBoard } = await import('/features/hq/ui.ts'); openHQBoard(window.__office.store.hq); });

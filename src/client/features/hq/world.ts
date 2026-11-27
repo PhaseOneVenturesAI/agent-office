@@ -38,12 +38,12 @@ export class HQWorld {
       const connected = view.mac;
       const panel = this.panel(4.4, 1.5, 'hq-connect-panel', (c, w) => {
         c.fillStyle = INK; c.font = 'bold 38px sans-serif'; c.textAlign = 'center';
-        fitText(c, connected?.computerName ?? 'Connect your Mac', w / 2, 95, w - 40);
+        fitText(c, connected?.computerName ?? 'Link your Mac', w / 2, 95, w - 40);
         c.font = '28px sans-serif';
-        fitText(c, connected ? `${connected.connected ? 'Connected' : 'Disconnected'} · last seen ${new Date(connected.lastSeen).toLocaleTimeString()}` : 'E · Connect your Mac', w / 2, 175, w - 40);
+        fitText(c, connected ? connected.connected ? 'Connected' : `Offline since ${new Date(connected.lastSeen).toLocaleString()}` : 'E · Link your Mac', w / 2, 175, w - 40);
       });
       panel.position.set(2, view.projects.length ? 1.1 : 2.25, -12.7); this.group.add(panel);
-      this.target(panel, panel.position.x, -11.2, 'Connect your Mac');
+      this.target(panel, panel.position.x, -11.2, 'Link your Mac');
     }
     if (!view.projects.length) return;
     view.projects.slice(0, 6).forEach((project, i) => this.area(project, i, view.ownerColor));

@@ -1,5 +1,3 @@
-import { MacConnector } from './hq/local/connector.js';
-import { configureMac } from './hq/local/config.js';
 // `agent-office join`, run on your own computer: this machine becomes a satellite of the office
 // (☰ → 🛰️ Satellites) — it shows up on the wall with what it is and which agent CLIs it could
 // run, and stays for as long as this runs. An admin mints the join token in the office. This is
@@ -32,9 +30,8 @@ Options:
   --token <t>     The join token (env AGENT_OFFICE_NODE_TOKEN)
   --name <name>   What to call this machine (default: its hostname)
   --cloudflare-access  Use an existing cloudflared user application-token cache
-  --hq           Publish all registered projects to your private HQ (no --project or --floor)
   --cubbies      Opt in to signed owner chat and project-scoped agent presence
-  --owner-key <key>  Required P-256 public key copied from your cubby or HQ setup window
+  --owner-key <key>  Required P-256 public key copied from your cubby setup window
   --replace-owner-key  Locally authorize replacing the pinned owner device key
   --floor <id>   Cubby floor (requires --cubbies)
   --project <p>  Local repository/worktree root (requires --cubbies)
@@ -116,7 +113,7 @@ export async function joinCommand(argv: string[]): Promise<number> {
   let url = '';
   let name: string | undefined;
   let cloudflareAccess = false;
-  let cubbies = false, hq = false;
+  let cubbies = false;
   const local: LocalOptions = {};
   let token = process.env.AGENT_OFFICE_NODE_TOKEN ?? '';
   for (let i = 0; i < argv.length; i++) {
@@ -133,7 +130,7 @@ export async function joinCommand(argv: string[]): Promise<number> {
       } else if (a === '--token') token = value();
       else if (a === '--name') name = value();
       else if (a === '--cloudflare-access') cloudflareAccess = true;
-      else if (a === '--hq') hq = true;
+      else if (a === '--hq') throw Error('Use agent-office link <office-url> instead of join --hq');
       else if (a === '--cubbies') cubbies = true;
       else if (a === '--owner-key') local.ownerKey = value();
       else if (a === '--replace-owner-key') local.replaceOwnerKey = true;
@@ -160,25 +157,20 @@ export async function joinCommand(argv: string[]): Promise<number> {
     console.error('agent-office join: a join token is needed (--token) — an admin mints one in the office, ☰ → 🛰️ Satellites → Invite a machine');
     return 2;
   }
-  if (hq && cubbies) { console.error('Choose --hq or --cubbies'); return 2; }
-  if (!hq && !cubbies && Object.keys(local).length) {
-    console.error('Local options require --cubbies or --hq; default join is presence-only.'); return 2;
+  if (!cubbies && Object.keys(local).length) {
+    console.error('Local options require --cubbies; default join is presence-only.'); return 2;
   }
 
   try { url = officeOrigin(url); } catch { console.error('Use an http(s) office origin without credentials, path, query or fragment'); return 2; }
   const origin = new URL(url);
-  if ((cubbies || hq) && origin.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(origin.hostname)) {
-    console.error(`${hq ? 'HQ' : 'Cubby chat'} requires HTTPS, except on your own loopback computer.`); return 2;
+  if (cubbies && origin.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(origin.hostname)) {
+    console.error('Cubby chat requires HTTPS, except on your own loopback computer.'); return 2;
   }
   let access: Awaited<ReturnType<typeof accessHeaders>> | undefined;
   if (cloudflareAccess) {
     try { access = await accessHeaders(url); } catch { console.error(ACCESS_HELP); return 1; }
   }
-  let connector: CubbyConnector | MacConnector | undefined;
-  if (hq) {
-    try { connector = new MacConnector(configureMac(local), token); console.log(connector.notice); }
-    catch (error) { console.error(`HQ setup: ${(error as Error).message}`); return 2; }
-  }
+  let connector: CubbyConnector | undefined;
   if (cubbies) {
     if (!url.startsWith('https://') && !['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname)) {
       console.error('Cubby owner chat requires HTTPS (HTTP is allowed only on loopback).'); return 2;

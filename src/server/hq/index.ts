@@ -11,6 +11,7 @@ export class HQ {
   get ownerName(): string { return (this.owner.includes('@') && this.byEmail?.(this.owner)?.name) || this.ownerStem; }
   private managers: Set<string>;
   private id?: string;
+  get floorId() { return this.id; }
   get enabled() { return !!this.owner; }
   constructor(dir: string, owner: string | undefined, managers: string | undefined,
     private account: (id: string) => { name: string; email?: string } | undefined, building: Building,

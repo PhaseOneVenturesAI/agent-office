@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { HQProject } from '../../shared/protocol/hq.js';
 import type { CubbyAgent } from '../../shared/protocol/cubbies.js';
 import type { Pitch } from '../../shared/protocol/pitch.js';
-export interface MacProject { project: HQProject; agents: CubbyAgent[]; pitch?: Pitch }
+export interface MacProject { project: HQProject; agents: CubbyAgent[]; pitch?: Pitch; draft?: import('../../shared/protocol/drafts.js').DraftBoards }
 export interface MacSnapshot { t: 'hq.snapshot'; computerId: string; observedAt: number; projects: MacProject[] }
 export interface MacReady { t: 'hq.ready'; computerId: string; owner: string; floor: string; connection: string; signature: string }
 export function macSignature(key: string, f: Omit<MacReady, 'signature'>) {

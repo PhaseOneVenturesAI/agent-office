@@ -11,39 +11,60 @@ AGENT_OFFICE_HQ_MANAGERS=ivan@example.com,Eddie
 
 Each entry is an account name or, if it contains `@`, the email Cloudflare Access signs that account in as; both match case-insensitively. An email keeps matching if the account is renamed, and an account that only shares the name doesn't get in. The owner can be either too; an email owner is shown by the office name of the account that email signs in as (or, before that account exists, by the part before the `@`). Only the owner and the named managers see HQ in the elevator or can enter it. Admin status alone gives no access. With no owner configured, no HQ opens and ordinary floors keep their behavior. Turning the owner setting off also hides an existing HQ. The server keeps its identity in `hq.json` (mode `0600`) and its local folder under the office data directory; it has no repository and cannot be kicked off. Only its owner can remove it. Leaving the owner configured recreates it on the next server restart.
 
-## Connect your Mac
+## Link your Mac
 
-Enter HQ as its owner and press **E** at **Connect your Mac**. The window creates or reuses this browser's owner key and shows its fingerprint and a copyable command:
-
-```sh
-agent-office join https://office.example --token '<invitation>' --hq --owner-key '<key>'
-```
-
-Run the command on the Mac that has your AgentHarness registry and leave it running. Compare the owner-key fingerprint printed by the command with the window. There is no `--project` or `--floor`: one connection publishes the Mac's projects together. The owner sees the computer name and **Connected · last seen <time>** on the panel. Managers and other accounts cannot create invitations or see the command or token. Reopening setup replaces the owner's pending invitation. Once joined, an invitation is bound to that owner, HQ and computer identity; the same computer can reconnect. Existing single-cubby connections continue to work.
-
-For an office behind Cloudflare Access, sign in locally first:
+On the Mac that holds your projects, run:
 
 ```sh
-cloudflared access login https://office.example
-agent-office join https://office.example --token '<invitation>' --hq --owner-key '<key>' --cloudflare-access
+agent-office link https://office.example
 ```
 
-The setup window includes `--cloudflare-access` when the office reports Access is enabled. Join uses the existing local application-token cache; it does not refresh expired Access credentials. Log in again and restart join after expiry. Reconnects use the existing retry behaviour. Stop join with Ctrl-C.
+The command prints an approval link. Open it in a browser signed in to the office as the HQ owner, then choose **Approve** or **Deny** on “Link <computer name> to your office?”. You can also answer pending requests from HQ's **Link your Mac** panel. Only the owner can see or answer them; managers and admins have no bypass. One pairing can wait per owner, and it expires after ten minutes. The approval URL contains a request ID, never the pairing secret or link token. The waiting Mac receives the approved token once.
 
-The connector reads `~/Documents/GitHub/AgentHarness/projects.json` through `registryFile()` (with the existing older `~/Documents/AgentHarness/projects.json` fallback). It uses the registry's project keys as names and only these entry fields: `path`, `url`, `localState`, `hostId`, `leadSessionId`, `leadThreadId`, `leadAppSession`, `departmentLeads` (`department`, `title`, `sessionId`, `appSession`) and `sidebarGroup`. It does not consult `lead`, `note`, `historicalLead` or `creativeLineage`. Archived and remote-only entries are skipped, as are missing paths. Null lead IDs are accepted. Git verifies the existing project/worktree roots; no repository is cloned or opened as a new Office floor.
+Leave the command running to publish the snapshot. The token is bound to the owner and computer and has no automatic expiry. It is stored under `~/.agent-office/link/`, with directory mode `0700` and file mode `0600`. No browser device key or `--owner-key` is used for the Mac link. The owner can **Revoke** a link from the HQ panel; this disconnects it and rejects its token. The panel lists each computer with **Connected** or **Offline since <time>**. Existing `join --cubbies` connections continue to work; `join --hq` is replaced by `link`.
 
-Every normal 15-second observation includes up to 12 projects and 64 live workers total, with existing text caps and a 60 KiB snapshot limit. Oversized observations shorten display text and omit optional pitch detail or needs lines to preserve project and worker identities. For each project the connector reads scoped AgentHarness presence, the needs publication and `.agent-office/pitch.json`. It publishes the cleaned name, GitHub repository slug, registered main/department leads, worker metadata, needs and pitch. Paths, process working directories, registry prose and app-session metadata stay on the Mac. Cleaned lead session IDs reach the server only to match workers to their lead; they never reach browsers. URL credentials and query strings are removed from repository links. Neither registry files nor transcripts are forwarded.
+The harness-managed LaunchAgent uses the same command with `--run`:
 
-The owner key is pinned in a private `0600` record under `~/.agent-office/hq/<computer-id>/`. A different key is rejected unless locally authorised with `--replace-owner-key`. The connector takes a local lock so a second HQ connector cannot run on the same Mac. HQ invitations persist privately in `hq-macs.json`; project and worker snapshots stay in server memory and must be republished after a server restart.
+```sh
+agent-office link https://office.example --run
+```
 
-HQ uses the freshest connected Mac observation, falling back to the owner's existing cubby snapshots if no Mac observation is fresh. Repository slugs link projects to matching open floors without a cubby `own` flag. Mac leads stay at HQ or at a ready pitch in this step; their status shows their role and **N working** when scoped live workers are present. It never guesses whether an app lead is running or idle. Chat to Mac leads and their project-floor rooms are separate steps.
+This mode uses the saved token and never starts pairing. Without a token it prints the one-time setup command and exits with code `78`, which the harness must treat as needing setup rather than repeatedly relaunching. The Office CLI does not install the LaunchAgent. Network reconnects wait 1, 2, 4, 8, 16, then at most 30 seconds. Stop a foreground link with Ctrl-C.
 
-Each Mac project's lead card and portfolio entry list its published pitch pieces. Selecting one opens its read-only view and selects that project in the HQ pitch room; existing cubby pitch verdicts continue to use their signed cubby connection. Mac manager messages stay held for the owner and can be declined; they are not sent to the lead. Needs lines are owner-only, managers receive counts and age, and outsiders receive no HQ data. All existing cubby ownership, appearance, sharing and signed control rules remain in place.
+For an office behind Cloudflare Access, the link automatically reads the existing `cloudflared access token --app` cache. It never launches a login or follows a credential-bearing redirect. If Access refuses the connection, the running link prints:
+
+```sh
+Cloudflare sign-in needed: run `cloudflared access login https://office.example`
+```
+
+The run loop retries every five minutes without exiting, reading the cache again on each attempt. Complete that sign-in locally; the next retry can reconnect. A first-run pairing refused by Access prints the same instruction; sign in and run `link` again.
+
+### Snapshot sources and privacy
+
+The link reads the project registry selected by `registryFile()`: `~/Documents/GitHub/AgentHarness/projects.json`, with the existing older `~/Documents/AgentHarness/projects.json` fallback. Project keys supply names. Allowed entry fields are `path`, `url`, `localState`, `hostId`, `leadSessionId`, `leadThreadId`, `leadAppSession`, `departmentLeads` (`department`, `title`, `sessionId`, `appSession`) and `sidebarGroup`; `office` is checked only to filter hidden entries. It never consults `lead`, `note`, `historicalLead` or `creativeLineage`. Entries marked `office: "hidden"`, `localState: "archived"` or `"remote-only"`, and missing paths, are excluded together with their workers and needs. Git verifies existing worktree roots; linking creates no project floors and clones no repositories.
+
+Every 15 seconds, the snapshot includes at most 12 projects and 64 scoped live workers, within a 60 KiB frame. Each project contributes AgentHarness presence records with cleaned lead matching IDs, needs from `~/Library/Application Support/AgentHarness/needs.json`, its published `.agent-office/pitch.json`, and cleaned `.agent-office/draft.json` boards. Oversized frames shorten text and omit optional pitch/board detail or needs lines while preserving project and worker identities. Draft boards are collected for the server; this link does not add draft editing or project-floor rooms.
+
+The read-only Claude session registry, `~/.claude/sessions/*.json`, is limited to 256 regular files of at most 16 KiB each. Main leads match `leadSessionId` or `leadAppSession`; department leads match `sessionId` or `appSession`, against a record's `sessionId` or `bridgeSessionId`. A valid record's `status` (`busy` or `idle`) and `updatedAt` supply the lead status while its process is alive. Missing, malformed or dead records produce `off`. Only the status and update time enter the snapshot, attached to the already-cleaned lead. HQ displays **working**, **idle** or **offline**, plus **N helpers** when workers are live. Helper presence never determines the lead's activity.
+
+The link also runs one fixed local command at startup and every five minutes to refresh needs:
+
+```sh
+python3 ~/Documents/GitHub/AgentHarness/doctor.py --write-needs
+```
+
+It uses no shell, accepts no office-supplied command or arguments, times out after 60 seconds, and logs failures while continuing the link. It does not start another refresh while one is running.
+
+Local project paths, session-registry names, process IDs, working directories, socket paths, app-session identities, registry prose and transcripts never leave the Mac. Cleaned lead IDs reach the server only for matching and never reach browsers. Presence worker IDs keep their existing opaque harness identity. URL credentials and query strings are removed from repository links. Published pitch and board text is intentionally sent; source files and raw registry records are not. A local lock prevents two links on the same Mac. Link records persist privately in `hq-macs.json`; snapshots stay in server memory and are republished after a restart.
+
+HQ prefers the freshest connected link snapshot, with the owner's cubby snapshots as fallback when none is fresh. Repository slugs associate matching open floors. Mac leads stay at HQ or at their ready pitch; existing project floors keep their current behavior. Link-based lead chat is not part of this phase. Each project's lead card and portfolio entry can open its published pitch read-only. Existing cubby pitch verdicts still use their signed cubby connection.
+
+Managers receive projects, lead statuses, helpers and needs counts/age, but no link controls, pairing secrets, tokens, local paths, matching session IDs or needs text. Outsiders receive no HQ data. Mac manager messages stay held for the owner and can be declined; they are not sent to the lead. Existing cubby ownership, sharing and signed control rules remain in place.
 
 ## Portfolio
 
 
-HQ has up to six project areas with dashed owner-colour borders, low project signs, a large CEO desk and smaller department desks with front plaques. Each area has a 1.9 m task-board easel at its edge. Open-floor desks, pod furniture and their hanging signs are hidden while on HQ and restored on leaving. The north portfolio wall uses four large project columns at most, with a “+N more” label for the remaining projects; the readable portfolio window lists them all. Main leads are labelled “CEO”; default department lead titles are shortened to the department name, while custom titles remain. Task counts and progress are not inferred. The furnished areas have personal-agent characters at their CEO and department desks, with the owner’s colour, role outfit, floor ring and one two-line nameplate. Only a connected cubby lead shows a live status (working, idle, asleep or error); unconnected leads show their role. Use E or tap a board to read the same text in a window that fits a phone. The existing meeting room is the pitch room and the gong stays in place.
+HQ has up to six project areas with dashed owner-colour borders, low project signs, a large CEO desk and smaller department desks with front plaques. Each area has a 1.9 m task-board easel at its edge. Open-floor desks, pod furniture and their hanging signs are hidden while on HQ and restored on leaving. The north portfolio wall uses four large project columns at most, with a “+N more” label for the remaining projects; the readable portfolio window lists them all. Main leads are labelled “CEO”; default department lead titles are shortened to the department name, while custom titles remain. Task counts and progress are not inferred. The furnished areas have personal-agent characters at their CEO and department desks, with the owner’s colour, role outfit, floor ring and one two-line nameplate. Cubby leads retain their existing status display; Mac-linked leads use the session registry statuses described above. Use E or tap a board to read the same text in a window that fits a phone. The existing meeting room is the pitch room and the gong stays in place.
 
 The pitch room shows the owner's latest available cubby pitch from any project floor. Managers can inspect it and its images while on HQ, but cannot give verdicts. The owner's verdicts still require a trusted device signature and are sent to the original publishing cubby. Ordinary-floor pitch access remains owner-only. HQ chat is labelled with the sender's account name and reaches only current HQ occupants; it is not saved in building-wide chat history. Worker spawning, station prompts, meetings and queue execution are blocked on HQ for everyone. Manager access grants no merge, publish or spending approval.
 
@@ -63,7 +84,7 @@ When the cubby lead needs the owner, its body raises a hand, its HQ desk has a s
 
 ## Live helpers, tasks and needs
 
-The local connector reads AgentHarness presence records from `~/Library/Application Support/AgentHarness/runs`. A record counts only while its process is alive and its folder is an exact Git worktree root of the selected project in cubby mode, or of each registered local project in HQ mode. A cleaned optional `lead` identifies the registered CEO or department lead. Missing or unknown lead IDs fall back to that project's CEO desk; workers without a matching lead or project desk do not appear on HQ. No lead activity or worker progress is guessed from these records. HQ lead plates show roles without guessing app activity. Mac-connected lead plates also show their live-worker count.
+The local connector reads AgentHarness presence records from `~/Library/Application Support/AgentHarness/runs`. A record counts only while its process is alive and its folder is an exact Git worktree root of the selected project in cubby mode, or of each visible registered local project in link mode. A cleaned optional `lead` identifies the registered CEO or department lead. Missing or unknown lead IDs fall back to that project's CEO desk; workers without a matching lead or project desk do not appear on HQ. No lead activity or worker progress is guessed from these records. Mac-linked lead plates show registry activity separately from their live helper count.
 
 HQ helpers use the owner's trim and carry smaller task-title plates overhead. CEO helpers stand beside their desk and department helpers behind their lead. Helper plates hide where their projected screen boxes overlap an HQ status card or lead plate, and return when the view clears. Close-up HQ plates are capped at 1.3 times their projected size at 3 m, with an additional phone-width fit. Each desk shows up to three helpers and a “+N” label for overflow. A helper appears at most once per floor: at its HQ desk on HQ, and in its existing cubby representation on the project floor. Task boards show live worker titles, providers and branch short names, newest first, up to five rows plus “+N more”. E opens the same rows in a readable window.
 

@@ -6,13 +6,6 @@ export const hqHandlers = {
   'hq.pitch'(ctx, c, msg) {
     try { choosePitch(ctx, c, msg.projectIndex); } catch (e) { ctx.warn(c, (e as Error).message); }
   },
-  'hq.setup'(ctx, c) {
-    const floor = ctx.floorOf(c);
-    try {
-      if (c.out || !c.accountId || !floor || !ctx.hq.mac) throw Error('Connect your Mac from HQ');
-      ctx.sendTo(c, { t: 'hq.token', ...ctx.hq.mac.setup(c.accountId, floor.id) });
-    } catch (e) { ctx.warn(c, (e as Error).message); }
-  },
   'hq.message'(ctx, c, msg) {
     try { sendManagerMessage(ctx, c, msg.lead, msg.text); } catch (e) { ctx.warn(c, (e as Error).message); }
   },

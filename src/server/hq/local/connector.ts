@@ -1,11 +1,11 @@
 import { sendDesignImages } from '../../cubbies/local/design.js';
 import type { DesignImage } from '../../drafts/image-format.js';
 import { projectLock } from '../../cubbies/local/lock.js';
-import { cubbyKey, ownerFingerprint } from '../../cubbies/wire.js';
+import { cubbyKey } from '../../cubbies/wire.js';
 import { friendlyName } from '../../cubbies/local/connector.js';
 import { clean } from '../../cubbies/local/io.js';
 import { verifyMac, type MacReady } from '../wire.js';
-import { pinMac, type MacConfig } from './config.js';
+import { type MacConfig } from './config.js';
 import { macSnapshot } from './snapshot.js';
 export class MacConnector {
   private images = new Map<number, Map<string, DesignImage>>();
@@ -21,10 +21,8 @@ export class MacConnector {
   private closed = false;
   constructor(private config: MacConfig, token: string, private collect?: () => ReturnType<typeof macSnapshot>) {
     this.release = projectLock(config.state);
-    try { pinMac(config); } catch (e) { this.release(); throw e; }
     this.key = cubbyKey(token);
   }
-  get notice() { return `HQ owner key fingerprint: ${ownerFingerprint(this.config.ownerKey).match(/.{4}/g)!.join('-')}`; }
   connected(send: (frame: unknown) => boolean | void, name = friendlyName()) {
     if (this.closed) return;
     this.disconnected(); this.send = send;
@@ -35,7 +33,8 @@ export class MacConnector {
     let f: MacReady;
     try { const text = typeof data === 'string' ? data : Array.isArray(data) ? Buffer.concat(data).toString() : Buffer.from(data as ArrayBuffer).toString();
       if (text.length > 4096) return; f = JSON.parse(text); } catch { return; }
-    if (f?.t !== 'hq.ready' || f.computerId !== this.config.computerId || !verifyMac(this.key, f) || typeof f.connection !== 'string' || this.connections.has(f.connection) || this.connections.size >= 16384) return;
+    if (f?.t !== 'hq.ready' || f.computerId !== this.config.computerId || !verifyMac(this.key, f) || typeof f.connection !== 'string' || this.connections.has(f.connection)) return;
+    if (this.connections.size >= 256) this.connections.delete(this.connections.values().next().value!);
     this.connections.add(f.connection);
     this.ready = true; void this.snapshot();
     this.timer = setInterval(() => void this.snapshot(), 15_000);
