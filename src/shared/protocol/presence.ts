@@ -4,6 +4,7 @@ import type { Look } from '../avatar.js';
 import type { BarGame } from '../bargames.js';
 import type { EmoteId } from '../emotes.js';
 import type { DrinkId } from '../rooftop.js';
+import type { PeerStatus } from '../peer-status.js';
 import type { Me } from './accounts.js';
 import type { FloorInfo, FloorView, ProjectsDirState } from './floors.js';
 import type { LeaveOnMergeState, MachineState, MapState, NotifyState, PromptsState, SkyState, ThemeState, UpgradeState } from './settings.js';
@@ -53,6 +54,8 @@ export interface PeerInfo {
   lite?: boolean;
   /** An emote in progress, for whoever arrives mid-emote: its id and when it started. One-shots expire after their seconds; a loop (a dance) runs until they move or pick another. */
   emote?: { id: EmoteId; at: number };
+  /** What they put up over their head, like "☕ BRB", until they take it down (see shared/peer-status.ts). */
+  status?: PeerStatus;
 }
 
 export interface ChatLine {

@@ -6,7 +6,7 @@ import type { Client } from '../office/client.js';
 export function visibleMessage(ctx: Ctx, c: Client, msg: ServerMsg): ServerMsg {
   const peer = (p: PeerInfo): PeerInfo => {
     if (!p.floor || ctx.floorVisible(p.floor, c)) return p;
-    return { id: p.id, name: p.name, color: p.color, look: p.look, account: p.account,
+    return { id: p.id, name: p.name, color: p.color, look: p.look, account: p.account, status: p.status,
       x: 0, y: 0, z: 0, rotY: 0, moving: false, voice: false, muted: true, sharing: false };
   };
   if (msg.t === 'peer.join' || msg.t === 'peer.update') return { ...msg, peer: peer(msg.peer) };

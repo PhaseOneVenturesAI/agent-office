@@ -39,6 +39,7 @@ import type { installPeers } from '../features/peers';
 import type { installRooftop } from '../features/rooftop';
 import type { installSeating } from '../features/seating';
 import type { installSmoke } from '../features/smoke';
+import type { installStatus } from '../features/status';
 import type { installTelescope } from '../features/telescope';
 import type { installTv } from '../features/tv';
 import type { installVoice } from '../features/voice';
@@ -124,6 +125,7 @@ export interface Parts {
   cards: Made<typeof installCarrying>;
   seating: Made<typeof installSeating>;
   emotes: Made<typeof installEmotes>;
+  status: Made<typeof installStatus>;
   talk: Made<typeof installVoice>;
   hud: Made<typeof installHud>;
 }

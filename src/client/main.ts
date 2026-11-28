@@ -51,6 +51,7 @@ import { installGong } from './features/gong';
 import { installGallery, installHanging } from './features/hanging';
 import { installHerald } from './features/herald';
 import { installHud } from './features/hud';
+import { installStatus } from './features/status';
 import { installJukebox } from './features/jukebox';
 import { installMeeting } from './features/meeting';
 import { installNeedsYou } from './features/needsyou';
@@ -181,6 +182,7 @@ installHQ(ctx, { idleAgents: () => parts.worlds.idleAgents(), cubbies: () => par
 
 parts.hintbar = installHintBar(ctx, core, parts);
 parts.emotes = installEmotes(ctx);
+parts.status = installStatus(ctx, parts);
 installKeyboard(ctx, parts);
 parts.focus = installFocus(ctx, core, parts);
 parts.pointer = installPointer(ctx, core, parts);

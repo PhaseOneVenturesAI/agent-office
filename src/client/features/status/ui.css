@@ -1,0 +1,12 @@
+/* The 💬 status window (U): quick picks, then an emoji and your own words. */
+.status-window { width: min(480px, 100%); }
+.status-window .body { display: flex; flex-direction: column; gap: 8px; }
+.status-window .body label { margin: 4px 0 0; }
+.status-presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.status-row { display: flex; gap: 8px; align-items: stretch; }
+.status-row .status-pick { flex: none; width: 52px; font-size: 22px; padding: 0; }
+.status-emojis { display: grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap: 4px; }
+.status-emojis .btn { font-size: 20px; padding: 4px 0; }
+.status-emojis .btn.on { background: var(--accent); }
+/* Someone's status next to their name under 👥 People. */
+.people .status { display: block; width: fit-content; max-width: 100%; margin-top: 2px; padding: 0 6px; border-radius: 999px; background: #fff3bf; border: 2px solid var(--ink); font-size: 11px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
