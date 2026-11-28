@@ -44,9 +44,13 @@ export function macEntries(registry: unknown) {
 export async function macSnapshot(config: MacConfig, deps: { run?: Run; isAlive?: (pid: number) => boolean; images?: Map<number, Map<string, DesignImage>> } = {}): Promise<MacSnapshot> {
   const frame: MacSnapshot = { t: 'hq.snapshot', computerId: config.computerId, observedAt: Date.now(), projects: [] };
   deps.images?.clear();
-  const entries = macEntries(projectRegistry(config));
+  const registry = projectRegistry(config);
+  const entries = macEntries(registry);
   const requests = requestStatuses(config.home);
   const status = sessionStatuses(config.home, deps.isAlive);
+  // The Cofounder chat owns no project; its status comes from the same session registry as the leads.
+  const cofounder = (registry as { cofounder?: Record<string, unknown> })?.cofounder;
+  if (cofounder && typeof cofounder === 'object') frame.cofounder = status([cofounder.leadSessionId, cofounder.leadAppSession]);
   const needs = readNeeds(path.join(config.home, 'Library/Application Support/AgentHarness/needs.json'));
   const seen = new Set<string>();
   const deadline = Date.now() + 8000; let calls = 0;

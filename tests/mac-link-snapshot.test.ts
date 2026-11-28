@@ -49,7 +49,8 @@ test('snapshot excludes hidden/archived/remote-only projects including workers a
   }
   projects.Hidden.office = 'hidden'; projects.Archived.localState = 'archived'; projects.Remote.localState = 'remote-only';
   projects.Live.lead = { text: 'FORBIDDEN' }; projects.Live.note = 'FORBIDDEN'; projects.Live.creativeLineage = 'FORBIDDEN';
-  writeFileSync(f.registry, JSON.stringify({ projects }));
+  writeFileSync(f.registry, JSON.stringify({ projects, cofounder: { title: 'Cofounder', leadSessionId: 'cofounder-id', leadAppSession: 'cofounder-app' } }));
+  writeFileSync(path.join(f.sessions, 'cofounder.json'), JSON.stringify({ sessionId: 'cofounder-id', pid: 502, status: 'busy', updatedAt: now }));
   writeFileSync(path.join(path.dirname(f.runs), 'needs.json'), JSON.stringify({ schema: 1, generatedAt: new Date(now).toISOString(), staleAfterHours: 24, projects: needs }));
   writeFileSync(path.join(f.sessions, 'main.json'), JSON.stringify({ sessionId: 'different', bridgeSessionId: 'Live-app', pid: 500, status: 'busy', updatedAt: now, cwd: '/secret/cwd', socketPath: '/secret/sock', name: 'PRIVATE NAME' }));
   writeFileSync(path.join(f.sessions, 'design.json'), JSON.stringify({ sessionId: 'design-id', pid: 501, status: 'idle', updatedAt: now }));
@@ -64,6 +65,7 @@ test('snapshot excludes hidden/archived/remote-only projects including workers a
   assert.deepEqual(row.project.needs?.items, ['Live-needs']);
   assert.deepEqual(row.project.leadStatus, { status: 'busy', updatedAt: now });
   assert.deepEqual(row.project.departmentLeads[0].leadStatus, { status: 'idle', updatedAt: now });
+  assert.deepEqual(frame.cofounder, { status: 'busy', updatedAt: now });
   assert.equal(row.draft?.ideas[0].title, 'Idea'); assert.deepEqual(row.draft?.decisions, ['Decision']);
   assert.ok(queried.every(p => p === projects.Live.path));
   assert.doesNotMatch(JSON.stringify(frame), /Hidden|Archived|Remote|FORBIDDEN|cwd|pid|socketPath|PRIVATE NAME|Live-app|design-app|bridgeSessionId/);
