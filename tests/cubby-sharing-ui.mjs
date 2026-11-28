@@ -85,7 +85,6 @@ try {
   });
   await page.goto(`${origin}/?3d=1`);
   await page.waitForFunction(() => window.__audit && window.__office?.net.up);
-  ownerFingerprint = await page.evaluate(async () => (await (await import('/shared/cubby/keys.ts')).ownerDeviceKey('Jordan Fixture')).fingerprint);
   await page.evaluate(() => {
     const a = window.__audit, o = window.__office, s = o.store;
     s.floor = 'fixture'; s.you = 'fixture-self';
@@ -155,8 +154,8 @@ try {
   assert.match(doorHint, /👀 Watching Alex Fixture's cubby.*E.*Leave/);
   const leadHint = await page.evaluate(`(() => { const a = window.__audit; return a.ctx.interactions.hint(${its('cubbylead', 1)}).parts.map((p) => typeof p === 'string' ? p : p.textContent).join(' '); })()`);
   assert.doesNotMatch(leadHint, /Talk to|Send a task/);
-  assert.equal(await page.evaluate(() => window.__audit.parts.pointer.target()?.kind), 'cubbylead');
-  assert.match(await hintText(), /Atlas[\s\S]*Watching Alex Fixture's cubby[\s\S]*Listen in/);
+  // Legacy aiming is no longer a supported talk flow; exercise its retained read-only panel directly.
+  assert.match(leadHint, /Listen in/);
   await page.evaluate(() => document.getElementById('toasts').replaceChildren());
   await shot('03-watcher-inside');
   // From inside, looking out at the glass beside the door: Watching · E Leave.
@@ -233,7 +232,7 @@ try {
   await page.evaluate(`window.__audit.ctx.interactions.use(${its('cubbylead', 0)}, 'E', null)`);
   await page.waitForSelector('.cubby-chat .cb-watchers');
   assert.match(await page.locator('.cubby-chat .cb-side').innerText(), /WATCHING · 2[\s\S]*Alex Fixture[\s\S]*Sam Fixture/i);
-  await page.waitForFunction(() => !document.querySelector('.cubby-chat textarea').disabled);
+  assert.equal(await page.locator('.cubby-chat textarea:visible').count(), 0);
   await shot('07-owner-watcher-list');
   await page.locator('.cubby-chat .cb-out[aria-label="Send Sam Fixture out"]').click();
   assert.deepEqual(sent.filter((m) => m.t === 'cubbies.admit').at(-1), { t: 'cubbies.admit', id: 'cub-me', accountId: 'acct-sam', allow: false });
@@ -315,7 +314,7 @@ try {
   await page.evaluate(() => document.getElementById('fixture-floor-list').remove());
   await page.locator('#btn-cubby').click();
   await page.waitForSelector('.cubby-chat');
-  await page.waitForFunction(() => !document.querySelector('.cubby-chat textarea').disabled);
+  assert.equal(await page.locator('.cubby-chat textarea:visible').count(), 0);
   await page.waitForTimeout(500);
   const liteChat = await page.locator('.cubby-chat').innerText();
   assert.match(liteChat, /Nova[\s\S]*Checkout fix lands first/);
@@ -328,12 +327,7 @@ try {
   await page.waitForTimeout(200);
   await page.screenshot({ path: `${out}/14-lite-my-cubby-helpers-phone.png` });
   shots.push('14-lite-my-cubby-helpers-phone.png');
-  await page.fill('.cubby-chat textarea', 'From my phone: ship it');
-  await page.keyboard.press('Enter');
-  await page.waitForTimeout(200);
-  const fromPhone = sent.filter((m) => m.t === 'cubbies.chat').at(-1);
-  assert.equal(fromPhone?.text, 'From my phone: ship it');
-  assert.match(fromPhone.ownerSig, /^[A-Za-z0-9_-]{86}$/);
+  assert.equal(sent.filter((m) => m.t === 'cubbies.chat').length, 0, 'legacy phone history cannot send; native talk is covered by hq-talk');
   await page.locator('.cubby-chat .btn.close').click();
   await page.waitForSelector('.modal', { state: 'detached' });
 

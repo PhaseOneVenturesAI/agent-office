@@ -154,24 +154,6 @@ try {
   });
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?3d=1`);
   await page.waitForFunction(() => window.__audit && window.__office?.net.up);
-  const keyEvidence = await page.evaluate(async () => {
-    const { ownerDeviceKey } = await import('/shared/cubby/keys.ts');
-    const first = await ownerDeviceKey('Jordan Fixture');
-    const reload = await import('/shared/cubby/keys.ts?reload');
-    const persisted = await reload.ownerDeviceKey('Jordan Fixture');
-    const other = await ownerDeviceKey('Alex Fixture');
-    const otherOffice = await ownerDeviceKey('Jordan Fixture', 'https://other-office.example');
-    const race = await Promise.all([ownerDeviceKey('Race Fixture'), reload.ownerDeviceKey('Race Fixture')]);
-    let exportBlocked = false;
-    try { await crypto.subtle.exportKey('pkcs8', persisted.privateKey); } catch { exportBlocked = true; }
-    return { publicKey: first.publicKey, fingerprint: first.fingerprint, persisted: first.publicKey === persisted.publicKey,
-      isolatedAccount: first.publicKey !== other.publicKey, isolatedOrigin: first.publicKey !== otherOffice.publicKey,
-      oneWinner: race[0].publicKey === race[1].publicKey, extractable: persisted.privateKey.extractable, exportBlocked };
-  });
-  assert.equal(keyEvidence.persisted, true); assert.equal(keyEvidence.isolatedAccount, true);
-  assert.equal(keyEvidence.isolatedOrigin, true); assert.equal(keyEvidence.oneWinner, true);
-  assert.equal(keyEvidence.extractable, false); assert.equal(keyEvidence.exportBlocked, true);
-  ownerFingerprint = keyEvidence.fingerprint; publicKey = keyEvidence.publicKey;
   const baseColliders = await page.evaluate(() => {
     const a = window.__audit, o = window.__office, s = o.store;
     s.floor = 'fixture'; s.you = 'fixture-self';
@@ -351,26 +333,10 @@ try {
   await page.waitForSelector('.cubby-chat');
   assert.equal(await page.locator('.cubby-chat img').count(), 0, 'chat text is never HTML');
   assert.equal(await page.evaluate(() => window.__xss), undefined);
-  await page.fill('.cubby-chat textarea', 'Ship the checkout fix first');
-  await page.keyboard.press('Enter');
-  await page.waitForTimeout(150);
-  const firstChat = sent.filter((m) => m.t === 'cubbies.chat');
-  assert.equal(firstChat.length, 1);
-  assert.equal(firstChat[0].id, 'cub-me');
-  assert.equal(firstChat[0].text, 'Ship the checkout fix first');
-  assert.match(firstChat[0].ownerSig, /^[A-Za-z0-9_-]{86}$/);
-  assert.equal(await page.locator('.cubby-chat .btn.close').count(), 1, 'the chat has its ✕');
-  // Keep the injection assertion above, then use ordinary fixture copy for the review capture.
+  assert.equal(await page.locator('.cubby-chat textarea:visible').count(), 0);
+  assert.equal(sent.filter(m => m.t === 'cubbies.chat').length, 0);
+  assert.equal(await page.locator('.cubby-chat .btn.close').count(), 1);
   await page.evaluate(() => { const s = window.__office.store; s.cubbies.cubbies[0].interior.chat[1].text = 'Checkout fix lands first, then the cart polish.'; s.emit('cubbies'); });
-  await page.waitForFunction(() => !document.querySelector('.cubby-chat textarea').disabled);
-  await page.fill('.cubby-chat textarea', 'Signed owner message 字');
-  await page.locator('.cubby-chat button[type="submit"]').click();
-  await page.waitForTimeout(100);
-  const signed = sent.filter((m) => m.t === 'cubbies.chat').at(-1);
-  assert.equal(signed.text, 'Signed owner message 字');
-  assert.equal(typeof signed.requestId, 'string'); assert.ok(Math.abs(Date.now() - signed.at) < 5000);
-  assert.equal(verify('sha256', Buffer.from(JSON.stringify(['agent-office/cubby-owner-chat/v1', 'cub-me', 'fixture', 'fixture-computer', signed.requestId, signed.at, signed.text])),
-    { key: createPublicKey({ key: Buffer.from(publicKey, 'base64url'), format: 'der', type: 'spki' }), dsaEncoding: 'ieee-p1363' }, Buffer.from(signed.ownerSig, 'base64url')), true);
   await shot('chat');
   // A helper's card from the roster; a direct session shows tool, branch and state only.
   await page.locator('.cb-roster button', { hasText: 'Codex session' }).click();
@@ -434,7 +400,7 @@ try {
 
   assert.deepEqual(errors, []);
   assert.deepEqual(sent.filter((m) => /spawn|hire|resume|worker/.test(m.t)), []);
-  const report = { out, nightEvidence, keyEvidence, off, on, hints, asleep, sentTypes: [...new Set(sent.map((m) => m.t))], errors, browser: browser.version() };
+  const report = { out, nightEvidence, off, on, hints, asleep, sentTypes: [...new Set(sent.map((m) => m.t))], errors, browser: browser.version() };
   writeFileSync(`${out}/report.json`, JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report));
 } finally {

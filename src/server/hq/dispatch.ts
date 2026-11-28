@@ -1,12 +1,11 @@
-import { passManagerMessage } from './messages.js';
-import { hqChat } from './leads.js';
+import { passTalk } from './talk-handlers.js';
 import type { ClientMsg } from '../../shared/protocol.js';
 import type { Ctx } from '../office/context.js';
 import type { Client } from '../office/client.js';
 /** HQ is a viewing/talking floor. Work and signed approvals remain on the owner's Mac. */
 export function hqDispatch(ctx: Ctx, c: Client, msg: ClientMsg): boolean {
   if (msg.t === 'cubbies.chat' && 'hqMessageId' in msg) {
-    try { passManagerMessage(ctx, c, msg); } catch (e) { ctx.warn(c, (e as Error).message); }
+    try { passTalk(ctx, c, msg.hqMessageId); } catch (e) { ctx.warn(c, (e as Error).message); }
     return true;
   }
   if (!ctx.hq) return false;
@@ -23,7 +22,7 @@ export function hqDispatch(ctx: Ctx, c: Client, msg: ClientMsg): boolean {
   const floor = ctx.floorOf(c);
   if (!ctx.hq.is(floor?.id)) return false;
   if (msg.t === 'cubbies.chat') {
-    try { hqChat(ctx, c, msg); } catch (e) { ctx.warn(c, (e as Error).message); }
+    ctx.warn(c, 'Cubby chat removed: use your linked lead');
     return true;
   }
   if (msg.t.startsWith('queue.') || ['worker.spawn', 'station.prompt', 'meeting.start', 'cubbies.sendTask'].includes(msg.t)) {

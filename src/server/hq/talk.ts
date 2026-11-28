@@ -1,3 +1,4 @@
+import type { LeadReview } from '../../shared/protocol/lead-review.js';
 import { randomUUID } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -56,13 +57,13 @@ export class HQTalk {
     if (owner !== viewer || !this.owns(viewer)) return undefined;
     return this.threads.get(this.key(owner, lead))?.lines.map(line => ({ ...line })) ?? [];
   }
-  submit(owner: string | undefined, lead: HQLead, text: unknown, from: string) {
+  submit(owner: string | undefined, lead: HQLead, text: unknown, from: string, review?: LeadReview) {
     if (!owner || !this.owns(owner)) throw Error('Only Jonathan can talk to his leads directly');
     this.sweep();
     if ([...this.pending.values()].some(p => p.owner === owner && p.lead === lead.id)) throw Error('Wait for this lead to reply first');
     const recent = (this.rate.get(owner) ?? []).filter(at => this.now() - at < 60_000);
     if (recent.length >= 10) throw Error('Wait a minute before sending more messages');
-    const frame = cleanLeadSend({ t: 'lead.send', id: randomUUID(), target: talkTarget(lead), text, from });
+    const frame = cleanLeadSend({ t: 'lead.send', id: randomUUID(), target: talkTarget(lead), text, from, review });
     if (!frame) throw Error('Write a message first');
     const key = this.key(owner, lead.id), thread = this.threads.get(key) ?? { owner, lead: lead.id, lines: [] };
     const line: HQTalkLine = { id: frame.id, role: 'user', text: frame.text, from: frame.from, at: this.now(), state: 'queued' };

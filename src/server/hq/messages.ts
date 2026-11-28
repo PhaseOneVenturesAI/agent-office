@@ -2,11 +2,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { privateJSON } from './talk.js';
 import { randomUUID } from 'node:crypto';
-import type { HQLead, HQMessage, HQPassMessage } from '../../shared/protocol/hq.js';
-import { managerMessageText, HQ_MESSAGE_CAP } from '../../shared/protocol/hq.js';
+import type { HQLead, HQMessage } from '../../shared/protocol/hq.js';
+import { HQ_MESSAGE_CAP } from '../../shared/protocol/hq.js';
 import type { Ctx } from '../office/context.js';
 import type { Client } from '../office/client.js';
-import { ownerFingerprint, verifyOwner } from '../cubbies/wire.js';
 import { hqAccess, leadsFor } from './leads.js';
 import { cubbiesChanged } from '../ws/handlers/cubbies.js';
 
@@ -93,25 +92,11 @@ export function declineManagerMessage(ctx: Ctx, c: Client, id: string) {
   if (!access.mine) throw Error('Only the owner can decide');
   messages(ctx).decide(id, access.owner, 'declined'); cubbiesChanged(ctx);
 }
-export function passManagerMessage(ctx: Ctx, c: Client, msg: HQPassMessage) {
-  const access = accessOnHQ(ctx, c);
-  if (!access.mine) throw Error('Only the owner can decide');
-  const item = messages(ctx).waiting(msg.hqMessageId, access.owner);
-  const lead = leadsFor(ctx, access.owner, true).find(l => l.id === item.lead);
-  const it = lead?.cubby?.interior;
-  if (!lead?.floorId || !it?.computerId || lead.cubby?.id !== msg.id) throw Error('No connected HQ lead');
-  const text = managerMessageText(item);
-  let trusted = false;
-  try { trusted = !!it.ownerDevices?.some(d => d.fingerprint === ownerFingerprint(msg.ownerPublicKey)); } catch { /* Reject malformed keys. */ }
-  if (!trusted || msg.requestId !== item.id || msg.text !== text || !Number.isSafeInteger(msg.at) || Math.abs(Date.now() - msg.at) > 60_000 ||
-    !verifyOwner(msg.ownerPublicKey, { ...msg, cubbyId: msg.id, floorId: lead.floorId, computerId: it.computerId })) throw Error('Use your trusted device to pass on this message');
-  // Ordinary owner chat, still verified independently by the connector. No HQ fields cross inward.
-  ctx.cubbies.chat(lead.floorId, c.accountId!, msg.id, { text, requestId: msg.requestId, at: msg.at, ownerSig: msg.ownerSig });
-  messages(ctx).decide(item.id, access.owner, 'passed'); cubbiesChanged(ctx);
-}
 export function messageLeads(ctx: Ctx, c: Client, owner: string, leads: HQLead[], onHQ: boolean): HQLead[] {
   return leads.map(lead => {
-    const items = messages(ctx).visible(owner, c.accountId!, lead.id);
+    const ids = [lead.id, ...lead.mac && lead.departmentIndex === undefined && lead.floorId ? [...ctx.cubbies.records.rows.values()]
+      .filter(r => r.owner === owner && r.floorId === lead.floorId).map(r => `cubby:${r.id}`) : []];
+    const items = ids.flatMap(id => messages(ctx).visible(owner, c.accountId!, id));
     if (onHQ) return { ...lead, messages: items };
     if (!ctx.hq.owns(c.accountId)) return lead;
     const waiting = items.filter(i => i.state === 'waiting');

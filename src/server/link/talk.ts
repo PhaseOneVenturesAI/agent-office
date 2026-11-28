@@ -1,3 +1,4 @@
+import { saveReview } from './reviews.js';
 import { cleanLeadFrame, cleanLeadSend, type LeadReply, type LeadSend, type LeadStateFrame } from '../../shared/protocol/lead-talk.js';
 import { LeadError } from '../cubbies/local/lead.js';
 import type { MacConfig } from '../hq/local/config.js';
@@ -50,6 +51,7 @@ export class LeadTalk {
     } catch (e) { return this.failed(frame, this.error(e)); }
     const queue = this.queues.get(target.key) ?? [];
     if (queue.length >= 6 || this.ids.size >= 20) return this.failed(frame, 'Too many waiting messages');
+    try { saveReview(frame, target.project); } catch (e) { return this.failed(frame, this.error(e)); }
     const turn: Turn = { frame, target, abort: new AbortController(), done: false };
     this.ids.add(frame.id); queue.push(turn); this.queues.set(target.key, queue);
     if (queue.length === 1) this.launch(turn); else this.state(turn, 'queued');

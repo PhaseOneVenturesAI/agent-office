@@ -160,7 +160,6 @@ async function close() { await page.locator('.modal button.close').click(); awai
 async function arrive() { await page.evaluate(() => window.__audit.parts.travel.arrive('elevator')); await page.waitForTimeout(600); }
 try {
   await setup('owner');
-  fingerprint = await page.evaluate(async () => (await (await import('/shared/cubby/keys.ts')).ownerDeviceKey('Jonathan')).fingerprint);
   await enter();
   for (const [width, height] of [[1280,800],[390,844]]) {
     await page.setViewportSize({ width, height }); await stand(-11.5, 1.8, -11.5, -6, .02);
@@ -172,15 +171,8 @@ try {
   await page.mouse.click(720, 700);
   await shot('01-hq-project-leads', () => stand(-12.7, 7, -12.7, -6, .02));
   await useLead('project-0-ceo'); await page.waitForSelector('.cubby-chat');
-  await page.waitForFunction(() => !document.querySelector('.cubby-chat textarea').disabled);
   assert.match(await page.locator('.cb-log').innerText(), /same conversation from Plimbo/);
-  await page.locator('.cubby-chat textarea').fill('Hello from HQ'); await page.locator('.cubby-chat button[type=submit]').click();
-  await page.waitForTimeout(200);
-  const message = sent.find(m => m.t === 'cubbies.chat'); assert.equal(message?.id, 'jonathan-cubby'); assert.equal(message?.ownerSig.length, 86);
-  const publicKey = await page.evaluate(async () => (await (await import('/shared/cubby/keys.ts')).ownerDeviceKey('Jonathan')).publicKey);
-  const { createPublicKey, verify } = await import('node:crypto');
-  const signed = JSON.stringify(['agent-office/cubby-owner-chat/v1', message.id, 'normal', 'mac-fixture', message.requestId, message.at, message.text]);
-  assert.equal(verify('sha256', Buffer.from(signed), { key: createPublicKey({ key: Buffer.from(publicKey, 'base64url'), type: 'spki', format: 'der' }), dsaEncoding: 'ieee-p1363' }, Buffer.from(message.ownerSig, 'base64url')), true, 'HQ chat is signed for source floor');
+  assert.equal(await page.locator('.cubby-chat textarea:visible').count(), 0, 'legacy threads are history only');
   await close();
   await useLead('project-0-department-0'); await page.waitForSelector('.hq-lead-card');
   assert.match(await page.locator('.hq-lead-card').innerText(), /Talk to Marketing lead in the Claude app on Mac mini/);
@@ -204,7 +196,7 @@ try {
   await page.locator('.cubby-chat button[type=submit]').click(); await page.waitForTimeout(150);
   const composed = sent.filter(m => m.t === 'hq.message').at(-1);
   assert.equal(composed.lead, 'project-0-ceo'); assert.equal(composed.text, 'Could you check the next project milestone?');
-  assert.equal(sent.filter(m => m.t === 'cubbies.chat').length, 1, 'manager compose does not send cubby chat');
+  assert.equal(sent.filter(m => m.t === 'cubbies.chat').length, 0, 'manager compose does not send cubby chat');
   held.push({ id: 'held-one', manager: 'Ivanh', lead: composed.lead, text: composed.text, at: Date.now(), state: 'waiting' });
   push(page, { t: 'hq', view: hq(false) });
   await page.waitForFunction(() => document.querySelector('.hq-messages')?.textContent.includes('waiting'));
@@ -215,19 +207,10 @@ try {
   await page.getByRole('button', { name: 'Pass on', exact: true }).waitFor();
   await page.waitForFunction(() => ![...document.querySelectorAll('button')].find(b => b.textContent === 'Pass on')?.disabled);
   await shot('11-owner-waiting');
-  // An untrusted browser can decline, but cannot pass anything to the connector.
-  const savedFingerprint = fingerprint; fingerprint = 'untrusted'; push(page, { t: 'hq', view: hq(true) });
-  await page.waitForFunction(() => [...document.querySelectorAll('button')].find(b => b.textContent === 'Pass on')?.disabled);
-  assert.match(await page.locator('.hq-messages').innerText(), /Use your trusted device/);
-  assert.equal(await page.getByRole('button', { name: 'Decline', exact: true }).isEnabled(), true);
-  fingerprint = savedFingerprint; push(page, { t: 'hq', view: hq(true) });
   await page.getByRole('button', { name: 'Pass on', exact: true }).click(); await page.waitForTimeout(150);
-  const passed = sent.filter(m => m.t === 'cubbies.chat').at(-1);
-  assert.equal(passed.hqMessageId, 'held-one'); assert.equal(passed.text, labelled(held[0]));
-  assert.equal(passed.requestId, 'held-one'); assert.equal(passed.ownerPublicKey, publicKey);
-  const full = JSON.stringify(['agent-office/cubby-owner-chat/v1', passed.id, 'normal', 'mac-fixture', passed.requestId, passed.at, passed.text]);
-  assert.equal(verify('sha256', Buffer.from(full), { key: createPublicKey({ key: Buffer.from(publicKey, 'base64url'), type: 'spki', format: 'der' }), dsaEncoding: 'ieee-p1363' }, Buffer.from(passed.ownerSig, 'base64url')), true);
-  held[0].state = 'passed'; deliveredLines.push({ id: passed.requestId, role: 'user', text: passed.text, at: passed.at });
+  const passed = sent.filter(m => m.t === 'hq.pass').at(-1);
+  assert.deepEqual(passed, { t: 'hq.pass', id: 'held-one' });
+  held[0].state = 'passed'; deliveredLines.push({ id: passed.id, role: 'user', text: labelled(held[0]), at: Date.now() });
   push(page, { t: 'hq', view: hq(true) });
   await page.waitForFunction(() => document.querySelector('.cb-line.user b')?.textContent === 'Ivanh');
   assert.equal(await page.locator('.cb-line.user b').innerText(), 'Ivanh');
@@ -249,7 +232,7 @@ try {
   await account('owner'); where = 'hq'; needsYou = false; await enter(); assert.equal((await leadView()).cards.length, 0);
   await projectFloor(false); assert.equal((await cubbyView()).body, true); assert.equal((await cubbyView()).cards.length, 0);
   await page.emulateMedia({ reducedMotion: 'reduce' }); await enter(); assert.equal((await leadView()).bodies.length, 4);
-  assert.deepEqual(errors, []); assert.equal(sent.filter(m => m.t === 'cubbies.chat').length, 2);
-  writeFileSync(`${out}/report.json`, JSON.stringify({ evidence, errors, sentChat: message, screenshots: out }, null, 2));
+  assert.deepEqual(errors, []); assert.equal(sent.filter(m => m.t === 'cubbies.chat').length, 0);
+  writeFileSync(`${out}/report.json`, JSON.stringify({ evidence, errors, passed: sent.filter(m => m.t === 'hq.pass'), screenshots: out }, null, 2));
   console.log(`HQ leads UI checks passed. Screenshots: ${out}`);
 } finally { await browser.close(); await server.close(); }

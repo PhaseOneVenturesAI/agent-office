@@ -61,7 +61,7 @@ try {
   await page.route('**/api/whoami', (r) => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ me: { admin: false, account: { id: 'acct-jordan', name: 'Jordan Fixture', role: 'member' } } }) }));
   await page.route('**/main.ts*', async (r) => {
     const response = await r.fetch();
-    const body = (await response.text()) + '\nwindow.__audit = { ctx, core, parts };\n';
+    const body = (await response.text()).replace('installDrafts(ctx,', 'const __drafts = installDrafts(ctx,') + '\nwindow.__audit = { ctx, core, parts, drafts: __drafts };\n';
     await r.fulfill({ response, body });
   });
   await page.routeWebSocket(/\/ws(?:\?|$)/, (ws) => {
@@ -188,15 +188,15 @@ try {
     const a = window.__audit;
     const its = a.ctx.usables.lists().flat();
     const text = (it) => a.ctx.interactions.hint(it).parts.map((p) => (typeof p === 'string' ? p : p.textContent)).join(' ');
-    return { lead: text(its.find((it) => it.kind === 'draftlead')), table: text(its.find((it) => it.kind === 'studiotable')) };
+    return { lead: text(a.drafts.scene.leadIt), table: text(a.drafts.scene.table) };
   });
-  assert.match(hints.lead, /Nova.*E.*Talk to Nova/);
-  assert.match(hints.table, /Studio table.*E.*Talk to Nova/);
+  assert.match(hints.lead, /Nova.*predates the Mac Studio/);
+  assert.match(hints.table, /Studio table.*E.*About this draft/);
 
   // Walk on past: the lead goes over to the studio table.
   await stand(3.2, 8.5, toward(3.2, 8.5, 2.6, -4), -0.14);
   await page.waitForTimeout(4500);
-  const leadAt = await page.evaluate(() => { const it = window.__audit.ctx.usables.lists().flat().find((x) => x.kind === 'draftlead'); return { x: it.x, z: it.z }; });
+  const leadAt = await page.evaluate(() => { const it = window.__audit.drafts.scene.leadIt; return { x: it.x, z: it.z }; });
   assert.ok(Math.hypot(leadAt.x - 6.3, leadAt.z - -6.6) < 0.2, `the lead waits by the table (${JSON.stringify(leadAt)})`);
   await shot('02-dark-floor-studio-table', () => stand(3.2, 8.5, toward(3.2, 8.5, 5.2, -5.4), -0.12));
 
@@ -217,22 +217,25 @@ try {
   await shot('06-boards-empty');
   assert.equal((await state()).podsHidden, 16, 'no designers: every pod covered');
 
-  // No cubby yet: E at the studio table is Set up (slot 0).
+  // An old draft explains migration instead of offering Set up.
   push({ t: 'drafts', state: drafts(here({ cubbyId: undefined })) });
   await page.waitForTimeout(200);
   const setupHint = await page.evaluate(() => {
     const a = window.__audit;
-    const it = a.ctx.usables.lists().flat().find((x) => x.kind === 'studiotable');
+    const it = a.drafts.scene.table;
     const t = a.ctx.interactions.hint(it).parts.map((p) => (typeof p === 'string' ? p : p.textContent)).join(' ');
     a.ctx.interactions.use(it, 'E', null);
     return t;
   });
-  assert.match(setupHint, /Studio table.*E.*Set up/);
+  assert.match(setupHint, /Studio table.*E.*About this draft/);
   // The protected Studio caller still uses setUp; its compatibility seam explains migration.
   await page.waitForTimeout(150);
   assert.equal(await page.locator('.cubby-setup').count(), 0);
   assert.equal(sent.filter(m => m.t === 'cubbies.setup').length, 0);
-  assert.match(await page.locator('.toast').last().innerText(), /setup removed.*agent-office link/);
+  assert.match(await page.locator('.modal').innerText(), /This draft predates the Mac Studio; start a New project/);
+  await shot('08-legacy-studio-notice');
+  await page.locator('.modal button.close').click();
+  await page.waitForFunction(() => window.__office.player.hasMouse);
   push({ t: 'drafts', state: drafts(here()) });
 
   // ---- The elevator: your draft's row, and New project. ----
@@ -249,26 +252,9 @@ try {
   await page.waitForSelector('.modal.elevator');
   assert.match(await page.locator('.floor-btn.draft').innerText(), /Kindly[\s\S]*draft[\s\S]*Only you/);
   await shot('07-elevator-draft-row');
-  await page.locator('.elevator .new-project').click();
-  await page.waitForSelector('.modal.draft-new');
-  assert.equal(await page.locator('.modal.draft-new .btn.close').count(), 1, 'the panel has its ✕');
-  await page.fill('.draft-new input', 'Plimbo Studio');
-  await shot('08-new-project-panel');
   await page.keyboard.press('Escape');
-  await page.waitForTimeout(100);
-  assert.equal(await page.locator('.modal').count(), 0, 'Esc closes it');
-  await page.waitForFunction(() => window.__office.player.hasMouse, null, { timeout: 2000 });
-  // ✕ too, straight back to mouse-look.
-  await page.evaluate(async () => { const { openNewProject } = await import('/features/drafts/ui-new.ts'); openNewProject(window.__audit.parts.net); });
-  await page.locator('.draft-new .btn.close').click();
-  await page.waitForFunction(() => window.__office.player.hasMouse, null, { timeout: 2000 });
-  // Sending it, and riding to it once it's made.
-  await page.evaluate(async () => { const { openNewProject } = await import('/features/drafts/ui-new.ts'); openNewProject(window.__audit.parts.net); });
-  await page.fill('.draft-new input', '  Plimbo   Studio ');
-  await page.keyboard.press('Enter');
-  await page.waitForTimeout(150);
-  const made = sent.filter((m) => m.t === 'drafts.new');
-  assert.deepEqual(made.map((m) => m.name), ['Plimbo Studio']);
+  await page.waitForFunction(() => window.__office.player.hasMouse);
+  // New project and its Mac Studio form are covered by studio-ui. Keep the shared arrival checks.
   await page.evaluate(() => {
     const s = window.__office.store;
     s.floors.push({ id: 'draft-2', name: 'Plimbo Studio', dir: '/fixture/plimbo', workers: 0, people: 1, busy: 0, waiting: 0, palette: 2, draft: true });
@@ -311,7 +297,7 @@ try {
     assert.equal(arrived.fade, false, `early arrival does not leave a black screen (afterFade=${afterFade})`);
     assert.equal(arrived.trip, null);
     assert.equal(arrived.enabled, true);
-    assert.ok(Math.hypot(arrived.x - 3, arrived.z - 6) < 0.1, 'settled ride does not move the player');
+    assert.ok(Math.hypot(arrived.x - 3, arrived.z - 6) < 0.1, `settled ride does not move the player (${JSON.stringify(arrived)})`);
     assert.equal(sent.slice(sentBefore).filter((m) => m.t === 'floor.go' && m.floor === 'draft-2').length, 0, 'settled ride does not request the current floor');
   }
   push({ t: 'drafts.made', floorId: 'draft-2' });

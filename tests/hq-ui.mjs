@@ -195,13 +195,12 @@ try {
   assert.match(await page.locator('.pitch-review').innerText(), /Read-only/); await shot('06-pitch-manager-readonly');
   await page.locator('.pitch-review button.close').click();
   await leave(); await account('owner'); await enter();
-  const fingerprint = await page.evaluate(async () => (await (await import('/shared/cubby/keys.ts')).ownerDeviceKey('Jonathan')).fingerprint);
-  push(page, { t: 'pitch', view: { ...pitch, readOnly: false, ownerDevices: [{ fingerprint, label: 'Fixture browser', addedAt: Date.now() }] } });
-  await page.waitForFunction(() => window.__office.store.pitch?.ownerDevices?.length === 1);
+  push(page, { t: 'pitch', view: { ...pitch, readOnly: false } });
+  await page.waitForFunction(() => window.__office.store.pitch?.readOnly !== true);
   await page.evaluate(async () => { const { openPitchPiece } = await import('/shared/pitch/review.ts'); openPitchPiece({ send: m => window.__office.net.send(m) }, 'site', 0, 'approve'); });
   await page.waitForTimeout(400);
   const verdict = sent.find(m => m.t === 'pitch.verdict');
-  assert.equal(verdict?.floorId, 'source-project'); assert.equal(verdict?.ownerSig.length, 86);
+  assert.equal(verdict?.floorId, 'source-project'); assert.equal(verdict?.ownerSig, undefined);
   await page.locator('.pitch-review button.close').click();
   await leave(); await account('outsider'); await elevator(); assert.doesNotMatch(await page.locator('.elevator').innerText(), /HQ|Jonathan/); await shot('08-elevator-outsider');
   await page.keyboard.press('Escape');

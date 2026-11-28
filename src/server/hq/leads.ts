@@ -69,11 +69,3 @@ export function withHQLeads(ctx: Ctx, c: Client, state: CubbiesState): CubbiesSt
     return { ...info, hqLead: { hqFloorId: access.floorId, lead, departments: leads.filter(l => l.projectIndex === lead.projectIndex && l.departmentIndex !== undefined) } };
   }) };
 }
-/** Cross-floor chat keeps the original cubby binding and the existing owner-signed send. */
-export function hqChat(ctx: Ctx, c: Client, msg: { id: string } & import('../../shared/protocol/cubbies.js').CubbyOwnerMessage) {
-  const access = hqAccess(ctx, c);
-  if (!access?.mine || !ctx.hq.is(ctx.floorOf(c)?.id)) throw Error('Only the cubby owner can talk to its lead');
-  const lead = leadsFor(ctx, access.owner, true).find(l => l.cubby?.id === msg.id);
-  if (!lead?.floorId) throw Error('No connected HQ lead');
-  ctx.cubbies.chat(lead.floorId, c.accountId!, msg.id, msg);
-}

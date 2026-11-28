@@ -8,8 +8,6 @@ import { randomUUID } from 'node:crypto';
 import { Nodes } from '../src/server/nodes.js';
 import { Cubbies } from '../src/server/cubbies/index.js';
 import { cubbiesHandlers } from '../src/server/ws/handlers/cubbies.js';
-import { cubbyKey, verifyRelay } from '../src/server/cubbies/wire.js';
-const message = (text: string) => ({ text, requestId: randomUUID(), at: Date.now(), ownerSig: 'A'.repeat(86) });
 function socket() {
   const events = new Map<string, Function[]>();
   return { readyState: 1, bufferedAmount: 0, sent: [] as any[], close() { this.readyState = 3; this.emit('close'); },
@@ -42,24 +40,6 @@ test('old device enrollment requests fail without reaching the connector', t => 
   cubbiesHandlers['cubbies.device'](ctx, {} as any, {} as any);
   assert.deepEqual(ws.sent.map(m => m.t), ['cubby.ready']);
   assert.ok(notices.every(text => /enrollment removed.*agent-office link/.test(text)));
-});
-
-test('a congested satellite refuses signed frames and chat can retry after it drains', t => {
-  const f = fixture(t), invite = f.setup(), ws = f.connect(invite.token);
-  const node = f.cubbies.records.rows.get(invite.id)!.nodeId;
-  ws.bufferedAmount = 4 * 1024 * 1024 + 1;
-  let signed = false;
-  assert.equal(f.nodes.sendSigned(node, () => { signed = true; return {}; }), false);
-  assert.equal(signed, false, 'backpressure is checked before signing/serializing');
-  const notices: string[] = [];
-  const ctx = { cubbies: f.cubbies, floorOf: () => ({ id: 'floor' }), warn: (_: unknown, text: string) => notices.push(text) } as any;
-  const client = { accountId: 'alice' } as any;
-  cubbiesHandlers['cubbies.chat'](ctx, client, { t: 'cubbies.chat', id: invite.id, ...message('blocked') });
-  assert.equal(notices.length, 1);
-  assert.equal(ws.sent.length, 1, 'nothing is queued');
-  ws.bufferedAmount = 0;
-  f.cubbies.chat('floor', 'alice', invite.id, message('explicit retry'));
-  assert.equal(ws.sent.at(-1).text, 'explicit retry');
 });
 
 test('a dropped ready frame does not admit the cubby; a later hello can retry', t => {
@@ -98,41 +78,6 @@ test('only the owner receives interiors; public and other-admin-shaped requests 
   }
   assert.deepEqual(f.cubbies.state('other','alice').cubbies,[]);
   assert.equal(f.cubbies.state('missing','alice').enabled,false);
-  assert.throws(() => f.cubbies.chat('floor','bob',invite.id,message('do work')), /owner/);
-  assert.throws(() => f.cubbies.chat('other','alice',invite.id,message('do work')), /owner/);
-});
-
-test('only signed owner text is relayed; response correlation and no on-disk conversations', t => {
-  const f = fixture(t), invite = f.setup(), ws = f.connect(invite.token);
-  const ready = ws.sent[0]; assert.equal(ready.t,'cubby.ready'); assert.equal(verifyRelay(cubbyKey(invite.token),ready),true);
-  const sent = message('  Review the proposed screen\n字  ');
-  f.cubbies.chat('floor','alice',invite.id,sent);
-  const chat = ws.sent[1];
-  for (const field of ['text', 'requestId', 'at', 'ownerSig'] as const) assert.equal(chat[field], sent[field]);
-  assert.equal(chat.t,'cubby.chat'); assert.equal(chat.ownerId,'alice'); assert.equal(chat.floorId,'floor');
-  assert.equal(verifyRelay(cubbyKey(invite.token),chat),true);
-  assert.equal(verifyRelay(cubbyKey(invite.token),{...chat,text:'tampered'}),false);
-  assert.throws(() => f.cubbies.chat('floor','alice',invite.id,message('second')), /still replying/);
-  ws.frame({t:'cubby.reply',floorId:'floor',requestId:'forged',text:'not accepted'});
-  assert.equal(f.cubbies.state('floor','alice').cubbies[0].interior!.chat.length,1);
-  ws.frame({t:'cubby.reply',floorId:'floor',requestId:chat.requestId,text:'Here is the review'});
-  const history = f.cubbies.state('floor','alice').cubbies[0].interior!.chat;
-  assert.deepEqual(history.map(x => x.role),['user','assistant']);
-  assert.doesNotMatch(readFileSync(path.join(f.dir,'cubbies.json'),'utf8'),/proposed screen|Here is the review/);
-});
-
-test('disconnect, replacement socket and revoke invalidate chat admission and stale sockets', t => {
-  const f = fixture(t), invite = f.setup(), ws = f.connect(invite.token);
-  ws.frame(roster()); ws.close();
-  assert.equal(f.cubbies.state('floor','alice').cubbies[0].lamp,'asleep');
-  assert.throws(() => f.cubbies.chat('floor','alice',invite.id,message('offline')), /asleep/);
-  const next = socket(); f.nodes.attach(next as any,invite.token); next.frame({t:'hello',host:'same',providers:[]});
-  assert.throws(() => f.cubbies.chat('floor','alice',invite.id,message('before opt in')), /asleep/);
-  next.frame({t:'cubby.hello',floorId:'floor',computerId:'computer-alice',computerName:'Alice laptop'});
-  ws.frame({...roster(),agents:[]});
-  assert.equal(f.cubbies.state('floor','alice').cubbies[0].interior!.agents.length,1);
-  f.nodes.revoke(f.cubbies.records.rows.get(invite.id)!.nodeId);
-  assert.equal(f.cubbies.state('floor','alice').cubbies[0].lamp,'asleep');
 });
 
 test('a node cannot claim another cubby, floor or computer identity; duplicate tuple rejected', t => {
@@ -181,16 +126,4 @@ test('cubby computers stay owner-only on the Satellite wall, including after rel
   const reload = new Nodes(f.dir,()=>{}); t.after(()=>reload.close());
   assert.deepEqual(reload.state({id:'bob',admin:true}).nodes,[]);
   assert.equal(reload.state({id:'alice'}).nodes.length,1);
-});
-
-
-test('a missing reply expires visibly without replaying work or accepting a late reply', t => {
-  let now = Date.now(); const f = fixture(t, true, () => now), invite = f.setup(), ws = f.connect(invite.token);
-  f.cubbies.chat('floor', 'alice', invite.id, message('owner message'));
-  const request = ws.sent[1]; now += 13 * 60_000; f.cubbies.refresh();
-  assert.equal(ws.sent.length, 2, 'expiry sends no new prompt');
-  assert.match(f.cubbies.state('floor','alice').cubbies[0].interior!.chat.at(-1)!.text, /did not reply in time/);
-  ws.frame({t:'cubby.reply',floorId:'floor',requestId:request.requestId,text:'late answer'});
-  assert.equal(f.cubbies.state('floor','alice').cubbies[0].interior!.chat.length,2);
-  assert.doesNotThrow(()=>f.cubbies.chat('floor','alice',invite.id,message('explicit new message')));
 });

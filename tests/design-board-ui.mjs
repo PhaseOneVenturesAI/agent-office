@@ -90,9 +90,7 @@ const boards = (extra = {}) => ({
 const here = (b = boards(), extra = {}) => ({ id: 'draft-1', name: 'Kindly', createdAt: 1, cubbyId: 'cub-me', leadName: 'Nova', online: true, boards: b, designers: 1, ...extra });
 const drafts = (h) => ({ enabled: true, canStart: true, ...(h ? { here: h } : {}) });
 const push = (m) => socket.send(JSON.stringify(m));
-const verifySig = (m) => verify('sha256',
-  Buffer.from(JSON.stringify(['agent-office/cubby-owner-feedback/v1', 'cub-me', 'draft-1', 'fixture-computer', m.requestId, m.at, m.cardId, m.text])),
-  { key: createPublicKey({ key: Buffer.from(publicKey, 'base64url'), format: 'der', type: 'spki' }), dsaEncoding: 'ieee-p1363' }, Buffer.from(m.ownerSig, 'base64url'));
+
 
 const shot = async (name, sizes = [[1440, 1000, 'desktop'], [390, 844, 'phone']]) => {
   for (const [width, height, suffix] of sizes) {
@@ -130,11 +128,6 @@ try {
   });
   await page.goto(`${origin}/?3d=1`);
   await page.waitForFunction(() => window.__audit && window.__office?.net.up);
-  ({ fingerprint, publicKey } = await page.evaluate(async () => {
-    const { ownerDeviceKey } = await import('/shared/cubby/keys.ts');
-    const k = await ownerDeviceKey('Jordan Fixture');
-    return { fingerprint: k.fingerprint, publicKey: k.publicKey };
-  }));
   await page.evaluate(() => {
     const a = window.__audit, o = window.__office, s = o.store;
     s.floor = 'draft-1'; s.you = 'fixture-self';
@@ -224,7 +217,7 @@ try {
   const fb = sent.filter((m) => m.t === 'drafts.feedback');
   assert.equal(fb.length, 1);
   assert.deepEqual([fb[0].floorId, fb[0].cardId, fb[0].text], ['draft-1', 'scr-calendar', 'Could the week view\nshow the weekend smaller?']);
-  assert.equal(verifySig(fb[0]), true, 'signed with this device’s owner key over ownerFeedbackEncoding');
+  assert.equal(fb[0].ownerSig, undefined, 'owner account feedback has no browser key');
   assert.match(await page.locator('.draft-card .dc-fb.pending').innerText(), /Sending…/);
   // The computer reports it: it shows once, no longer pending.
   const withNote = boards();
@@ -248,32 +241,17 @@ try {
   await page.waitForTimeout(150);
   assert.match(await page.evaluate(() => document.body.innerText), /💬 3[\s\S]*Open Calendar/);
 
-  // ---- Asleep, then an untrusted device: nothing sent, and it says why. ----
-  push({ t: 'cubbies', state: cubbies('asleep') });
-  await aimAt('draft-card-ideas-1', 4);
-  await page.keyboard.press('KeyE');
+  // Offline Mac: no review is sent, on any browser.
+  push({ t: 'drafts', state: drafts(here(boards(), { online: false })) });
+  await aimAt('draft-card-ideas-1', 4); await page.keyboard.press('KeyE');
   await page.waitForSelector('.modal.draft-card');
-  assert.match(await page.locator('.draft-card').innerText(), /Fewer group chats[\s\S]*Mac mini is asleep/);
-  assert.equal(await page.locator('.draft-card .dc-textcard').count(), 1, 'an idea with no image is its words');
-  const n = sent.filter((m) => m.t === 'drafts.feedback').length;
-  await page.locator('.draft-card form').evaluate((f) => { f.querySelector('textarea').value = 'must not send'; f.requestSubmit(); });
-  await page.waitForTimeout(100);
-  push({ t: 'cubbies', state: cubbies('working', { ...interior(), ownerDevices: [{ fingerprint: '0'.repeat(32), label: 'Mac', addedAt: 1 }] }) });
-  await page.waitForTimeout(100);
-  assert.match(await page.locator('.draft-card').innerText(), /cannot leave legacy feedback/);
-  assert.equal(await page.locator('.draft-card .dc-chat').isVisible(), true);
-  await page.locator('.draft-card form').evaluate((f) => { f.querySelector('textarea').value = 'must not send'; f.requestSubmit(); });
-  await page.waitForTimeout(100);
-  assert.equal(sent.filter((m) => m.t === 'drafts.feedback').length, n, 'nothing sent asleep or untrusted');
-  await shot('05-card-untrusted');
-  await page.locator('.draft-card .dc-chat').click();
-  await page.waitForSelector('.cubby-chat');
-  assert.equal(await page.getByRole('button', { name: '📱 Add this device' }).count(), 0);
-  await page.keyboard.press('Escape');
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(100);
-  assert.equal(await page.locator('.modal').count(), 0);
-  push({ t: 'cubbies', state: cubbies() });
+  assert.match(await page.locator('.draft-card').innerText(), /Mac link is offline/);
+  const n = sent.filter(m => m.t === 'drafts.feedback').length;
+  await page.locator('.draft-card form').evaluate(f => { f.querySelector('textarea').value = 'must not send'; f.requestSubmit(); });
+  await page.waitForTimeout(100); assert.equal(sent.filter(m => m.t === 'drafts.feedback').length, n);
+  await shot('05-card-offline'); await page.keyboard.press('Escape');
+  push({ t: 'drafts', state: drafts(here()) });
+
 
   // ---- The phone: Draft board, then a card. ----
   const phone = await context.newPage();
@@ -301,7 +279,7 @@ try {
   await phone.waitForFunction(() => document.querySelector('.draft-card .dc-fb.pending'));
   const fromPhone = sent.filter((m) => m.t === 'drafts.feedback').at(-1);
   assert.deepEqual([fromPhone.cardId, fromPhone.text], ['scr-home', 'Love the today-first layout.']);
-  assert.equal(verifySig(fromPhone), true, 'the phone signs it the same way');
+  assert.equal(fromPhone.ownerSig, undefined, 'the phone uses the same account identity');
   const withPhone = structuredClone(withNote);
   withPhone.screens[0].feedback.push({ id: 'computer-id-1', text: fromPhone.text, at: fromPhone.at });
   push({ t: 'drafts', state: drafts(here(withPhone)) });

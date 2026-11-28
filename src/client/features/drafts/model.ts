@@ -116,7 +116,7 @@ export function brandEmpty(b: DraftBoards['brand']): boolean {
 
 /** What E does at the studio table and the lead: talk to the lead once there's a cubby, else set one up. */
 export function studioAction(here: Pick<DraftView, 'cubbyId'>, lead: string): { label: string; talk: boolean } {
-  return here.cubbyId ? { label: `Talk to ${lead}`, talk: true } : { label: 'Set up', talk: false };
+  return { label: 'About this draft', talk: false };
 }
 
 /** How much of the floor's own light is left on a draft (the lamp over the table is its own). */

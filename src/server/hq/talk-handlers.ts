@@ -16,7 +16,15 @@ export function sendTalk(ctx: Ctx, c: Client, leadId: string, text: unknown, fro
 export function passTalk(ctx: Ctx, c: Client, id: string) {
   if (c.out || !ctx.hq?.owns(c.accountId)) throw Error('Only the owner can decide');
   const item = messages(ctx).waiting(id, c.accountId!);
-  sendTalk(ctx, c, item.lead, item.text, `${item.manager} (held, passed on by ${ctx.accounts.get(c.accountId!)!.name})`);
+  let leadId = item.lead;
+  if (leadId.startsWith('cubby:')) {
+    const room = ctx.cubbies.records.rows.get(leadId.slice(6));
+    const lead = room && room.owner === c.accountId && leadsFor(ctx, c.accountId!, true).find(l => l.mac && l.floorId === room.floorId && l.departmentIndex === undefined);
+    if (!lead) throw Error('Link this project on your Mac before passing on its message');
+    leadId = lead.id;
+  }
+  const line = sendTalk(ctx, c, leadId, item.text, `${item.manager} (held, passed on by ${ctx.accounts.get(c.accountId!)!.name})`);
+  if (line.state === 'failed') throw Error(line.error ?? 'Your Mac link is offline');
   messages(ctx).decide(id, c.accountId!, 'passed');
   hqChanged(ctx);
 }

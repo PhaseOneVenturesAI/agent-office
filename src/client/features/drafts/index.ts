@@ -1,3 +1,4 @@
+import { h, openModal } from '../../ui/dom';
 import { studioTalk } from '../../shared/studio/actions';
 import { defaultOwnerColor, personalRole } from '../../../shared/personal-agents/appearance';
 /**
@@ -293,8 +294,7 @@ export function installDrafts(ctx: Ctx, deps: DraftsDeps) {
     const draft = here();
     if (!draft) return;
     if (draft.studio) studioTalk(ctx.net);
-    else if (draft.cubbyId) deps.cubbies().talk(draft.cubbyId);
-    else deps.cubbies().setUp(0);
+    else openModal(h('div.modal', { role: 'dialog' }, h('header', {}, h('h2', {}, 'Studio')), h('div.body', {}, 'This draft predates the Mac Studio; start a New project')));
   };
 
   ctx.interactions.define('studiotable', {
@@ -318,7 +318,7 @@ export function installDrafts(ctx: Ctx, deps: DraftsDeps) {
       const name = lead();
       return a.talk
         ? { k: `draftlead-${name}`, parts: [hintTitle(`💬 ${name}`), aside('your lead'), key('E', a.label)] }
-        : { k: `draftlead-setup-${name}`, parts: [hintTitle(`💬 ${name}`), aside('set up at the studio table to talk')] };
+        : { k: `draftlead-setup-${name}`, parts: [hintTitle(`💬 ${name}`), aside('This draft predates the Mac Studio; start a New project')] };
     },
     use: (_it, k) => {
       if (k === 'E' && (here()?.cubbyId || here()?.studio)) use();

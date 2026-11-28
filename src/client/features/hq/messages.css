@@ -6,7 +6,7 @@
 .hq-message-actions { display: flex; gap: 8px; }
 
 .hq-manager-chat .cb-main { overflow-y: auto; }
-.hq-manager-chat .cb-send, .hq-manager-chat .cb-note, .hq-manager-chat .cb-devices { flex-shrink: 0; }
+.hq-manager-chat .cb-send, .hq-manager-chat .cb-note { flex-shrink: 0; }
 @media (max-width: 640px) {
   .modal.cubby-chat.hq-manager-chat { height: calc(100dvh - 32px); }
   .hq-manager-chat .cb-side { max-height: 20vh; }

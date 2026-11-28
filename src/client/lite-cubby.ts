@@ -1,6 +1,6 @@
 // My cubby on the 2D view (/lite, cubbies step 4): with a cubby of yours on the floor you're on, a
 // button opens the same lead chat as the 3D office's (shared/cubby/chat.ts), signed with this browser's
-// owner key, beside what needs you and how each helper is doing. Watching someone's cubby (they let you
+// signed-in account, beside what needs you and how each helper is doing. Watching someone's cubby (they let you
 // in from the 3D office), the same button opens it read-only. No three.js and nothing of the 3D office.
 
 import type { CubbyInfo } from '../shared/protocol/cubbies';
@@ -27,10 +27,7 @@ export function installLiteCubby(net: Net) {
   const windows: CubbyWindows = {
     cubby: (id) => store.cubbies.cubbies.find((c) => c.id === id),
     onChange: (fn) => store.on('cubbies', fn),
-    sendChat: (id, message) => net.send({ t: 'cubbies.chat', id, ...message }),
     sendOut: (id, accountId) => net.send({ t: 'cubbies.admit', id, accountId, allow: false }),
-    addDevice: (id, publicKey, label) => net.send({ t: 'cubbies.addDevice', id, publicKey, label }),
-    device: (id, action) => net.send({ t: 'cubbies.device', id, ...action }),
   };
   const render = () => {
     const c = store.cubbies.enabled ? liteCubby(store.cubbies.cubbies) : undefined;

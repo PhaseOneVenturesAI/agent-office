@@ -32,7 +32,7 @@ With `AGENT_OFFICE_CUBBIES=1`, existing cubby rooms remain available as visual h
 
 `join --cubbies`, `join --hq`, `--lead-bridge`, and `cubby wait`, `cubby reply` and `cubby devices` exit nonzero with `removed: use agent-office link <url>`. Old setup and device-enrollment browser requests receive a migration notice and create no token or device. The HQ floor has no cubby. Ordinary satellites, office agents, queue tasks, meetings, shared workers and pitch rooms remain.
 
-The legacy signed connector, browser signing key, pinned-device storage and lock remain temporarily: draft-board feedback and pitch verdicts still depend on them. Existing saved rooms/pins remain readable, and the Mac link does not load old device files. No trust check was weakened. Device enrollment UI and its CLI are gone. Migrating those remaining feedback paths is required before deleting their key/connector dependency chain.
+Owner device keys, their storage/lock and the old signed connector are removed. All reviews and Pass on use the signed-in HQ owner's account, exactly as `hq.talk` does, over the existing Mac link. Managers and coworkers cannot give feedback or verdicts. Old device files on either computer are ignored, including malformed files; they are not migrated or deleted.
 
 Existing non-HQ-owner cubby sharing and owner task transfer remain compatible. Old sharing grants never expose the HQ owner's conversation on project floors. Linked-lead conversations use the signed-in owner identity through the Mac link.
 
@@ -40,13 +40,13 @@ Existing non-HQ-owner cubby sharing and owner task transfer remain compatible. O
 
 ## Draft floors (preview)
 
-With `AGENT_OFFICE_CUBBIES=1`, set `AGENT_OFFICE_PROJECT_STARTERS=Jonathan` to allow that account to use **New project**. This is a comma-separated list of account names, matched case-insensitively; unset, empty, and shared-password guests allow nobody. Each draft is a local Git repository on `main` with one empty commit, under `<dataDir>/drafts/<id>`. It has no remote. Ownership and names are saved in `drafts.json` with mode `0600`; the Building registers it through `addLocal`, without cloning or replacing the office's own local floor.
+Use **New project** while signed in through Cloudflare as the HQ owner. The linked Mac creates the checkout and Studio lead; the VPS stores only private floor metadata. `AGENT_OFFICE_PROJECT_STARTERS`, `AGENT_OFFICE_KICKOFF_REMOTE` and `AGENT_OFFICE_KICKOFF_ORG` are inert and named in a startup notice when set. Existing `<dataDir>/drafts/<id>` folders are ignored and each is named in one startup log line for admin cleanup; nothing deletes them automatically. Existing private floor records and public Design books remain readable. At the old Studio table, E says “This draft predates the Mac Studio; start a New project”, with no Set up.
 
 Only the owner sees the draft in the elevator, welcome or floor view. Other accounts (including admins) cannot ride there, arrive with `?floor=`, remove it or fetch its project files. Private locations are removed from the people list, and draft checkouts are excluded from the shared hygiene report. Turning the cubbies flag off keeps saved drafts closed and invisible. Server workers, board agents, meetings and queue hiring stay idle on drafts; work runs on the owner's computer.
 
 After **New project** creates the draft, the server announces `drafts.made` without moving you. The 3D client rides the elevator and requests `floor.go`, which checks that the floor is visible to you before arrival. If you arrive some other way before the ride's delayed steps run, those steps stop, so the view doesn't go dark.
 
-The old Studio table setup entry now shows a migration notice. Phase 4 owns its replacement; this cleanup does not change Studio or the VPS draft checkout. Existing draft rooms and boards remain readable. Publish boards from the connected project's local `.agent-office/draft.json`:
+Existing draft rooms and boards remain readable. Studio and Open floor run on the linked Mac. Publish boards from the connected project's local `.agent-office/draft.json`:
 
 ```json
 {
@@ -66,52 +66,29 @@ The office keeps boards and images in private memory only, including while the c
 
 ### Card feedback
 
-The owner's device signs a note on an idea or screen card using its trusted owner key. The office relays it only to that draft's online computer. The computer verifies against all locally trusted devices, requires a timestamp within 60 seconds, rejects replays, and checks the card still exists in the current local board. Invalid signatures change nothing and produce a chat notice. Feedback never approves tools or changes local permissions.
+The signed-in HQ owner sends feedback over the existing `lead.send` relay, with structured review fields. The authenticated Mac link resolves the registered local project, checks that the card still exists, atomically saves `.agent-office/feedback.json` with mode `0600`, then notifies the lead through its normal queue. Managers and coworkers are refused before any frame is sent. No browser key or device approval is involved.
 
-Accepted notes are written atomically with mode `0600` to `.agent-office/feedback.json`, shaped as `{ "<card-id>": [{ "id": "<request-id>", "text": "...", "at": 1800000000000 }] }`. Each card retains its latest 20 notes, each at most 1,000 characters. This file merges into the published boards.
-
-Across all idea and screen cards, feedback has a 16 KiB budget: the UTF-8 bytes of JSON-escaped note text plus 192 bytes per note for its maximum-length ID, timestamp and JSON envelope. The computer checks the existing total plus the incoming note before any write (including before the existing per-card retention step). A note that would exceed the budget changes no file and sends the owner’s chat: “The board's feedback is full. Moving or resolving notes on your computer frees room.” The office uses the same notice to refuse early when its current board is already at the budget. Move notes off the published board or resolve/remove them locally to free room; moving between cards on that same board does not reduce the total.
-
-If the lead is idle, it also receives `Feedback on <card title>: <text>` as a chat turn; a busy lead leaves the saved note for later. The owner's chat receives a notice either way.
-
-The 64 KiB snapshot frame limit still applies to the complete board and roster. The aggregate budget leaves room for all 16 ideas and 24 screens with maximum ASCII board text, 16 image references, and full cubby plan/Needs-you lists. It bounds the total note count as well as text: it cannot permit 800 maximum-ID notes at once. Maximum Unicode/escaped board text, a large roster, manually edited feedback or older oversized records can still exceed the frame cap. In that case the connector sends a small snapshot with “The board is too big to show; it is still saved on your computer” and a fresh roster (bounded separately if necessary), instead of dropping publication. Device presence continues. The office retains its last complete board and images while showing the error; after local cleanup, the complete board publishes again. Feedback is never trimmed to fit a snapshot. Kickoff continues exporting every note in the office’s last complete board; unpublishable local edits have not reached that snapshot.
+Notes are bounded to 1,000 characters, 20 per card and 16 KiB aggregate feedback. A full board or unsafe file path leaves files unchanged. Persisted request IDs reject duplicates. The board shows saved notes only when the Mac publishes them back; decisions still update when the lead writes the board. A busy lead can read the saved feedback while its notification waits in the ordinary talk queue. Feedback never grants tool permissions, spending or publishing approval.
 
 ### Design board (cubbies step 5)
 
 On the owner's draft the north wall keeps **📝 Decisions**, **🗺️ Plan** and **🖼️ Screens**, and a **💡 Ideas** board covers the Services board on the east wall, beside the **🎨 Brand wall**. Ideas and Screens show cards three across and two down: each card's design image as a thumbnail (or its words when it has none, or its image won't load), its title, a screen's status chip and a 💬 count once it has feedback. With more than six, the last place says “+N more” and opens the first card that didn't fit; ‹ › in the card window step through the whole board.
 
-Aim at a card and the hint says **[E] Open <title>**. The card window shows the image large, the title, status and note, and every feedback note, newest last, with its time. Type in the box and press **Send feedback** or Enter (Shift+Enter is a new line). The note is signed with this browser's owner key over `["agent-office/cubby-owner-feedback/v1", cubbyId, floorId, computerId, requestId, at, cardId, text]`, the same way as chat. It shows as “Sending…” until the computer reports it back in the boards, and says so if the computer doesn't within 20 seconds. With the computer asleep, the box is shut. Legacy feedback still requires an already trusted browser; device enrollment has been removed pending the feedback migration. ✕ or Esc goes straight back to mouse-look.
+Aim at a card and press **E** for its image, title, status, note and feedback. Studio offers **👍**, **👎**, **Approve** for screens and **Change this…**; older boards have **Send feedback** when their project has a linked lead. The owner account authorizes each review. Saved feedback returns through the Mac snapshot. Offline feedback is disabled. ✕ or Esc returns straight to mouse-look.
 
 On `/lite`, **🧩 Draft board** appears on your own draft floor. It lists the ideas and screens with their thumbnails, and tapping one opens the same card window, feedback included.
 
-The page loads each image from `/api/drafts/<floorId>/images/<hash>` with its own session cookie, checks the 16-million-pixel limit before fetching, and keeps at most 24 decoded bitmaps by floor and hash in a least-recently-used cache. Eviction closes the bitmap; removing a card, leaving a draft or kicking it off closes its cached images and cancels pending loads. Images exist only on the owner's page and are never sent over the socket. `tests/design-board-ui.mjs` covers the wall, the card window, signing and the phone, using generated PNGs and no server.
+The page loads each image from `/api/drafts/<floorId>/images/<hash>` with its own session cookie, checks the 16-million-pixel limit before fetching, and keeps at most 24 decoded bitmaps by floor and hash in a least-recently-used cache. Eviction closes the bitmap; removing a card, leaving a draft or kicking it off closes its cached images and cancels pending loads. Images exist only on the owner's page and are never sent over the socket. `tests/design-board-ui.mjs` covers the wall, the card window, account-based feedback and the phone, using generated PNGs and no server.
 
-### Kickoff
+### Open floor
 
-The draft's owner confirms its name again (trimmed, case-insensitive). Configure one of these server environment variables before starting the Office:
-
-- `AGENT_OFFICE_KICKOFF_REMOTE=/absolute/folder`: local mode creates `<folder>/<slug>.git` with `git init --bare`, adds `origin`, and pushes `main`. Existing destinations are refused and left intact. Use this mode for tests and local acceptance; it does not contact GitHub.
-- `AGENT_OFFICE_KICKOFF_ORG=PhaseOneVenturesAI`: real org mode runs `gh repo create <org>/<slug> --private --source . --push` in the draft checkout, using the server's GitHub CLI sign-in. **This creates a private GitHub repository.** The local setting takes precedence when both are set. Invalid settings fail closed; neither set means `canKickoff: false` and a polite refusal with no changes.
-
-Kickoff snapshots the cubby's last boards and available images, including those retained while its computer sleeps. It writes these files in the existing `<dataDir>/drafts/<id>` checkout:
-
-- `README.md`: project name and tagline.
-- `docs/BRIEF.md`: decisions and idea cards with notes.
-- `docs/PLAN.md`: the plan.
-- `docs/FEEDBACK.md`: feedback on every idea and screen card.
-- `design/system.md` and `design/tokens.json`: brand name, tagline and color tokens.
-- `design/SCREENS.md`: every screen's status and note, approved first, with links to exported images.
-- `design/screens/<card-id>.<png|jpg|webp>`: cleaned bytes for each approved screen whose image is available in office memory. Unapproved screens and missing images produce no image file.
-
-These explicit paths are committed as Agent Office with hooks and commit signing disabled. Only validated card IDs become image filenames; board text never becomes a command. The transaction accepts binary files and refuses symlinked or non-directory parents and aliased files. The checkout must be clean on `main` with no existing remotes. Concurrent kickoff attempts are refused. A failure restores previous bytes, modes, Git state and newly created folders exactly; it keeps draft images available for retry. Successful kickoff drops the draft's image memory, and the public floor serves no draft image URLs.
-
-After the push and persistence succeed, the same floor becomes public, everyone receives the opening announcement, and its gong rings. Its elevator entry wears **New** for three days. `drafts.json` retains the kickoff timestamp, brand and approved screen titles for everyone's Design book and brand poster. The owner's slot-0 cubby keeps its identity and setup in the hall; its interior remains private to its owner and explicitly admitted watchers. A failed kickoff leaves the floor private, restores its previous files and commit, and removes any local bare repository made by that attempt. Org-mode failures do not delete GitHub repositories: if GitHub created one before a later failure, an operator must inspect it before retrying.
+**Open floor** runs on the Mac after the owner confirms the exact project name. The link uses the shared `kickoffDocuments` export for README, brief, plan, feedback, design system/tokens and approved screen files, commits those explicit paths, then creates the private repository through the Mac's GitHub sign-in. The office opens its normal public repository floor and retains the Design book, brand poster, gong and New badge. See [Studio and Open floor](hq.md#new-projects-and-add-your-project) for failure/retry behavior. The retired `drafts.new` and `drafts.kickoff` wire requests only return migration notices and never touch a checkout.
 
 ## Sharing (step 4)
 
 For legacy rooms not owned by the configured HQ owner, behind `AGENT_OFFICE_CUBBIES=1`, the server accepts `cubbies.knock` from a signed-in account on an online cubby's floor, except its owner. The owner receives `cubbies.knocked` (including in their other browser tabs) and an owner-only `knocking` list. Each account can knock on each cubby at most once per 30 seconds, including across tabs and reconnects. A pending knock cannot be repeated until answered or expired. There are at most eight pending knocks per cubby, and each expires after two minutes.
 
-The owner, on that floor, answers with `cubbies.admit`: `allow: true` admits the requesting browser connection; `allow: false` refuses its knock or sends that account's watchers out. The affected connection receives `cubbies.answer`. An admitted connection gets `watching: true` and the live interior, including the lead's chat, roster, plan and Needs you. Pairing computer IDs, trusted devices and device requests, watcher lists and pending knocks stay owner-only. Other tabs and reconnected browsers must knock separately. Admins have no bypass. Watching grants no permission to chat with the lead, change someone else's setup, approve anything or send their tasks.
+The owner, on that floor, answers with `cubbies.admit`: `allow: true` admits the requesting browser connection; `allow: false` refuses its knock or sends that account's watchers out. The affected connection receives `cubbies.answer`. An admitted connection gets `watching: true` and the live interior, including the lead's chat, roster, plan and Needs you. Pairing computer IDs, watcher lists and pending knocks stay owner-only. Other tabs and reconnected browsers must knock separately. Admins have no bypass. Watching grants no permission to chat with the lead, change someone else's setup, approve anything or send their tasks.
 
 `cubbies.leave`, leaving the floor, browser disconnect, account loss, owner dismissal, and the computer sleeping or going offline end watching. Pending knocks also clear on exit or disconnect. Watching does not return automatically on wake. Grants and knocks live only in server memory and never enter `cubbies.json`; the existing bounded chat tail stays in memory too.
 
@@ -119,7 +96,7 @@ Only the owner on their cubby's floor can use `cubbies.sendTask`. It requires a 
 
 The `/lite?…` browser's `lite=1` WebSocket uses the existing welcome and floor-entry paths. Those already include the same per-account `cubbies` and `drafts` pieces as 3D; ongoing messages use those same views. The owner receives their interior and draft boards, and other accounts never receive private drafts. This server step adds no client controls.
 
-Server verification: `tests/cubby-sharing.test.ts` exercises socket dispatch, admission and revocation, session cleanup, limits and expiry, admin restrictions, task queue attribution and delayed sign-in checks, and lite welcome/floor-entry/update privacy. PR #96 review fixes (2026-11-25), owned by the bounded Codex worker on `feat/cubbies-step-four-sharing-20261125` from `0f756f5`, add seven regressions for cross-process device revocation, lock recovery/contention, signer rechecks, per-account request throttling, and signed-send backpressure/retry. Typecheck, client build with `--configLoader runner`, server build, both cubby browser scripts (zero page errors), source-size guard and docs check pass. The full suite passes 916 of 918 tests; the two clone-recovery failures also reproduce on untouched base `0f756f5` because this sandbox denies the `ps` lookup used to adopt a running clone. Evidence is in `.agent-office/review-fixes/` in this worktree. Next: the lead reviews and reruns the full suite with normal process inspection before integration. No push, merge, release or deployment is part of this worker task.
+Server verification: `tests/cubby-sharing.test.ts` covers admission, revocation, account/floor boundaries, queue attribution and lite privacy. `tests/cubby-sharing-ui.mjs` keeps read-only history, watcher admission/removal, explicit task transfer and phone coverage. Legacy signed-chat composer and key-enrollment checks are retired; `tests/link-reviews.test.ts`, `hq-talk-ui.mjs` and `studio-ui.mjs` cover their linked replacements.
 
 ## Existing CI runs, one watcher
 
@@ -135,7 +112,7 @@ There are no dispatch, retry, cancellation, merge or deploy controls here. The c
 
 ## Pitch gallery (step 1)
 
-With `AGENT_OFFICE_CUBBIES=1`, a lead on the owner's connected computer can publish `.agent-office/pitch.json` in the selected project folder. The connector reads this explicit file on its normal snapshot cycle. For example:
+A lead on the linked Mac can publish `.agent-office/pitch.json` in its registered project folder. The Mac link reads this explicit file on its normal snapshot cycle. For example:
 
 ```json
 {
@@ -154,25 +131,127 @@ With `AGENT_OFFICE_CUBBIES=1`, a lead on the owner's connected computer can publ
 
 The file is limited to 64 KiB. IDs must match `[\w-]{1,64}`; there is at most one piece of each kind, four pieces total, 24 slide images and eight ad images. Images must be PNG, JPEG or WebP under `.agent-office/pitch/`, with regular directories and no symlinks or traversal. The existing design-image checks strip metadata, cap files at 2 MiB and decoded dimensions at 16 megapixels, then transfer cleaned bytes over the same chunked channel. The server announces an image only after its complete hash, format and dimensions have been checked. Pitch images have a 32 MiB cleaned-file byte budget per owner across all their cubbies, including the decoded byte size of in-flight base64 chunks; an image exceeding the budget is omitted while earlier images remain. Pitch rows and images are discarded when their cubby record, account or floor is removed, or their computer is offline or no longer admitted.
 
-On ordinary project floors, only the publishing cubby's owner receives the pitch, image URLs, verdicts and lead replies. An explicitly configured [private HQ](hq.md) also shows the owner's pitch and images to allowed managers on HQ, read-only; lead replies and device fingerprints stay owner-only. Admitted watchers and admins have no extra access. Other accounts' meeting rooms are unchanged. When one owner has multiple publishing computers on a floor, the room shows the pitch from their first publishing cubby in slot order. Images remain scoped to their publishing cubby. A server restart waits for a fresh computer snapshot; verdicts persist on the computer.
+On matching project floors, only the signed-in HQ owner receives the linked Mac's pitch, image URLs, verdicts and lead replies. An explicitly configured [private HQ](hq.md) also shows the owner's pitch and images to allowed managers on HQ, read-only; lead replies stay owner-only. Admitted watchers and admins have no extra access. Other accounts' meeting rooms are unchanged. The freshest Mac link supplies linked pitches. Legacy cubby publications remain read-only, selected in slot order, with images scoped to their publishing cubby. A server restart waits for a fresh computer snapshot; verdicts persist on the computer.
 
 `building` puts a status pill beside the meeting-room door. `ready` displays a home-page screenshot on the wall, a video screen, a slide easel and ad cards on the existing table. Entering the room eases down the owner's lighting and brings up up to four warm lights without shadows. The owner’s back-wall board shows the pitch’s building or ready state; other accounts keep the normal meeting board. The door, seats and existing meeting board keep their original interactions. Press **E** on a piece for its large view; slides have previous/next controls. **✕** and **Esc** return to mouse-look. `/lite` lists the same pieces with large views and verdict controls.
 
-**Approve**, **Change…** and **Drop** apply to a piece; one verdict covers the entire ads set. Change requires a note, at most 1,000 characters. The trusted owner device signs the piece ID, pitch version, verdict, note, request ID, timestamp and cubby/computer binding. The connector checks the signature, a ±60-second window and replay IDs before atomically saving a private, bounded `.agent-office/pitch-feedback.json`. The saved rows include the owner signature and all signed fields; every snapshot re-verifies them against the current trusted devices and cubby/floor/computer binding, dropping unsigned or invalid rows. Stamps appear only when the verified saved file comes back in a snapshot. A stamp records the owner’s review only; it is never a merge, publish or spend approval, which still requires an explicit yes from the owner. Increment `version` for a fresh review. An idle lead receives `Pitch verdict on <title> (<version>): Change — <note>`; a busy lead can read the saved file. Pitch replies stay out of the cubby's watcher-visible conversation.
+**Approve**, **Change…** and **Drop** apply to a piece; one verdict covers the entire ads set. Change requires a note, at most 1,000 characters. The signed-in HQ owner sends the review through the same `lead.send` frame used by chat and Studio feedback. The admitted Mac link resolves the publishing project, validates piece/version, rejects duplicate request IDs and atomically writes mode-`0600` `.agent-office/pitch-feedback.json`. The file records `source: "office-link"` and the owner attribution; old signature-only rows are ignored. Stamps come from the Mac's next snapshot. Increment `version` for a fresh review. Reviews never authorize merges, publishing or spending. Lead notifications use the normal private talk queue and replies remain owner-only.
 
 Home-page links accept HTTPS only, without credentials, and open with no opener or referrer. The wall currently uses the published screenshot: arbitrary-site live framing is not enabled. YouTube videos use the existing TV embed/player path only while the owner is inside the ready room; leaving removes the iframe. A video without a YouTube ID keeps its poster and the “▶ opens on your computer” note. A future live-site screen must use `sandbox="allow-scripts"` and `referrerpolicy="no-referrer"`, without same-origin, forms, popups or top navigation permissions; an iframe load event alone cannot establish that a site accepted framing.
 
 ## v8 phase 5 cleanup handoff
 
-Source: Jonathan’s bounded cleanup brief, 2026-11-27, part 1. Owner: Codex builder. Branch: `feat/v8-cleanup-20261128`, based on `573fd01`; delivery is a local commit only. Phase 4 owns Studio, Open floor, Add your project and the later VPS draft-checkout removal.
+Source: Jonathan's v8 decision and bounded part-2 brief, 2026-11-27. Owner: Codex builder. Branch: `feat/v8-cleanup-2-20261128`, based on `e34f93e` (#118 over #117). Delivery is a local commit only; no push, merge or deployment.
 
-- Approved: retire per-floor setup, legacy cubby CLI/bridge and enrollment UI, remove away cards and the HQ cubby, enforce coworker watch-only, preserve office features and managers on HQ.
-- Chosen within scope: retain ordinary satellite joins because the Satellites wall depends on them; keep retired wire messages as inert migration notices, `setupAllowed: false`, and the legacy `where: hq` value for old clients. Existing room records remain readable.
-- Built: no coworker talk targets, chat windows, knocking or held messages on project floors; server rejection and private-text filtering include visiting managers and old cubby sharing grants. HQ managers keep their existing behavior.
-- Verification evidence: `.paradev/cleanup-focused-final.log`, `.paradev/cleanup-tests-final.log`, `.paradev/browser-*.log`, `.paradev/cleanup-browser-talk.log`, and desktop/phone screenshots under `.paradev/shots-*`. Typecheck, Vite runner build and server build pass. The focused suite passes 151 tests. The full suite has two clone-recovery failures also reproduced on untouched `573fd01`; the legacy cubby-sharing browser aiming failure also reproduces on that base. Other requested browser suites pass.
-- Next step: lead integration after phase 4, then migrate the remaining signed feedback/thread consumers before deleting their keys and connector. No push, merge or deployment was performed.
+- You approved: Cloudflare owner identity for feedback, pitch verdicts and held-message Pass on; removal of device keys and VPS draft checkout/kickoff.
+- Chosen within scope: extend the existing `lead.send` frame with bounded structured review data; save before notifying the lead; keep old cubby publication/history read-only; leave old folders untouched and log them. Retired environment settings are inert with a startup notice. Signature-only legacy pitch verdict rows are ignored; newly saved verdicts use `source: "office-link"`. No old files are automatically migrated or deleted.
+- Kept: ordinary satellite joins; cubby room presentation, legacy non-HQ-owner watcher/task behavior; Studio/Open floor, draft presentation, shared document/image validation and Design books; Mac-link authentication and native subscription permission checks.
+- Built: reviews persist on the linked Mac; old held cubby messages resolve to their matching linked project and remain waiting if unavailable. Old draft tables show the migration message.
+- Checks: `npm run typecheck`, `npx vite build --configLoader runner`, `npm run build:server`, `tests/size.test.ts`, `git diff --check` and `agent-harness docs-check` pass. No size ceiling changed.
+- Full `npm test`: 1,032 tests, 1,030 pass, 2 fail. Both failures are unchanged clone recovery cases at `tests/clone.test.ts:167` and `:258`. Running just those cases against an untouched `git archive e34f93e` copy inside this worktree reproduces both. No tests or checks were disabled. Logs: `.paradev/cleanup2-tests-final.log` and `.paradev/cleanup2-base-clone.log`.
+- All 16 browser suites pass: studio, hq, hq-live, hq-leads, hq-talk, hq-mac, hq-activity, pitch, personal-agents, worker-owner-label, touch-controls, drafts, kickoff, design-board, cubby and cubby-sharing. The latter retains admission/removal, private history, explicit task transfer and phone checks; obsolete signed chat and VPS form flows are retired, with native talk and Studio replacements covered. Results: `.paradev/cleanup2-browser-final.log` and per-suite logs. Desktop/phone pitch verdict and old Studio notice screenshots were visually reviewed; see `.paradev/shots-pitch/05-verdict-modal-*` and `.paradev/shots-drafts/08-legacy-studio-notice-*`.
+- Startup worker/health inspection was attempted; this environment denied process inspection and `agent-harness status --open` with a permission error. Existing worktrees were preserved; no worker was stopped or launched. Build and browser checks use local fixtures, not a deployed office.
+- Next step: lead review and integration of the local cleanup commit containing this handoff. The two baseline clone failures remain for the lead to assess. Nothing was pushed, merged, deployed or published.
+
+<!-- cleanup2-files -->
+<details>
+<summary>File accounting: 88 files; +712 / −2795 lines</summary>
+
+Line counts compare this cleanup with `e34f93e`; shared presentation and native Mac helpers stay where existing callers use them.
+
+| Change | File | Added | Removed |
+| --- | --- | ---: | ---: |
+| M | `README.md` | 4 | 4 |
+| M | `docs/hq.md` | 7 | 5 |
+| M | `docs/local-presence-delivery.md` | 125 | 46 |
+| M | `src/client/features/cubbies/index.ts` | 0 | 3 |
+| M | `src/client/features/drafts/index.ts` | 3 | 3 |
+| M | `src/client/features/drafts/kickoff-model.ts` | 1 | 0 |
+| M | `src/client/features/drafts/model.ts` | 1 | 1 |
+| M | `src/client/features/drafts/ui-kickoff.ts` | 6 | 94 |
+| M | `src/client/features/hq/lead-chat.ts` | 0 | 1 |
+| M | `src/client/features/hq/messages.css` | 1 | 1 |
+| M | `src/client/features/hq/messages.ts` | 6 | 21 |
+| M | `src/client/lite-cubby.ts` | 1 | 4 |
+| M | `src/client/shared/cubby/chat.css` | 0 | 1 |
+| M | `src/client/shared/cubby/chat.ts` | 15 | 47 |
+| D | `src/client/shared/cubby/devices.ts` | 0 | 5 |
+| D | `src/client/shared/cubby/keys.ts` | 0 | 99 |
+| M | `src/client/shared/drafts/card.ts` | 20 | 52 |
+| M | `src/client/shared/pitch/review.ts` | 1 | 8 |
+| D | `src/client/shared/pitch/verdict.ts` | 0 | 6 |
+| M | `src/client/state/slices/pitch.ts` | 1 | 1 |
+| M | `src/server/building.ts` | 2 | 0 |
+| M | `src/server/cubbies/index.ts` | 6 | 115 |
+| M | `src/server/cubbies/local/config.ts` | 1 | 26 |
+| M | `src/server/cubbies/local/connector.ts` | 0 | 266 |
+| D | `src/server/cubbies/local/device-lock.ts` | 0 | 44 |
+| D | `src/server/cubbies/local/devices.ts` | 0 | 158 |
+| M | `src/server/cubbies/local/pitch-feedback.ts` | 13 | 18 |
+| M | `src/server/cubbies/local/pitch.ts` | 3 | 3 |
+| M | `src/server/cubbies/snapshot.ts` | 1 | 19 |
+| M | `src/server/cubbies/wire.ts` | 3 | 51 |
+| M | `src/server/drafts/index.ts` | 10 | 74 |
+| D | `src/server/drafts/kickoff.ts` | 0 | 64 |
+| A | `src/server/drafts/legacy.ts` | 16 | 0 |
+| D | `src/server/drafts/remote.ts` | 0 | 32 |
+| M | `src/server/hq/cubbies.ts` | 2 | 2 |
+| M | `src/server/hq/dispatch.ts` | 3 | 4 |
+| M | `src/server/hq/leads.ts` | 0 | 8 |
+| M | `src/server/hq/mac.ts` | 1 | 1 |
+| M | `src/server/hq/messages.ts` | 5 | 20 |
+| A | `src/server/hq/reviews.ts` | 53 | 0 |
+| M | `src/server/hq/studio.ts` | 6 | 7 |
+| M | `src/server/hq/talk-handlers.ts` | 9 | 1 |
+| M | `src/server/hq/talk.ts` | 3 | 2 |
+| M | `src/server/hq/views.ts` | 7 | 2 |
+| M | `src/server/link/headless.ts` | 1 | 1 |
+| M | `src/server/link/project-lead.ts` | 1 | 1 |
+| A | `src/server/link/reviews.ts` | 22 | 0 |
+| M | `src/server/link/talk.ts` | 2 | 0 |
+| M | `src/server/ws/handlers/cubbies.ts` | 1 | 6 |
+| M | `src/server/ws/handlers/drafts.ts` | 5 | 27 |
+| M | `src/server/ws/handlers/pitch.ts` | 3 | 3 |
+| M | `src/shared/protocol/cubbies.ts` | 5 | 65 |
+| M | `src/shared/protocol/drafts.ts` | 6 | 9 |
+| M | `src/shared/protocol/hq.ts` | 1 | 1 |
+| A | `src/shared/protocol/lead-review.ts` | 12 | 0 |
+| M | `src/shared/protocol/lead-talk.ts` | 5 | 2 |
+| M | `src/shared/protocol/pitch.ts` | 2 | 9 |
+| A | `tests/cleanup2-legacy.test.ts` | 37 | 0 |
+| M | `tests/client-structure.test.ts` | 1 | 1 |
+| M | `tests/cubbies.test.ts` | 0 | 67 |
+| D | `tests/cubby-device-lock.test.ts` | 0 | 73 |
+| D | `tests/cubby-devices.test.ts` | 0 | 157 |
+| M | `tests/cubby-local-config.test.ts` | 11 | 12 |
+| D | `tests/cubby-local-connector.test.ts` | 0 | 97 |
+| M | `tests/cubby-local-lead.test.ts` | 1 | 2 |
+| M | `tests/cubby-local-roster.test.ts` | 1 | 2 |
+| D | `tests/cubby-owner-keys.test.ts` | 0 | 114 |
+| M | `tests/cubby-sharing-ui.mjs` | 5 | 11 |
+| M | `tests/cubby-sharing.test.ts` | 4 | 16 |
+| M | `tests/cubby-ui.mjs` | 4 | 38 |
+| M | `tests/design-board-ui.mjs` | 13 | 35 |
+| M | `tests/draft-feedback.test.ts` | 19 | 150 |
+| M | `tests/draft-images.test.ts` | 7 | 21 |
+| M | `tests/drafts-ui.mjs` | 15 | 29 |
+| M | `tests/drafts-ui.test.ts` | 2 | 2 |
+| M | `tests/drafts.test.ts` | 9 | 46 |
+| M | `tests/hq-leads-ui.mjs` | 7 | 24 |
+| M | `tests/hq-ui.mjs` | 3 | 4 |
+| M | `tests/hq.test.ts` | 6 | 63 |
+| M | `tests/kickoff-ui.mjs` | 7 | 51 |
+| M | `tests/kickoff-ui.test.ts` | 2 | 2 |
+| M | `tests/kickoff.test.ts` | 4 | 215 |
+| A | `tests/link-reviews.test.ts` | 130 | 0 |
+| M | `tests/pitch-ui.mjs` | 2 | 4 |
+| M | `tests/pitch.test.ts` | 4 | 96 |
+| D | `tests/support/cubby-keys.ts` | 0 | 16 |
+| M | `tests/support/draft-board.ts` | 3 | 4 |
+| A | `tests/support/legacy-draft.ts` | 13 | 0 |
+
+</details>
 
 ## Needs Jonathan
 
-- Dependency conflict from this brief: browser `shared/cubby/keys.ts`, local `devices.ts` and `device-lock.ts`, and the signed connector still serve draft-board feedback, pitch verdict verification and legacy HQ message passing. They were retained with trust checks intact. Their deletion needs the dependent flows migrated first; no authorization model was substituted here.
-- The protected Studio table still labels its old action “Set up”; its compatibility seam now only shows the Mac-link migration notice. Phase 4 must replace that caller. Protected Studio/draft/kickoff implementation files and VPS checkouts were not changed.
+- None within this builder scope.

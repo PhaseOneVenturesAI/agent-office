@@ -1,3 +1,4 @@
+import { legacyDraft } from './support/legacy-draft.js';
 import { legacyCubby } from './support/legacy-cubby.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -55,48 +56,9 @@ function fixture(t: any, enabled = true, starters: string | undefined = ' Alice,
   return { dir, building, drafts, ctx, nodes, client, names };
 }
 
-test('only named accounts create local private drafts; names, collisions, permissions and restart', t => {
-  const f = fixture(t);
-  for (const owner of [undefined, 'bob', 'missing']) assert.throws(() => f.drafts.create('Secret', owner), /designated/);
-  assert.throws(() => f.drafts.create('  ', 'alice'), /name/);
-  const c = f.client('alice');
-  draftsHandlers['drafts.new'](f.ctx, c, { t: 'drafts.new', name: '  Secret\n project  ' });
-  const id = c.ws.sent.find((m: any) => m.t === 'drafts.made').floorId;
-  assert.equal(id, 'draft-secret-project');
-  assert.equal(c.peer.floor, undefined, 'creation waits for the client to ride');
-  floorHandlers['floor.go'](f.ctx, c, { t: 'floor.go', floor: id });
-  assert.equal(c.peer.floor, id, 'the owner arrives through the normal visibility check');
-  const def = f.building.list()[0]; assert.equal(def.draft, true); assert.equal(def.name, 'Secret project');
-  const git = (...args: string[]) => execFileSync('git', args, { cwd: def.dir, encoding: 'utf8' }).trim();
-  assert.equal(git('branch', '--show-current'), 'main');
-  assert.equal(git('rev-list', '--count', 'HEAD'), '1');
-  assert.equal(git('log', '-1', '--format=%an <%ae>'), 'Agent Office <office@localhost>');
-  assert.equal(git('ls-tree', '-r', '--name-only', 'HEAD'), '');
-  assert.equal(git('remote'), '');
-  assert.equal(statSync(path.join(f.dir, 'drafts.json')).mode & 0o777, 0o600);
-  assert.equal(f.drafts.create('Secret project', 'alice').id, id + '-2');
-  const building = new Building(f.dir, f.dir), reloaded = new Drafts(f.dir, true, 'alice', x => f.names[x], building);
-  assert.equal(building.list()[0].draft, true); assert.equal(reloaded.owns(id, 'alice'), true);
-  assert.equal(reloaded.owns(id, 'bob'), false);
-});
-
-test('empty starter lists and the off flag have no drafts, including persisted drafts on restart', t => {
-  const f = fixture(t), id = f.drafts.create('Secret', 'alice').id;
-  for (const starters of [undefined, '', ' , ']) {
-    assert.equal(new Drafts(f.dir, true, starters, x => f.names[x], f.building).canStart('alice'), false);
-  }
-  const disabled = new Drafts(f.dir, false, 'Alice', x => f.names[x], f.building);
-  assert.equal(disabled.records.rows.size, 0);
-  assert.throws(() => disabled.create('No', 'alice'), /designated/);
-  assert.deepEqual(disabled.state(id, 'alice', f.ctx.cubbies), { enabled: false, canStart: false, canKickoff: false });
-  f.ctx.drafts = disabled; f.ctx.openFloor(f.building.list()[0]);
-  assert.deepEqual(f.ctx.floorInfos({ accountId: 'alice' }), []);
-  const off = fixture(t, false); assert.equal(existsSync(path.join(off.dir, 'drafts.json')), false);
-});
-
 test('floor lists and throttled updates are per account; other admins cannot ride, remove, or fetch a draft', async t => {
   const f = fixture(t), alice = f.client('alice'), bob = f.client('bob'), guest = f.client();
-  const def = f.drafts.create('Hidden project', 'alice'); f.ctx.openFloor(def);
+  const def = legacyDraft(f.drafts, f.building, f.dir, 'Hidden project', 'alice'); f.ctx.openFloor(def);
   f.ctx.floorsChanged(); f.ctx.floorsChanged();
   await new Promise(r => setTimeout(r, 300));
   assert.equal(alice.ws.sent.filter((m: any) => m.t === 'floors').length, 1);
@@ -111,7 +73,7 @@ test('floor lists and throttled updates are per account; other admins cannot rid
   }
   f.ctx.floorsChanged(); await new Promise(r => setTimeout(r, 300));
   assert.equal(alice.ws.sent.filter((m: any) => m.t === 'floors').length, 1, 'unchanged lists are not sent again');
-  const another = f.drafts.create('Another secret', 'alice'); f.ctx.openFloor(another);
+  const another = legacyDraft(f.drafts, f.building, f.dir, 'Another secret', 'alice'); f.ctx.openFloor(another);
   f.ctx.floorsChanged(); await new Promise(r => setTimeout(r, 300));
   assert.equal(bob.ws.sent.filter((m: any) => m.t === 'floors').length, 1, 'private changes do not notify other accounts');
   await f.ctx.closeFloor(f.ctx.floors.get(def.id)!, 'Alice');
@@ -119,7 +81,7 @@ test('floor lists and throttled updates are per account; other admins cannot rid
 });
 
 test('welcome and URL arrival never expose a private floor or another person’s private location', t => {
-  const f = fixture(t), def = f.drafts.create('Secret floor', 'alice'); f.ctx.openFloor(def);
+  const f = fixture(t), def = legacyDraft(f.drafts, f.building, f.dir, 'Secret floor', 'alice'); f.ctx.openFloor(def);
   const alice = f.client('alice'); alice.peer.floor = def.id; alice.peer.doing = 'Private design';
   // No floor for Bob: the real connection path builds its empty floor view and welcome.
   const state = () => ({});
@@ -140,7 +102,7 @@ test('welcome and URL arrival never expose a private floor or another person’s
 
 test('one owner cubby supplies private boards and designers, retains boards asleep, and never persists them', t => {
   const f = fixture(t), alice = f.client('alice'), bob = f.client('bob');
-  const def = f.drafts.create('Secret', 'alice'); f.ctx.openFloor(def); alice.peer.floor = def.id;
+  const def = legacyDraft(f.drafts, f.building, f.dir, 'Secret', 'alice'); f.ctx.openFloor(def); alice.peer.floor = def.id;
   const setup = legacyCubby(f.ctx.cubbies, def.id, 'alice', 0, 'Nova', {} as any);
   const ws = socket(); f.nodes.attach(ws as any, setup.token);
   ws.frame({ t: 'hello', host: 'private', providers: [] });
@@ -166,13 +128,14 @@ test('one owner cubby supplies private boards and designers, retains boards asle
 });
 
 test('Building opens a real draft Floor with idle server agents; disabled restarts leave it closed', async t => {
-  const f = fixture(t), def = f.drafts.create('Real draft', 'alice');
+  const f = fixture(t), def = legacyDraft(f.drafts, f.building, f.dir, 'Real draft', 'alice');
   Object.assign(f.ctx, { cfg: { dataDir: f.dir, agentCmd: '/usr/bin/false', agentArgs: [] },
     ledger: {}, machine: { room: () => 0 }, prompts: {}, maps: { plan: () => ({}) }, signins: {}, leaveOnMerge: { on: false } });
   const { openFloors } = await import('../src/server/office/floors.js');
   await openFloors(f.ctx, 0);
   const floor = f.ctx.floors.get(def.id)!;
-  assert.ok(floor); assert.equal(floor.def.draft, true); assert.equal(floor.project.branch, 'main');
+  t.after(() => floor?.shutdown());
+  assert.ok(floor); assert.equal(floor.def.draft, true); assert.equal(floor.project.branch, undefined);
   assert.deepEqual(floor.workers.list(), []); assert.deepEqual(floor.queue.state().tasks, []);
   assert.equal(floor.github.issues.fetchedAt, 0); assert.equal(floor.github.pulls.fetchedAt, 0);
   await floor.shutdown(); f.ctx.floors.clear();
@@ -184,7 +147,7 @@ test('Building opens a real draft Floor with idle server agents; disabled restar
 
 test('removing a public floor chooses only a visible destination, even with a draft first in the building', async t => {
   const f = fixture(t), alice = f.client('alice'), bob = f.client('bob');
-  const draft = f.drafts.create('Secret destination', 'alice'); f.ctx.openFloor(draft);
+  const draft = legacyDraft(f.drafts, f.building, f.dir, 'Secret destination', 'alice'); f.ctx.openFloor(draft);
   const publicDef = { ...draft, id: 'public', name: 'Public project', draft: undefined };
   const publicFloor = f.ctx.openFloor(f.building.addLocal({ ...publicDef, dir: path.join(f.dir, 'public') }))!;
   bob.peer.floor = publicFloor.id; alice.peer.floor = draft.id;

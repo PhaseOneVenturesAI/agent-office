@@ -156,8 +156,8 @@ test('the lead’s name and greeting, and what E does at the table', () => {
   assert.equal(model.leadName(undefined), 'Your lead');
   assert.equal(model.leadName({ leadName: 'A very long lead name indeed' }).length, 20);
   assert.equal(model.greeting({ name: 'Kindly' }), 'Welcome to Kindly');
-  assert.deepEqual(model.studioAction({ cubbyId: 'c1' }, 'Nova'), { label: 'Talk to Nova', talk: true });
-  assert.deepEqual(model.studioAction({}, 'Nova'), { label: 'Set up', talk: false });
+  assert.deepEqual(model.studioAction({ cubbyId: 'c1' }, 'Nova'), { label: 'About this draft', talk: false });
+  assert.deepEqual(model.studioAction({}, 'Nova'), { label: 'About this draft', talk: false });
 });
 
 test('the boards: Decisions, Plan and Screens in the Issues, Task queue and PR places, Ideas over Services, each saying what to expect', () => {

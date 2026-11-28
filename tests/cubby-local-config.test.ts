@@ -1,4 +1,3 @@
-import { owner } from './support/cubby-keys.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, realpathSync } from 'node:fs';
@@ -22,26 +21,26 @@ function fixture(t: any) {
 
 test('registry maps native Codex thread UUID; computer identity stable, historical lead ignored, conflicts rejected', async (t) => {
   const f = fixture(t); f.registry({ leadThreadId: session, historicalLead: { providerSessionId: 'old' }, localState: 'present' });
-  const a = await configure({ ownerKey: owner.ownerKey, floor: 'floor', project: f.project }, f.home, f.execute);
-  const b = await configure({ ownerKey: owner.ownerKey, floor: 'floor', project: f.project }, f.home, f.execute);
+  const a = await configure({ floor: 'floor', project: f.project }, f.home, f.execute);
+  const b = await configure({ floor: 'floor', project: f.project }, f.home, f.execute);
   assert.equal(a.session, session); assert.equal(a.provider, 'codex'); assert.equal(a.computerId, b.computerId);
   assert.deepEqual(a.roots, [f.project, f.worktree]);
-  await assert.rejects(configure({ ownerKey: owner.ownerKey, floor: 'floor', project: f.project, provider: 'claude' }, f.home, f.execute), /conflict/);
-  await assert.rejects(configure({ ownerKey: owner.ownerKey, floor: 'floor', project: f.project, newLead: true }, f.home, f.execute), /conflict/);
+  await assert.rejects(configure({ floor: 'floor', project: f.project, provider: 'claude' }, f.home, f.execute), /conflict/);
+  await assert.rejects(configure({ floor: 'floor', project: f.project, newLead: true }, f.home, f.execute), /conflict/);
   f.registry({ localState: 'archived', leadThreadId: session });
-  await assert.rejects(configure({ ownerKey: owner.ownerKey, floor: 'floor', project: f.project }, f.home, f.execute), /archived/);
+  await assert.rejects(configure({ floor: 'floor', project: f.project }, f.home, f.execute), /archived/);
   f.registry({ historicalLead: { providerSessionId: session }, localState: 'present' });
-  await assert.rejects(configure({ ownerKey: owner.ownerKey, floor: 'floor', project: f.project, provider: 'claude', newLead: true }, f.home, f.execute), /no confirmed active lead/);
+  await assert.rejects(configure({ floor: 'floor', project: f.project, provider: 'claude', newLead: true }, f.home, f.execute), /no confirmed active lead/);
 });
 
 test('new lead requires explicit local authorization and persists one UUID/account per project', async (t) => {
   const f = fixture(t);
-  await assert.rejects(configure({ ownerKey: owner.ownerKey, floor: 'f', project: f.project, provider: 'claude' }, f.home, f.execute), /existing/);
-  const a = await configure({ ownerKey: owner.ownerKey, floor: 'f', project: f.project, provider: 'claude', newLead: true, profile: 'phase-one' }, f.home, f.execute);
+  await assert.rejects(configure({ floor: 'f', project: f.project, provider: 'claude' }, f.home, f.execute), /existing/);
+  const a = await configure({ floor: 'f', project: f.project, provider: 'claude', newLead: true, profile: 'phase-one' }, f.home, f.execute);
   const release = projectLock(a.state); persistSelection(a); release();
-  const b = await configure({ ownerKey: owner.ownerKey, floor: 'f', project: f.project }, f.home, f.execute);
+  const b = await configure({ floor: 'f', project: f.project }, f.home, f.execute);
   assert.equal(a.session, b.session); assert.equal(b.executable, 'claude-phase-one'); assert.equal(b.fresh, true);
-  await assert.rejects(configure({ ownerKey: owner.ownerKey, floor: 'f', project: f.project, profile: 'personal' }, f.home, f.execute), /profile/);
+  await assert.rejects(configure({ floor: 'f', project: f.project, profile: 'personal' }, f.home, f.execute), /profile/);
   const record = JSON.parse(readFileSync(path.join(a.state, 'session.json'), 'utf8')); assert.equal(record.authorizedNew, true);
 });
 
@@ -70,6 +69,6 @@ test('the harness registry is read from ~/Documents/GitHub/AgentHarness, falling
   const dir = path.join(f.home, 'Documents/GitHub/AgentHarness'); mkdirSync(dir, { recursive: true });
   writeFileSync(path.join(dir, 'projects.json'), JSON.stringify({ projects: { Example: { path: f.project, leadThreadId: session } } }));
   assert.equal(registryFile(f.home), path.join(dir, 'projects.json'), 'new location wins once it exists');
-  const c = await configure({ ownerKey: owner.ownerKey, floor: 'floor', project: f.project }, f.home, f.execute);
+  const c = await configure({ floor: 'floor', project: f.project }, f.home, f.execute);
   assert.equal(c.provider, 'codex', 'the entry comes from the new registry');
 });

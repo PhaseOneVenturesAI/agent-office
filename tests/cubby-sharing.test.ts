@@ -1,3 +1,4 @@
+import { legacyDraft } from './support/legacy-draft.js';
 import { legacyCubby } from './support/legacy-cubby.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -111,7 +112,7 @@ test('knock and admission share a read-only interior, never owner setup details 
   assert.deepEqual(f.alice.view()[0].watchers, [{ accountId: 'bob', name: 'Bob' }]);
   assert.deepEqual(f.alice.view()[0].knocking, []);
   for (const [msg, error] of [
-    [{ t: 'cubbies.chat', id, text: 'forged' }, /Only the owner can talk to this lead/],
+    [{ t: 'cubbies.chat', id, text: 'forged' }, /Cubby chat removed/],
     [{ t: 'cubbies.setup', slot: 0, leadName: 'Stolen', look: {} }, /setup removed/],
     [{ t: 'cubbies.sendTask', id, title: 'No', prompt: 'No' }, /Only the cubby owner/],
     [{ t: 'cubbies.admit', id, accountId: 'admin', allow: true }, /Only the cubby owner/],
@@ -119,7 +120,7 @@ test('knock and admission share a read-only interior, never owner setup details 
   assert.equal(f.cubby!.ws.sent.length, 1, 'nothing besides cubby.ready crosses to the computer');
   f.alice.send({ t: 'cubbies.chat', id, text: 'Owner says hello', requestId: 'owner-1', at: Date.now(), ownerSig: 'A'.repeat(86) });
   f.cubby!.ws.frame({ t: 'cubby.reply', floorId: 'floor', requestId: 'owner-1', text: 'Lead replies' });
-  assert.deepEqual(last(f.bob, 'cubbies').state.cubbies[0].interior.chat.map((m: any) => m.text), ['Owner says hello', 'Lead replies']);
+  assert.deepEqual(last(f.bob, 'cubbies').state.cubbies[0].interior.chat.map((m: any) => m.text), [], 'retired cubby chat never reaches the connector');
   const saved = readFileSync(path.join(f.dir, 'cubbies.json'), 'utf8');
   assert.doesNotMatch(saved, /watchers|knocking|bob|Owner says hello|Lead replies/);
 });
@@ -272,7 +273,7 @@ test('lite welcome, floor entry and updates include owner interiors and private 
   const welcome = last(lite, 'welcome');
   assert.equal(lite.c.peer.lite, true); assert.equal(welcome.cubbies.cubbies[0].interior.leadName, 'Nova');
   assert.deepEqual(welcome.queue, f.floor.queue.state());
-  const def = f.drafts.create('Private draft', 'alice'), floor = f.open(def), cubby = f.setup(def.id);
+  const def = legacyDraft(f.drafts, f.ctx.building, f.dir, 'Private draft', 'alice'), floor = f.open(def), cubby = f.setup(def.id);
   const boards = { ideas: [], decisions: ['Draft decision'], plan: ['Draft plan'], screens: [], brand: { colors: [] } };
   cubby.snapshot({ draft: boards });
   const phone = f.client('alice', def.id, true), draftWelcome = last(phone, 'welcome');
@@ -298,17 +299,4 @@ test('sharing and task sending remain disabled with the feature flag off', t => 
   assert.deepEqual(f.floor.queue.state().tasks, []);
   assert.equal(last(f.alice, 'cubbies.taskSent'), undefined);
   assert.deepEqual(f.alice.view(), []);
-});
-
-test('a device’s "asks to talk" note goes once it is approved on the computer, with one confirmation', t => {
-  const f = fixture(t), ws = f.cubby!.ws, key = 'k'.repeat(120), mac = { fingerprint: 'f'.repeat(32), label: 'Mac', addedAt: 1 };
-  const chat = () => f.alice.view()[0].interior!.chat.map((l: { text: string }) => l.text);
-  ws.frame({ t: 'cubby.devices', floorId: 'floor', devices: [mac], requests: [{ requestId: 'ask1', label: 'iPhone', publicKey: key, at: Date.now() }],
-    note: '📱 iPhone asks to talk to your lead. Its code is 123 456.' });
-  assert.ok(chat().some(t => t.includes('asks to talk')));
-  ws.frame({ t: 'cubby.devices', floorId: 'floor', devices: [mac, { fingerprint: 'e'.repeat(32), label: 'iPhone', addedAt: 2 }], requests: [] });
-  assert.ok(!chat().some(t => t.includes('asks to talk')));
-  assert.equal(chat().filter(t => t === '✅ iPhone can talk to your lead now.').length, 1);
-  ws.frame({ t: 'cubby.devices', floorId: 'floor', devices: [mac, { fingerprint: 'e'.repeat(32), label: 'iPhone', addedAt: 2 }], requests: [] });
-  assert.equal(chat().filter(t => t.startsWith('✅')).length, 1);
 });

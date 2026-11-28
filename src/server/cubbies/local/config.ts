@@ -2,17 +2,13 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ownerPublicKey } from '../wire.js';
-import { pinOf, readPins, updatePins } from './devices.js';
 import { canonical, jsonFile, run, uuid, type Run } from './io.js';
 
 export interface LocalOptions {
-  ownerKey?: string; replaceOwnerKey?: boolean;
   floor?: string; project?: string; provider?: string; session?: string; profile?: string; newLead?: boolean;
 }
 export interface LocalConfig {
   projectsFile?: string;
-  ownerKey: string; replaceOwnerKey?: boolean;
   floor: string; project: string; roots: string[]; branches: Map<string, string>; state: string;
   computerId: string; provider: 'claude' | 'codex'; session: string;
   executable: string; claudeHome: string; fresh: boolean;
@@ -43,8 +39,6 @@ export function registryFile(home = os.homedir()): string {
 
 export async function configure(options: LocalOptions, home = os.homedir(), execute: Run = run): Promise<LocalConfig> {
   if (!options.floor || options.floor.length > 128 || !options.project) throw new Error('--cubbies requires --floor and --project');
-  if (!options.ownerKey) throw new Error('--cubbies requires --owner-key from the owner browser');
-  ownerPublicKey(options.ownerKey);
   if (options.provider && !['claude', 'codex'].includes(options.provider)) throw new Error('--lead-provider must be claude or codex');
   if (options.profile && !['personal', 'phase-one'].includes(options.profile)) throw new Error('--lead-profile must be personal or phase-one');
   if (options.session && !uuid(options.session)) throw new Error('--lead-session must be a UUID');
@@ -72,7 +66,6 @@ export async function configure(options: LocalOptions, home = os.homedir(), exec
   const common = (await execute('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], scope.project)).trim();
   const key = createHash('sha256').update(canonical(common) ?? common).digest('hex');
   const state = path.join(base, key);
-  checkOwnerPin(state, options.floor, options.ownerKey, options.replaceOwnerKey);
   let saved: any;
   if (existsSync(path.join(state, 'session.json'))) saved = jsonFile(path.join(state, 'session.json'));
   const provider = activeProvider ?? saved?.provider ?? options.provider;
@@ -95,7 +88,7 @@ export async function configure(options: LocalOptions, home = os.homedir(), exec
   if (!uuid(computerId)) throw new Error('Invalid locally persisted computer identity');
   const claudeHome = profile === 'phase-one' ? path.join(home, '.claude-phase-one-ventures') : profile === 'personal'
     ? path.join(home, '.claude') : process.env.CLAUDE_CONFIG_DIR ?? path.join(home, '.claude');
-  return { ...scope, projectsFile: registryPath, ownerKey: options.ownerKey, replaceOwnerKey: options.replaceOwnerKey, floor: options.floor, state, computerId, provider, session: session ?? randomUUID(),
+  return { ...scope, projectsFile: registryPath, floor: options.floor, state, computerId, provider, session: session ?? randomUUID(),
     executable: profile ? `claude-${profile}` : provider, claudeHome, fresh: !session || saved?.authorizedNew === true };
 }
 
@@ -103,25 +96,7 @@ export async function configure(options: LocalOptions, home = os.homedir(), exec
 export function persistSelection(config: LocalConfig): void {
   const file = path.join(config.state, 'session.json');
   if (existsSync(file) && jsonFile(file).session !== config.session) throw new Error('Project lead changed while acquiring its lock');
-  persistOwnerPin(config);
   const record = { projectKey: path.basename(config.state), provider: config.provider, session: config.session, authorizedNew: config.fresh,
     profile: config.executable === 'claude-personal' ? 'personal' : config.executable === 'claude-phase-one' ? 'phase-one' : undefined };
   if (!existsSync(file)) writeFileSync(file, JSON.stringify(record), { flag: 'wx', mode: 0o600 });
-}
-
-function checkOwnerPin(state: string, floor: string, ownerKey: string, replace = false): void {
-  const pins = readPins(state, floor);
-  if (pins && !pins.some((p) => p.key === ownerKey) && !replace) throw new Error('Different --owner-key: use --replace-owner-key locally only to authorize this device');
-}
-/**
- * Recheck under the project lock. The first device is pinned here; --replace-owner-key (for a key that isn't
- * trusted yet) starts the list again from this one device. More devices are added by a trusted one (devices.ts), never by join.
- */
-function persistOwnerPin(config: LocalConfig): void {
-  ownerPublicKey(config.ownerKey);
-  updatePins(config.state, config.floor, pins => {
-    if (pins?.some(p => p.key === config.ownerKey)) return pins;
-    if (pins && !config.replaceOwnerKey) throw new Error('Different --owner-key: use --replace-owner-key locally only to authorize this device');
-    return [pinOf(config.ownerKey, 'First device', Date.now())];
-  });
 }
