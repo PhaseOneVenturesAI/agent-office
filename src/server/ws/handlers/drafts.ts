@@ -5,7 +5,7 @@ import type { HandlerMap, ViewPieces } from './types.js';
 import { cubbiesChanged } from './cubbies.js';
 
 export const draftsView: ViewPieces['drafts'] = (ctx, floor, c) =>
-  ctx.drafts?.state(floor?.id, c.accountId, ctx.cubbies) ?? { enabled: false, canStart: false };
+  ctx.hq?.studio?.state(floor?.id, c.accountId, ctx.drafts?.state(floor?.id, c.accountId, ctx.cubbies) ?? { enabled: false, canStart: false }) ?? ctx.drafts?.state(floor?.id, c.accountId, ctx.cubbies) ?? { enabled: false, canStart: false };
 const last = new WeakMap<Client, string>();
 export function draftsChanged(ctx: Ctx) {
   if (!ctx.drafts) return;

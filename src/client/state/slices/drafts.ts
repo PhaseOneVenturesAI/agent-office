@@ -1,3 +1,4 @@
+import { projectName } from '../../../shared/protocol/studio';
 import type { Slice } from '../store';
 import { syncDraftImages } from '../../shared/drafts/images';
 import { DRAFT_LIMITS, validDraftImageSize, EMPTY_BOARDS, cleanDraftName, type DraftBoards, type DraftFeedback, type DraftIdea, type DraftImage, type DraftScreen, type DraftsState, type DraftView, type Launched } from '../../../shared/protocol/drafts';
@@ -71,7 +72,7 @@ function cleanBoards(x: unknown): DraftBoards {
   const screens = cards(
     (Array.isArray(b.screens) ? b.screens : []).map((s) => {
       const c = cleanCard(s);
-      return c ? ({ ...c, status: STATUSES.includes(s?.status) ? s.status : 'sketch' } as DraftScreen) : undefined;
+      return c ? ({ ...c, status: STATUSES.includes(s?.status) ? s.status : 'sketch', ...(Number.isSafeInteger(s?.version) && s.version! > 0 && s.version! <= 1000 ? { version: s.version } : {}) } as DraftScreen) : undefined;
     }),
     DRAFT_LIMITS.screens,
   );
@@ -85,11 +86,12 @@ function cleanBoards(x: unknown): DraftBoards {
 function cleanHere(x: unknown): DraftView | undefined {
   if (!x || typeof x !== 'object') return undefined;
   const v = x as Partial<DraftView>;
-  const name = cleanDraftName(v.name);
+  const name = v.studio ? projectName(v.name) : cleanDraftName(v.name);
   if (typeof v.id !== 'string' || !v.id || !name) return undefined;
   const leadName = text(v.leadName, 24);
   return {
     id: v.id,
+    ...(v.studio === true ? { studio: true as const } : {}),
     name,
     createdAt: typeof v.createdAt === 'number' ? v.createdAt : 0,
     ...(typeof v.cubbyId === 'string' && v.cubbyId ? { cubbyId: v.cubbyId } : {}),
@@ -116,7 +118,7 @@ function cleanDrafts(x: DraftsState | undefined | null): DraftsState {
   if (!x || typeof x !== 'object' || !x.enabled) return NO_DRAFTS;
   const here = cleanHere(x.here);
   const launched = cleanLaunched(x.launched);
-  return { enabled: true, canStart: x.canStart === true, ...(here ? { here } : {}), ...(x.canKickoff === true ? { canKickoff: true } : {}), ...(launched ? { launched } : {}) };
+  return { enabled: true, studio: x.studio === true, canStart: x.canStart === true, ...(here ? { here } : {}), ...(x.canKickoff === true ? { canKickoff: true } : {}), ...(launched ? { launched } : {}) };
 }
 
 export const drafts: Slice = {

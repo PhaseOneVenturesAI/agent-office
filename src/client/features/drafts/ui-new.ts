@@ -1,4 +1,6 @@
 import './ui.css';
+import { store } from '../../state';
+import { openStudio } from '../../shared/studio/actions';
 import { DRAFT_NAME_MAX, cleanDraftName } from '../../../shared/protocol/drafts';
 import type { Net } from '../../net';
 import { h, openModal } from '../../ui/dom';
@@ -11,6 +13,7 @@ const ANSWER_MS = 20_000;
 
 /** Opens the New project window. */
 export function openNewProject(net: Net) {
+  if (store.drafts.studio) return openStudio(net, 'new');
   const name = h('input', { type: 'text', maxlength: DRAFT_NAME_MAX, placeholder: 'e.g. Kindly', 'aria-label': 'Project name', autocomplete: 'off', spellcheck: 'false' }) as HTMLInputElement;
   const submit = h('button.btn.primary', { type: 'submit' }, '✨ New project');
   const err = h('p.dn-err', { 'aria-live': 'polite' });

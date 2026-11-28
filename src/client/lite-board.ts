@@ -24,7 +24,7 @@ function row(floorId: string, card: BoardCard, open: () => void): HTMLElement {
       h(
         'span.dl-text',
         {},
-        h('b', {}, card.title),
+        h('b', {}, card.title + (card.version ? ` · v${card.version}` : '')),
         card.note ? h('small', {}, card.note) : null,
         chip || fb ? h('span.dl-meta', {}, chip ? h('span.dl-chip', { style: `background:${chip.bg};color:${chip.color}` }, chip.text) : null, fb ? h('span.dl-count', {}, fb) : null) : null,
       ),
@@ -46,7 +46,7 @@ function openBoardList(net: Net, openChat: (cubbyId: string) => void) {
     }
     const sections = (['ideas', 'screens'] as const).map((board) => ({ board, cards: boardCards(d.boards, board) }));
     const loaded = (c: BoardCard) => { const i = c.image ? draftImage(d.id, c.image) : null; return i === undefined ? 'l' : i ? 'i' : 't'; };
-    const state = sections.flatMap((s) => s.cards.map((c) => [c.id, c.title, c.note, c.status, c.feedback.length, loaded(c)]));
+    const state = sections.flatMap((s) => s.cards.map((c) => [c.id, c.title, c.note, c.status, c.version, c.feedback.length, loaded(c)]));
     const k = JSON.stringify([d.id, state]);
     if (k === key) return;
     key = k;

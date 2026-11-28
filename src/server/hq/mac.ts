@@ -26,7 +26,7 @@ export class HQMac {
   readonly dataDir: string;
   readonly pairings: Pairings;
   readonly pitches = new PitchStore();
-  constructor(dir: string, private hq: Pick<HQ, 'owns' | 'is' | 'floorId'>, private nodes: Nodes, private changed: () => void, private now = Date.now) {
+  constructor(dir: string, private hq: Pick<HQ, 'owns' | 'is' | 'floorId' | 'studio'>, private nodes: Nodes, private changed: () => void, private now = Date.now) {
     this.dataDir = dir;
     this.work = new HQLiveWork(now);
     this.talk = new HQTalk(dir, owner => hq.owns(owner), owner => this.talkNode(owner), (node, frame) => nodes.sendSigned(node, () => frame), changed, now);
@@ -84,6 +84,7 @@ export class HQMac {
     old.forEach(r => this.nodes.revoke(r.nodeId));
     this.changed(); return { token: invite.token, floorId: floor };
   }
+  projectNode(owner: string) { return this.talkNode(owner); }
   private talkNode(owner: string) {
     return this.freshest(owner)?.record.nodeId ?? [...this.records.values()].find(r => r.owner === owner && this.admitted.has(r.nodeId) && this.nodes.isOnline(r.nodeId))?.nodeId;
   }
@@ -135,6 +136,7 @@ export class HQMac {
   pitchViews(owner: string) {
     const fresh = this.freshest(owner); if (!fresh) return [];
     return fresh.live.projects.flatMap((row, i) => {
+      if (row.project.localState === 'draft') return [];
       const view = this.pitches.view(`hq-mac-${fresh.record.nodeId}-${i}`, fresh.record.floor, 'hq');
       return view ? [{ ...view, project: row.project.name, projectIndex: i, readOnly: true }] : [];
     });
@@ -154,6 +156,7 @@ export class HQMac {
       })) this.changed();
       return true;
     }
+    if (f.t === 'project.result') { if (this.admitted.has(nodeId)) void this.hq.studio?.accept(nodeId, owner, f); return true; }
     if (f.t === 'lead.state' || f.t === 'lead.reply') {
       if (this.admitted.has(nodeId)) this.talk.accept(nodeId, owner, f);
       return true;
@@ -170,6 +173,8 @@ export class HQMac {
       return true;
     }
     if (this.admitted.has(nodeId) && f.computerId === r.computerId && f.t === 'hq.image' && Number.isInteger(f.projectIndex) && f.projectIndex >= 0 && f.projectIndex < 12) {
+      const row = this.freshest(owner)?.live.projects[f.projectIndex];
+      if (row) this.hq.studio?.acceptImage(owner, row.project.name, f);
       if (this.pitches.accept(`hq-mac-${nodeId}-${f.projectIndex}`, f)) this.changed();
       return true;
     }
@@ -189,6 +194,7 @@ export class HQMac {
       projects.push({ project, agents, ...(clean.pitch ? { pitch: clean.pitch } : {}), ...(clean.draft ? { draft: clean.draft } : {}) });
     }
     this.live.set(this.key(owner, r.computerId!), { nodeId, computerName: this.admitted.get(nodeId)!, observedAt: Math.min(this.now(), f.observedAt), projects, cofounder: cleanLeadStatus(f.cofounder) });
+    this.hq.studio?.sync(owner, projects);
     projects.forEach((p, i) => this.pitches.publish(`hq-mac-${nodeId}-${i}`, owner, p.pitch));
     this.pitches.retain(key => !key.startsWith(`hq-mac-${nodeId}-`) || projects.some((_, i) => key === `hq-mac-${nodeId}-${i}`));
     this.changed(); return true;

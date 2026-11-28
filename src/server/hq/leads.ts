@@ -25,7 +25,7 @@ export function projectFloor(project: HQProject, sourceFloor: string | undefined
 }
 export function projectLeads(projects: HQProject[], sources: LeadSource[], floors: { id: string; repo?: string; name?: string }[], mine: boolean): HQLead[] {
   const connected = new Set<string>();
-  return projects.flatMap((p, projectIndex) => {
+  return projects.filter(p => mine || p.localState !== 'draft').flatMap((p, projectIndex) => {
     const floorId = projectFloor(p, sources[0]?.floorId, floors);
     // A repo link alone never claims an unrelated cubby's conversation.
     const source = sources.find(s => s.mac && s.projects.some(q => sameProject(p, q))) ?? sources.find(s => !s.mac && !connected.has(s.cubby.id) && s.floorId === floorId && s.projects.some(q => q.own && sameProject(p, q)));

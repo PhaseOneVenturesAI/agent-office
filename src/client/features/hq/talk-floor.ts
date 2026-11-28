@@ -16,7 +16,7 @@ export function talkFloor(ctx: Ctx, deps: HQLeadDeps) {
   ctx.usables.add({ usable: () => group.visible ? targets : [], pickable: () => group });
   ctx.ticks.add('world', frame => {
     const view = store.leadTalk;
-    const active = ctx.inOffice() && !ctx.upTop() && !store.floors.find(f => f.id === store.floor)?.hq;
+    const active = ctx.inOffice() && !ctx.upTop() && !store.drafts.here?.studio && !store.floors.find(f => f.id === store.floor)?.hq;
     const leads = active ? view?.leads.filter(l => l.floorId === store.floor && l.id !== 'cofounder') ?? [] : [];
     const room = [...deps.cubbies().rooms().values()].find(r => {
       const info = store.cubbies.cubbies.find(c => c.slot === r.place.slot);

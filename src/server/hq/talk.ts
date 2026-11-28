@@ -40,6 +40,16 @@ export class HQTalk {
       this.save();
     }
   }
+  /** The Studio native session becomes this repo's main lead; retain its conversation. */
+  promote(owner: string, before: string, after: string) {
+    if (before === after) return;
+    const old = this.threads.get(this.key(owner, before)); if (!old) return;
+    const current = this.threads.get(this.key(owner, after));
+    this.threads.set(this.key(owner, after), { owner, lead: after, lines: [...old.lines, ...(current?.lines ?? [])].sort((a,b) => a.at - b.at).slice(-50) });
+    this.threads.delete(this.key(owner, before));
+    for (const p of this.pending.values()) if (p.owner === owner && p.lead === before) p.lead = after;
+    this.save();
+  }
   private key(owner: string, lead: string) { return JSON.stringify([owner, lead]); }
   private save() { privateJSON(this.file, [...this.threads.values()]); }
   view(owner: string, lead: string, viewer: string | undefined) {

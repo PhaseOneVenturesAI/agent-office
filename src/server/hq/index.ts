@@ -4,6 +4,7 @@ import type { Building } from '../building.js';
 
 /** Identity stays outside Building: no new repo type or implicit kickoff path. */
 export class HQ {
+  studio?: import('./studio.js').HQStudio;
   mac?: import('./mac.js').HQMac;
   private owner: string;
   private ownerStem: string;

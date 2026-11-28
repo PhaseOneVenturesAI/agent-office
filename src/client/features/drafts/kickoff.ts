@@ -6,6 +6,7 @@
 // hall and into cubby 0, where the cubby's own lead takes over. The office rings the gong on the floor
 // for everyone there, so it isn't rung here as well; everyone else gets its "<name> is open." toast.
 
+import { openStudio } from '../../shared/studio/actions';
 import type { Ctx } from '../../core/context';
 import { store } from '../../state';
 import { DOORWAY_WAIT_MS, KICKOFF_CODE, LEAD_SPEED, LEAD_START_MS, LEAVE_MS, along, coverLift, leadPath, lightLevel, panelsLeft, pathLength, type Point } from './kickoff-model';
@@ -52,6 +53,7 @@ export function wireKickoff(ctx: Ctx, d: KickoffDeps): Kickoff {
     if (e.code !== KICKOFF_CODE || e.repeat || !d.shown() || run || d.aimed() !== scene.table) return false;
     const draft = d.draft();
     if (!draft || !store.drafts.canKickoff) return false;
+    if (store.drafts.here?.studio) { openStudio(ctx.net, 'open'); return true; }
     if (panel?.open) return true;
     panel = openKickoff(ctx.net, draft.floor, draft.name, d.lead());
     return true;

@@ -10,6 +10,7 @@ export function sendTalk(ctx: Ctx, c: Client, leadId: string, text: unknown, fro
   if (c.out || !ctx.hq?.owns(c.accountId)) throw Error('Only Jonathan can talk to his leads directly');
   const owner = c.accountId!, lead = leadsFor(ctx, owner, true).find(l => l.id === leadId && l.mac);
   if (!lead || !ctx.hq.mac) throw Error('No linked lead');
+  if (ctx.hq.mac.projects(owner)?.find(p => p.name === lead.project)?.localState === 'draft' && !ctx.hq.studio?.enabled(owner)) throw Error('Studio requires the HQ owner signed in through Cloudflare');
   return ctx.hq.mac.talk.submit(owner, lead, text, from ?? ctx.accounts.get(owner)!.name);
 }
 export function passTalk(ctx: Ctx, c: Client, id: string) {

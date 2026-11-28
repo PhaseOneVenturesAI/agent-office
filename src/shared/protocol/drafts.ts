@@ -20,6 +20,7 @@ export interface DraftImage { hash: string; mime: 'image/png' | 'image/jpeg' | '
 
 /** One approved or proposed screen, as its wall card shows it. */
 export interface DraftScreen {
+  version?: number;
   /** Stable card id from draft.json (else made from the title). */
   id: string;
   title: string;
@@ -57,6 +58,7 @@ export interface DraftBoards {
 
 /** A draft as its owner's page shows it (never sent to anyone else). */
 export interface DraftView {
+  studio?: true;
   id: string;
   name: string;
   createdAt: number;
@@ -86,6 +88,7 @@ export interface Launched {
 
 /** Sent with each floor you arrive on: whether it's one of your drafts, and whether you may start projects. */
 export interface DraftsState {
+  studio?: boolean;
   enabled: boolean;
   /** You may press New project (the office's AGENT_OFFICE_PROJECT_STARTERS names you). */
   canStart: boolean;

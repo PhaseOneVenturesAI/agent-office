@@ -1,0 +1,12 @@
+.studio-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+.modal.studio-form { width: min(540px, calc(100vw - 24px)); }
+.studio-form input, .studio-review textarea { box-sizing: border-box; width: 100%; font: inherit; padding: 12px; }
+.modal.studio-review { width: min(960px, calc(100vw - 24px)); }
+.studio-review .body { overflow: auto; }
+.studio-versions { display: flex; gap: 12px; overflow-x: auto; }
+.studio-versions section { flex: 1 0 220px; max-width: 100%; padding: 10px; border: 2px solid transparent; border-radius: 8px; }
+.studio-versions section.selected { border-color: var(--accent, #6c5ce7); }
+.studio-versions canvas { max-width: 100%; height: auto; }
+.studio-review form { display: grid; gap: 8px; }
+.studio-form [role=status], .studio-review [role=status] { overflow-wrap: anywhere; }
+@media (max-width: 500px) { .studio-versions section { flex-basis: 240px; } .studio-actions .btn { min-height: 44px; } }
