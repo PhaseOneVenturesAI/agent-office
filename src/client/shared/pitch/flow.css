@@ -1,0 +1,15 @@
+.pitch-flow { display: grid; gap: 12px; min-width: 0; }
+.pitch-flow select { width: 100%; padding: 10px; }
+.pitch-flow article { padding: 14px; border: 1px solid #d9c6ab; border-radius: 10px; background: #fff7e9; overflow-wrap: anywhere; }
+.pitch-flow article img { max-width: 100%; max-height: 180px; object-fit: contain; }
+.pitch-flow h3, .pitch-flow h4, .pitch-flow p { margin: 6px 0; }
+.pitch-flow small { display: block; margin: 5px 0; }
+.pitch-departments { display: flex; flex-wrap: wrap; gap: 8px; }
+.pitch-departments > div { flex: 1 1 145px; }
+.pitch-departments button { width: 100%; }
+.pitch-flow-modal { width: min(680px, calc(100vw - 24px)); }
+.pitch-flow-modal .body { overflow: auto; max-height: 76vh; }
+.modal.pitch-ready { width: min(440px, calc(100vw - 32px)); padding-right: 48px; position: fixed; right: 16px; top: 80px; z-index: 200; max-width: calc(100vw - 32px); padding: 14px; border-radius: 12px; background: #fff1de; color: #292638; box-shadow: 0 4px 24px #0004; }
+.pitch-ready button { margin-left: 8px; }
+.pitch-chat.backdrop { background: transparent; }
+.pitch-chat .lead-talk { position: absolute; right: 16px; top: 70px; max-width: min(460px, calc(100vw - 32px)); max-height: calc(100vh - 90px); }

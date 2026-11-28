@@ -7,6 +7,7 @@ export class PitchStore {
   publish(id: string, owner: string, raw: unknown) {
     const pitch = cleanPitch(raw);
     if (!pitch) { this.rows.delete(id); return; }
+    delete pitch.picked;
     const images = this.rows.get(id)?.images ?? new DraftImages();
     images.references(pitchImages(pitch), PITCH_LIMITS.images);
     this.rows.set(id, { owner, pitch, images, notice: this.rows.get(id)?.pitch.version === pitch.version ? this.rows.get(id)?.notice : undefined });
@@ -27,7 +28,7 @@ export class PitchStore {
   image(id: string, hash: string) { return this.rows.get(id)?.images.get(hash); }
   view(cubbyId: string, floorId: string, computerId: string): PitchView | undefined {
     const row = this.rows.get(cubbyId); if (!row) return;
-    return { cubbyId, floorId, computerId, ...(row.notice ? { notice: row.notice } : {}), pitch: { ...row.pitch, pieces: row.pitch.pieces.map(p => {
+    return { cubbyId, floorId, computerId, ...(row.notice ? { notice: row.notice } : {}), pitch: { ...row.pitch, ...(row.pitch.directions ? { directions: row.pitch.directions.map(({ image, ...d }) => ({ ...d, ...(image && row.images.get(image.hash) ? { image } : {}) })) } : {}), pieces: row.pitch.pieces.map(p => {
       const { image, ...rest } = p;
       return { ...rest, ...(image && row.images.get(image.hash) ? { image } : {}), images: p.images.filter(i => row.images.get(i.hash)) };
     }) } };

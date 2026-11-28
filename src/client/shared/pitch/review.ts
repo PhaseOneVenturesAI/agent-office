@@ -41,7 +41,7 @@ export function openPitchPiece(deps: ReviewDeps, pieceId: string, initial = 0, a
       const go = (step: number) => { index = (index + step + images.length) % images.length; deps.slide?.(p.id, index); paint(); };
       nav.append(h('button.btn', { onclick: () => go(-1), 'aria-label': 'Previous image' }, '←'), h('span', {}, `${index + 1} / ${images.length}`), h('button.btn', { onclick: () => go(1), 'aria-label': 'Next image' }, '→'));
     }
-    if (p.url) nav.append(h('a.btn', { href: p.url, target: '_blank', rel: 'noopener noreferrer' }, 'Open home page'));
+    if (p.url) nav.append(h('a.btn', { href: p.url, target: '_blank', rel: 'noopener noreferrer' }, 'Open site'));
     if (p.kind === 'video') nav.append(p.youtube ? h('a.btn', { href: `https://www.youtube.com/watch?v=${p.youtube}`, target: '_blank', rel: 'noopener noreferrer' }, 'Open video') : h('span', {}, '▶ opens on your computer'));
     for (const b of actions.querySelectorAll('button')) b.disabled = busy || !!pending;
   };

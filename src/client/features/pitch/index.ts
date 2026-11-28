@@ -1,3 +1,4 @@
+import { wirePitchFlow } from './flow';
 import type { Ctx } from '../../core/context';
 import { hintTitle, key, onE } from '../../core/hint';
 import { MEETING_ROOM as R } from '../../../shared/layout';
@@ -13,6 +14,7 @@ declare module '../../world/types' {
   }
 }
 export function installPitch(ctx: Ctx, deps: { lights(): { intensity: number }[]; setMeetingNotice(text?: string): void }) {
+  wirePitchFlow(ctx);
   const room = new PitchRoom(), screens = new PitchScreens(ctx), bulbs = new RoomBulbs(ctx.office.group);
   const slides = new Map<string, number>(); let content = '', dim = 1;
   ctx.scene.add(room.group);
