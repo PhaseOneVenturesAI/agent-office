@@ -19,6 +19,8 @@ const sourceComputer = (source?: LeadSource) => source?.mac ? source.computerNam
 export function leadWhere(pitch?: Pitch, linked = false, workingHere = false): LeadWhere {
   return pitch?.status === 'ready' && pitch.pieces.some(p => !p.stamp) ? 'pitch' : linked && workingHere ? 'project' : 'hq';
 }
+/** The project part of linked lead ids: the repo when known, else the project name. */
+export const leadIdentity = (p: { repo?: string; name: string }) => p.repo?.toLowerCase() ?? p.name;
 export function projectFloor(project: HQProject, sourceFloor: string | undefined, floors: { id: string; repo?: string; name?: string }[]) {
   if (project.own && sourceFloor && floors.some(f => f.id === sourceFloor)) return sourceFloor;
   return floors.find(f => (project.repo && f.repo?.toLowerCase() === project.repo.toLowerCase()) || f.name?.toLowerCase() === project.name.toLowerCase())?.id;
@@ -37,7 +39,7 @@ export function projectLeads(projects: HQProject[], sources: LeadSource[], floor
     const cubby = info && (mine ? info : { id: info.id, slot: info.slot, ownerName: info.ownerName, ownerColor: info.ownerColor,
       lamp: info.lamp, working: info.working, mine: false, watching: true as const,
       ...(info.interior ? { interior: { ...watcherInterior(info.interior), needsYou: [] } } : {}) });
-    const identity = p.repo?.toLowerCase() ?? p.name;
+    const identity = leadIdentity(p);
     const base = { ...(source?.mac ? { mac: true, working: liveWorkers(source).filter(a => !p.departmentLeads.some(d => !!d.lead && d.lead === a.lead)).length } : {}), project: p.name, projectIndex, ...(floorId ? { floorId } : {}), computer: sourceComputer(source) ?? sourceComputer(sources[0]) ?? 'your computer' };
     return [
       ...(p.hasMainLead ? [{ ...base, id: info ? `cubby:${info.id}` : `project:${identity}:ceo`, role: 'CEO', title: 'Main lead', ...(source?.mac ? { leadStatus: p.leadStatus ?? { status: 'off' as const, updatedAt: source.observedAt } } : {}),

@@ -49,6 +49,7 @@ test('Studio frame cleaners strictly validate identities, name, folder, repo and
 test('new → normal headless resume → open uses fixed argv, same session, private registry and requests; no real git/gh/claude', async t => {
   const f=fixture(t), id=randomUUID(); await f.link.receive({t:'project.new',id,name:'Studio Test'});
   assert.equal(f.results[0].ok,true,JSON.stringify(f.results));
+  assert.match(f.results[0].greeting,/Hello Jonathan/,'the Studio lead\'s first reply comes back with the result');
   const p=optionalRegistry(linkRegistryFile(f.home)).projects['Studio Test'];
   assert.equal(p.office,'draft'); assert.equal(statSync(linkRegistryFile(f.home)).mode & 0o777,0o600); assert.equal(statSync(path.dirname(linkRegistryFile(f.home))).mode & 0o777,0o700);
   const request=JSON.parse(readFileSync(path.join(requestsDir(f.home),id+'.json'),'utf8'));

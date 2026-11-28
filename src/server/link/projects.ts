@@ -29,7 +29,7 @@ export class LinkProjects {
     if (this.busy) { this.send({ t: 'project.result', id: frame.id, ok: false, detail: 'Another project operation is running on your Mac' }); return true; }
     this.busy = true;
     let result: ProjectResult;
-    try { const p = await this.perform(frame); result = { t: 'project.result', id: frame.id, ok: true, detail: frame.t === 'project.new' ? 'Your private Studio is ready' : 'Project ready; opening its floor', project: p.name, ...(p.url ? { repo: githubRepo(p.url) } : {}) }; }
+    try { const p = await this.perform(frame); result = { t: 'project.result', id: frame.id, ok: true, detail: frame.t === 'project.new' ? 'Your private Studio is ready' : 'Project ready; opening its floor', project: p.name, ...(p.url ? { repo: githubRepo(p.url) } : {}), ...(p.greeting ? { greeting: p.greeting } : {}) }; }
     catch (e) { result = { t: 'project.result', id: frame.id, ok: false, detail: e instanceof Error && !('code' in e) ? e.message : 'Could not update project files on your Mac; check the folder locally' }; }
     finally { this.busy = false; }
     this.results.set(frame.id, result); if (this.results.size > 256) this.results.delete(this.results.keys().next().value!);
@@ -43,7 +43,7 @@ export class LinkProjects {
     if (!validFolder(folder)) throw Error('Use a folder name of letters, numbers, dots, underscores or hyphens');
     return path.join(this.root(), folder);
   }
-  private async perform(f: ProjectCommand): Promise<LinkProject> {
+  private async perform(f: ProjectCommand): Promise<LinkProject & { greeting?: string }> {
     const registry = projectRegistry(this.config), entries = Object.entries(registry.projects) as [string, any][];
     if (f.t === 'project.new') {
       const dir = this.folder(projectFolder(f.name)!);
@@ -54,8 +54,8 @@ export class LinkProjects {
       mkdirSync(path.join(dir, '.agent-office'), { mode: 0o700 });
       const p: LinkProject = { name: f.name, path: dir, localState: 'draft', office: 'draft', leadSessionId: randomUUID() };
       saveProject(this.config, p); writeRequest(this.config, 'new-project', f.id, p);
-      await this.start(this.config, dir, p.leadSessionId!, STUDIO_PROMPT, this.abort.signal);
-      return p;
+      const greeting = await this.start(this.config, dir, p.leadSessionId!, STUDIO_PROMPT, this.abort.signal);
+      return { ...p, greeting };
     }
     if (f.t === 'project.open') {
       const raw = registry.projects[f.project];
@@ -101,8 +101,8 @@ export class LinkProjects {
     const p: LinkProject = { name: existing?.[0] ?? folder.slice(0, 60), path: dir, url: `https://github.com/${repo}`, localState: 'present', ...(session ? { leadSessionId: session } : {}) };
     if (!hasLead) p.leadSessionId = randomUUID();
     saveProject(this.config, p); writeRequest(this.config, 'add-project', f.id, p);
-    if (!hasLead) await this.start(this.config, dir, p.leadSessionId!, MAIN_LEAD_PROMPT, this.abort.signal);
-    return p;
+    const greeting = hasLead ? undefined : await this.start(this.config, dir, p.leadSessionId!, MAIN_LEAD_PROMPT, this.abort.signal);
+    return { ...p, greeting };
   }
 }
 function lstatExists(file: string) { try { lstatSync(file); return true; } catch { return false; } }

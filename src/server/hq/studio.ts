@@ -8,7 +8,7 @@ import type { DraftsState, Launched } from '../../shared/protocol/drafts.js';
 import { EMPTY_BOARDS, NEW_BADGE_MS } from '../../shared/protocol/drafts.js';
 import { cleanProjectCommand, cleanProjectResult, type ProjectCommand, type ProjectResult, type StudioClientMsg } from '../../shared/protocol/studio.js';
 import { privateJSON } from './talk.js';
-import { leadsFor } from './leads.js';
+import { leadIdentity, leadsFor } from './leads.js';
 import { DraftImages } from '../cubbies/design-images.js';
 import { cleanDraftBoards } from '../drafts/boards.js';
 import type { MacProject } from './wire.js';
@@ -111,7 +111,9 @@ export class HQStudio {
       if (!result.ok) return this.notify(owner, result);
       if (!result.project || p.frame.t === 'project.new' && result.project !== p.frame.name || p.frame.t === 'project.open' && result.project !== p.frame.project) throw Error('Mac returned a different project');
       const floorId = p.frame.t === 'project.new' ? this.draft(owner, result.project).id : (await this.publicFloor(owner, result)).id;
-      this.notify(owner, { ...result, floorId }); this.ctx.floorsChanged();
+      if (result.greeting) this.ctx.hq.mac?.talk.greet(owner, `project:${leadIdentity({ name: result.project, repo: p.frame.t === 'project.new' ? undefined : result.repo })}:ceo`, result.greeting);
+      const { greeting: _, ...shown } = result;
+      this.notify(owner, { ...shown, floorId }); this.ctx.floorsChanged();
     } catch (e) { this.notify(owner, { ...result, ok: false, detail: (e as Error).message }); }
   }
   async publicFloor(owner: string, result: ProjectResult) {
