@@ -205,6 +205,8 @@ export class Upgrader {
         if (existsSync(path.join(APP_DIR, d))) await rename(path.join(APP_DIR, d), path.join(old, d));
         await rename(path.join(next, d), path.join(APP_DIR, d));
       }
+      // The extracted source is now redundant; `old` stays as the rollback copy until the next upgrade.
+      await rm(next, { recursive: true, force: true }).catch(() => {});
     } catch (err) {
       await rm(STAGE, { recursive: true, force: true }).catch(() => {});
       this.set({ phase: 'failed', error: `The upgrade failed, so the office stays on ${this.state.current?.sha}.\n\n${(err as Error).message}` });
