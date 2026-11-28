@@ -29,6 +29,7 @@ import type { PresenceClientMsg, PresenceServerMsg } from './protocol/presence.j
 import type { QueueClientMsg, QueueServerMsg } from './protocol/queue.js';
 import type { RooftopClientMsg, RooftopServerMsg } from './protocol/rooftop.js';
 import type { SettingsClientMsg, SettingsServerMsg } from './protocol/settings.js';
+import type { StatusClientMsg } from './protocol/peer-status.js';
 import type { BallClientMsg, CabinetClientMsg, CarClientMsg, DecorClientMsg, DogClientMsg, JukeboxClientMsg, ToysServerMsg, TvClientMsg, WhiteboardClientMsg } from './protocol/toys.js';
 import type { UsageClientMsg, UsageServerMsg } from './protocol/usage.js';
 import type { WorkerClientMsg, WorkerServerMsg } from './protocol/workers.js';
@@ -51,6 +52,7 @@ export * from './protocol/presence.js';
 export * from './protocol/queue.js';
 export * from './protocol/rooftop.js';
 export * from './protocol/settings.js';
+export * from './protocol/peer-status.js';
 export * from './protocol/toys.js';
 export * from './protocol/usage.js';
 export * from './protocol/workers.js';
@@ -81,6 +83,7 @@ export type ClientMsg =
   | HygieneClientMsg
   | NodesClientMsg
   | SettingsClientMsg
+  | StatusClientMsg
   | UsageClientMsg
   | DecorClientMsg
   | JukeboxClientMsg

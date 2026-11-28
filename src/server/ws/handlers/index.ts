@@ -32,6 +32,7 @@ import { queueHandlers, queueView } from './queue.js';
 import { rooftopHandlers } from './rooftop.js';
 import { servicesView, settingsHandlers } from './settings.js';
 import { signinsHandlers } from './signins.js';
+import { statusHandlers } from './peer-status.js';
 import { teamHandlers } from './team.js';
 import { tvHandlers, tvView } from './tv.js';
 import { usageHandlers } from './usage.js';
@@ -71,6 +72,7 @@ export const handlers: HandlerMap<ClientMsg> = {
   ...rooftopHandlers,
   ...settingsHandlers,
   ...signinsHandlers,
+  ...statusHandlers,
   ...teamHandlers,
   ...tvHandlers,
   ...usageHandlers,

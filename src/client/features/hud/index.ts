@@ -31,7 +31,7 @@ import { openUpgrade } from '../../ui/upgrade';
 import { openWhiteboard } from '../whiteboard/ui';
 import { describeSky } from '../../world/sky';
 
-export type HudParts = Pick<Parts, 'worlds' | 'place' | 'travel' | 'you' | 'actions' | 'waiting' | 'meeting' | 'bookshelf' | 'hanging' | 'talk' | 'notifier'>;
+export type HudParts = Pick<Parts, 'worlds' | 'place' | 'travel' | 'you' | 'actions' | 'waiting' | 'meeting' | 'bookshelf' | 'hanging' | 'talk' | 'notifier' | 'status'>;
 
 /** Listens for clicks on the HUD and the project, registers what the HUD follows (see mountHud), and binds Tab, H and F. */
 export function installHud(ctx: Ctx, core: CoreState, parts: HudParts) {
@@ -94,6 +94,8 @@ export function installHud(ctx: Ctx, core: CoreState, parts: HudParts) {
       },
       { id: 'share', icon: '🖥️', label: () => (voice.sharing ? 'Stop sharing' : 'Share screen'), section: 'Together', on: () => voice.sharing, status: () => voice.sharing, chip: () => 'Sharing', blocked: noMedia, run: () => void talk.toggleShare() },
       { id: 'decor', icon: '🖼️', label: () => (hanging.hanger.active ? 'Stop hanging the picture' : 'Hang a picture'), section: 'Together', key: 'F', shown: () => inOffice(), on: () => hanging.hanger.active, status: () => hanging.hanger.active, run: () => (hanging.hanger.active ? hanging.hanger.cancel() : hanging.startHanging()) },
+      // Your status over your head ("☕ BRB"): up on the top bar while it's up, so you know it is.
+      { id: 'status', icon: () => parts.status.mine()?.emoji || '💬', label: () => (parts.status.mine() ? 'Change your status' : 'Set a status'), section: 'Together', key: 'U', status: () => !!parts.status.mine(), chip: () => parts.status.mine()?.text || 'Status', title: () => 'An emoji and a few words over your head, like ☕ BRB', run: () => parts.status.open() },
       { id: 'team', icon: '👥', label: 'Invite teammates', section: 'Together', shown: () => store.invites, run: () => openTeam(net) },
       { id: 'accounts', icon: '🔑', label: 'Accounts', section: 'Together', shown: () => store.me.admin, title: () => 'Invite people, see who has an account, revoke them', run: () => openAccounts(net) },
       { id: 'signins', icon: '🔐', label: 'Your sign-ins', section: 'Together', shown: () => !!store.me.account, tone: () => (needsSigningIn() ? 'danger' : undefined), status: needsSigningIn, chip: () => 'Sign in to Claude', title: () => 'The Claude plan and GitHub account your workers run on: your own', run: () => openSignIns(net) },

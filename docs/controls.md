@@ -22,6 +22,7 @@ Back to the [README](../README.md).
 | H | These controls; in a car, honk the horn |
 | T / Enter | Chat |
 | G / 1–9, 0 | Emote: hold G for the wheel (point at one and let go), or tap G and click; a number key plays one straight away (– for the last one). Wave, thumbs up or down, clap, point, shrug, laugh, facepalm, the six seven 🤲 — or the groove and spin dances, which loop until you move or pick another. Everyone on your floor sees it, and anyone arriving mid-dance sees it too; moving cancels any emote |
+| U | Your status: an emoji and a few words over your head (☕ BRB, 📅 In a meeting, or your own), until you clear it. Everyone sees it over you and next to your name under 👥 People; it's up on your top bar too, and the browser puts it back up after a reload. Also **☰ → 💬 Set a status** |
 | / | Search the chat and every terminal on your floor |
 | Ctrl + K (⌘K on a Mac) | Command palette: find a worker, issue, PR, service, board, teammate or action; Enter opens it, Shift+Enter walks you there first |
 | V | Join voice; in voice, hold to talk (you're muted when you let go) |
