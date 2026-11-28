@@ -3,7 +3,7 @@ import type { HQProject } from '../../shared/protocol/hq.js';
 import type { CubbyAgent } from '../../shared/protocol/cubbies.js';
 import type { Pitch } from '../../shared/protocol/pitch.js';
 export interface MacProject { project: HQProject; agents: CubbyAgent[]; pitch?: Pitch; draft?: import('../../shared/protocol/drafts.js').DraftBoards }
-export interface MacSnapshot { t: 'hq.snapshot'; computerId: string; observedAt: number; projects: MacProject[] }
+export interface MacSnapshot { t: 'hq.snapshot'; computerId: string; observedAt: number; projects: MacProject[]; cofounder?: import('../../shared/protocol/hq.js').LeadStatus }
 export interface MacReady { t: 'hq.ready'; computerId: string; owner: string; floor: string; connection: string; signature: string }
 export function macSignature(key: string, f: Omit<MacReady, 'signature'>) {
   return createHmac('sha256', key).update(JSON.stringify([f.t, f.computerId, f.owner, f.floor, f.connection])).digest('hex');

@@ -7,6 +7,7 @@ import { friendlyName } from '../cubbies/local/connector.js';
 import { forgetToken, readToken, saveToken } from './credentials.js';
 import { AccessRequired, cachedAccess, connection, reconnect, request, signInNeeded } from './transport.js';
 import { startNeedsRefresh } from './needs-refresh.js';
+import { startLeadTalk } from './talk.js';
 export async function linkCommand(args: string[], home = os.homedir(), log = console.log): Promise<number> {
   if (args.includes('--help') || args.includes('-h')) { log('agent-office link <office-url> [--run]\nApprove this Mac once in your signed-in browser. --run uses the saved token.'); return 0; }
   let origin: string;
@@ -16,6 +17,7 @@ export async function linkCommand(args: string[], home = os.homedir(), log = con
     if (!origin.startsWith('https:') && !['localhost', '127.0.0.1', '[::1]'].includes(new URL(origin).hostname)) throw Error();
   } catch { log('Use agent-office link <https-office-url> [--run]'); return 2; }
   const stop = new AbortController(), interrupt = () => stop.abort();
+  let talks: Awaited<ReturnType<typeof startLeadTalk>> | undefined;
   let connector: MacConnector | undefined, refresh: (() => void) | undefined;
   try {
     let token = readToken(home, origin);
@@ -36,7 +38,8 @@ export async function linkCommand(args: string[], home = os.homedir(), log = con
       }
       if (!token) { log('Mac pairing expired; run link again'); return 1; }
     }
-    connector = new MacConnector(config, token!);
+    connector = new MacConnector(config, token!, undefined, frame => talks?.talk.receive(frame));
+    talks = await startLeadTalk(config, frame => connector!.sendLead(frame));
     refresh = startNeedsRefresh(home, log);
     const code = await reconnect(origin, stop.signal, log, async () => connection(origin, token!, name, await cachedAccess(origin), connector!, stop.signal));
     if (code === 78) forgetToken(home, origin, token!);
@@ -45,7 +48,7 @@ export async function linkCommand(args: string[], home = os.homedir(), log = con
     if (stop.signal.aborted) return 0;
     log(e instanceof AccessRequired ? signInNeeded(origin) : (e as Error).message); return 1;
   } finally {
-    refresh?.(); await connector?.close();
+    refresh?.(); await talks?.close(); await connector?.close();
     for (const s of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.removeListener(s, interrupt);
   }
 }

@@ -1,3 +1,6 @@
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { privateJSON } from './talk.js';
 import { randomUUID } from 'node:crypto';
 import type { HQLead, HQMessage, HQPassMessage } from '../../shared/protocol/hq.js';
 import { managerMessageText, HQ_MESSAGE_CAP } from '../../shared/protocol/hq.js';
@@ -9,11 +12,27 @@ import { cubbiesChanged } from '../ws/handlers/cubbies.js';
 
 export const MESSAGE_TTL = 24 * 60 * 60 * 1000;
 type Held = HQMessage & { managerId: string; owner: string };
-/** Memory only. Terminal states remain visible for one further day, then are discarded. */
+/** Persisted held queue. Terminal states remain visible for one further day, then are discarded. */
 export class HQMessages {
   private items = new Map<string, Held>();
   private last = new Map<string, number>();
-  constructor(private now = Date.now) {}
+  private file?: string;
+  constructor(private now = Date.now, dir?: string) {
+    if (!dir) return;
+    this.file = path.join(dir, 'hq-messages.json');
+    if (existsSync(this.file)) {
+      const rows: Held[] = JSON.parse(readFileSync(this.file, 'utf8'));
+      if (!Array.isArray(rows)) throw Error('Invalid held messages');
+      for (const item of rows) {
+        if (!item || typeof item.id !== 'string' || typeof item.owner !== 'string' || typeof item.managerId !== 'string' || !Number.isFinite(item.at)) throw Error('Invalid held message');
+        this.items.set(item.id, item);
+        this.last.set(item.managerId, Math.max(this.last.get(item.managerId) ?? 0, item.at));
+      }
+      this.sweep(); this.save();
+    }
+  }
+  private save() { if (this.file) privateJSON(this.file, [...this.items.values()]); }
+  decide(id: string, owner: string, state: 'passed' | 'declined') { this.waiting(id, owner).state = state; this.save(); }
   sweep() {
     let changed = false;
     for (const [id, item] of this.items) {
@@ -21,6 +40,7 @@ export class HQMessages {
       if (this.now() - item.at >= 2 * MESSAGE_TTL) { this.items.delete(id); changed = true; }
     }
     for (const [id, at] of this.last) if (this.now() - at >= 30_000) this.last.delete(id);
+    if (changed) this.save();
     return changed;
   }
   send(owner: string, managerId: string, manager: string, lead: string, raw: unknown) {
@@ -30,7 +50,7 @@ export class HQMessages {
     if ([...this.items.values()].filter(i => i.managerId === managerId && i.state === 'waiting').length >= 5) throw Error('You already have 5 waiting messages');
     if (this.last.has(managerId)) throw Error('Wait 30 seconds between messages');
     const item: Held = { id: randomUUID(), managerId, manager, owner, lead, text, at: this.now(), state: 'waiting' };
-    this.items.set(item.id, item); this.last.set(managerId, this.now()); return item;
+    this.items.set(item.id, item); this.last.set(managerId, this.now()); this.save(); return item;
   }
   waiting(id: string, owner: string) {
     this.sweep();
@@ -47,12 +67,12 @@ export class HQMessages {
 const stores = new WeakMap<Ctx, HQMessages>();
 export function messages(ctx: Ctx) {
   let store = stores.get(ctx);
-  if (!store) { store = new HQMessages(); stores.set(ctx, store); }
+  if (!store) { store = new HQMessages(Date.now, ctx.cfg?.dataDir ?? ctx.hq.mac?.dataDir); stores.set(ctx, store); }
   return store;
 }
 function accessOnHQ(ctx: Ctx, c: Client) {
   const access = hqAccess(ctx, c);
-  if (!access || !ctx.hq.is(ctx.floorOf(c)?.id)) throw Error('Messages are available on HQ only');
+  if (!access || (!ctx.hq.is(ctx.floorOf(c)?.id) && !ctx.hq.mac?.owner())) throw Error('Messages are available on HQ only');
   return access;
 }
 export function sendManagerMessage(ctx: Ctx, c: Client, leadId: string, text: unknown) {
@@ -71,7 +91,7 @@ export function sendManagerMessage(ctx: Ctx, c: Client, leadId: string, text: un
 export function declineManagerMessage(ctx: Ctx, c: Client, id: string) {
   const access = accessOnHQ(ctx, c);
   if (!access.mine) throw Error('Only the owner can decide');
-  messages(ctx).waiting(id, access.owner).state = 'declined'; cubbiesChanged(ctx);
+  messages(ctx).decide(id, access.owner, 'declined'); cubbiesChanged(ctx);
 }
 export function passManagerMessage(ctx: Ctx, c: Client, msg: HQPassMessage) {
   const access = accessOnHQ(ctx, c);
@@ -87,7 +107,7 @@ export function passManagerMessage(ctx: Ctx, c: Client, msg: HQPassMessage) {
     !verifyOwner(msg.ownerPublicKey, { ...msg, cubbyId: msg.id, floorId: lead.floorId, computerId: it.computerId })) throw Error('Use your trusted device to pass on this message');
   // Ordinary owner chat, still verified independently by the connector. No HQ fields cross inward.
   ctx.cubbies.chat(lead.floorId, c.accountId!, msg.id, { text, requestId: msg.requestId, at: msg.at, ownerSig: msg.ownerSig });
-  item.state = 'passed'; cubbiesChanged(ctx);
+  messages(ctx).decide(item.id, access.owner, 'passed'); cubbiesChanged(ctx);
 }
 export function messageLeads(ctx: Ctx, c: Client, owner: string, leads: HQLead[], onHQ: boolean): HQLead[] {
   return leads.map(lead => {

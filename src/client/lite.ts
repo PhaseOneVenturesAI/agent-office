@@ -1,3 +1,4 @@
+import { installLiteLeads } from './lite-leads';
 import { installLiteHQ } from './shared/hq/phone';
 import { installLitePitch } from './lite-pitch';
 // The 2D view (/lite): the office without the 3D, for a phone or a computer the 3D office is too
@@ -50,6 +51,7 @@ store.profile = { name: saved?.name ?? 'Guest', color: saved?.color ?? AVATAR_CO
 const net = new Net(() => store.profile, () => null, true);
 installLitePitch(net);
 installLiteHQ();
+installLiteLeads(net);
 const settings = loadSettings();
 const notifier = new DesktopNotifier(() => settings.notify, (id) => openWorker(id));
 

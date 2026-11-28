@@ -1,3 +1,5 @@
+import { HQTalk } from './talk.js';
+import { cleanLeadStatus, type LeadStatus } from '../../shared/protocol/hq.js';
 import { Pairings } from '../link/pairings.js';
 import { randomUUID } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
@@ -9,7 +11,7 @@ import { macSignature, type MacProject, MAC_BYTES } from './wire.js';
 import type { LeadSource } from './leads.js';
 import { PitchStore } from '../pitch/store.js';
 interface Record { owner: string; floor: string; nodeId: string; computerId?: string; computerName?: string; lastSeen?: number }
-interface Observation { nodeId: string; computerName: string; observedAt: number; projects: MacProject[] }
+interface Observation { nodeId: string; computerName: string; observedAt: number; projects: MacProject[]; cofounder?: LeadStatus }
 const id = (v: unknown): v is string => typeof v === 'string' && /^[\w-]{1,128}$/.test(v);
 /** Invitations persist; observations, workers and session identities never do. */
 export class HQMac {
@@ -17,9 +19,13 @@ export class HQMac {
   private live = new Map<string, Observation>();
   private admitted = new Map<string, string>();
   private file: string;
+  readonly talk: HQTalk;
+  readonly dataDir: string;
   readonly pairings: Pairings;
   readonly pitches = new PitchStore();
   constructor(dir: string, private hq: Pick<HQ, 'owns' | 'is' | 'floorId'>, private nodes: Nodes, private changed: () => void, private now = Date.now) {
+    this.dataDir = dir;
+    this.talk = new HQTalk(dir, owner => hq.owns(owner), owner => this.talkNode(owner), (node, frame) => nodes.sendSigned(node, () => frame), changed, now);
     this.pairings = new Pairings(owner => this.hq.owns(owner), (owner, computer, name) => this.link(owner, computer, name), id => this.remove(id), changed, now);
     this.file = path.join(dir, 'hq-macs.json');
     if (existsSync(this.file)) {
@@ -73,8 +79,13 @@ export class HQMac {
     old.forEach(r => this.nodes.revoke(r.nodeId));
     this.changed(); return { token: invite.token, floorId: floor };
   }
+  private talkNode(owner: string) {
+    return this.freshest(owner)?.record.nodeId ?? [...this.records.values()].find(r => r.owner === owner && this.admitted.has(r.nodeId) && this.nodes.isOnline(r.nodeId))?.nodeId;
+  }
+  cofounder(owner: string) { return this.freshest(owner)?.live.cofounder; }
   refresh() {
     this.pairings.sweep();
+    this.talk.sweep(node => this.nodes.isOnline(node) && this.admitted.has(node));
     for (const node of this.admitted.keys()) if (!this.nodes.isOnline(node)) {
       const r = this.records.get(node);
       if (r) { r.lastSeen = this.now(); try { this.save(); } catch { /* live status still changes */ } }
@@ -100,6 +111,11 @@ export class HQMac {
     const last = this.links(owner).sort((a,b) => b.lastSeen - a.lastSeen)[0];
     return last && { computerName: last.computerName, connected: last.connected, lastSeen: last.lastSeen };
   }
+  rememberedSources(owner: string): LeadSource[] | undefined {
+    if (!this.hq.owns(owner)) return;
+    const live = [...this.live.values()].filter(l => this.records.get(l.nodeId)?.owner === owner).sort((a,b) => b.observedAt - a.observedAt)[0];
+    return live?.projects.map(row => ({ mac: true, floorId: '', projects: [{ ...row.project, leadStatus: { status: 'off', updatedAt: live.observedAt }, departmentLeads: row.project.departmentLeads.map(d => ({ ...d, leadStatus: { status: 'off', updatedAt: live.observedAt } })) }], agents: [], computerName: live.computerName, observedAt: live.observedAt }));
+  }
   projects(owner: string) { return this.freshest(owner)?.live.projects.map(p => p.project); }
   sources(owner: string): LeadSource[] | undefined {
     const fresh = this.freshest(owner); if (!fresh) return;
@@ -121,6 +137,10 @@ export class HQMac {
     // Consume all frames for HQ invitations: they can never become cubby connections.
     if (!owner || owner !== r.owner || !this.hq.owns(owner) || !this.hq.is(r.floor) || !this.nodes.isOnline(nodeId) || !raw || typeof raw !== 'object') return true;
     const f = raw as any;
+    if (f.t === 'lead.state' || f.t === 'lead.reply') {
+      if (this.admitted.has(nodeId)) this.talk.accept(nodeId, owner, f);
+      return true;
+    }
     if (f.t === 'hq.hello' && id(f.computerId) && (!r.computerId || r.computerId === f.computerId)) {
       if (this.admitted.has(nodeId)) return true;
       const before = r.computerId; r.computerId = f.computerId; r.computerName = short(f.computerName, 60) || 'Mac'; r.lastSeen = this.now();
@@ -145,11 +165,13 @@ export class HQMac {
       const clean = snapshot({ agents: row.agents, projects: [row.project], pitch: row.pitch, draft: row.draft, observedAt: f.observedAt }, this.now());
       if (!clean?.projects?.[0]) return true;
       const { own: _own, workers: _workers, ...project } = clean.projects[0];
+      // Department positions are the send target: never shift them by dropping malformed entries.
+      if (project.departmentLeads.length !== row.project.departmentLeads.length) return true;
       const agents = clean.agents.filter(a => a.id.startsWith('harness:') && a.role !== 'lead' && a.status === 'working' && !seen.has(a.id));
       agents.forEach(a => seen.add(a.id));
       projects.push({ project, agents, ...(clean.pitch ? { pitch: clean.pitch } : {}), ...(clean.draft ? { draft: clean.draft } : {}) });
     }
-    this.live.set(this.key(owner, r.computerId!), { nodeId, computerName: this.admitted.get(nodeId)!, observedAt: Math.min(this.now(), f.observedAt), projects });
+    this.live.set(this.key(owner, r.computerId!), { nodeId, computerName: this.admitted.get(nodeId)!, observedAt: Math.min(this.now(), f.observedAt), projects, cofounder: cleanLeadStatus(f.cofounder) });
     projects.forEach((p, i) => this.pitches.publish(`hq-mac-${nodeId}-${i}`, owner, p.pitch));
     this.pitches.retain(key => !key.startsWith(`hq-mac-${nodeId}-`) || projects.some((_, i) => key === `hq-mac-${nodeId}-${i}`));
     this.changed(); return true;

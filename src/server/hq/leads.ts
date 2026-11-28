@@ -1,8 +1,7 @@
 import { hqProjects, hqSources } from './sources.js';
 import { liveWorkers, sameProject } from './live.js';
-import { visibleNeeds } from '../../shared/protocol/hq.js';
+import { HQ_FURNISHED_PROJECTS, visibleNeeds } from '../../shared/protocol/hq.js';
 import { messageLeads } from './messages.js';
-import { HQ_FURNISHED_PROJECTS } from '../../shared/protocol/hq.js';
 import type { HQLead, HQProject, LeadWhere } from '../../shared/protocol/hq.js';
 import type { CubbyInfo, CubbiesState } from '../../shared/protocol/cubbies.js';
 import type { Pitch } from '../../shared/protocol/pitch.js';
@@ -19,11 +18,11 @@ const sourceComputer = (source?: LeadSource) => source?.mac ? source.computerNam
 export function leadWhere(pitch?: Pitch, linked = false, workingHere = false): LeadWhere {
   return pitch?.status === 'ready' && pitch.pieces.some(p => !p.stamp) ? 'pitch' : linked && workingHere ? 'project' : 'hq';
 }
-export function projectFloor(project: HQProject, sourceFloor: string | undefined, floors: { id: string; repo?: string }[]) {
+export function projectFloor(project: HQProject, sourceFloor: string | undefined, floors: { id: string; repo?: string; name?: string }[]) {
   if (project.own && sourceFloor && floors.some(f => f.id === sourceFloor)) return sourceFloor;
-  return project.repo ? floors.find(f => f.repo?.toLowerCase() === project.repo!.toLowerCase())?.id : undefined;
+  return floors.find(f => (project.repo && f.repo?.toLowerCase() === project.repo.toLowerCase()) || f.name?.toLowerCase() === project.name.toLowerCase())?.id;
 }
-export function projectLeads(projects: HQProject[], sources: LeadSource[], floors: { id: string; repo?: string }[], mine: boolean): HQLead[] {
+export function projectLeads(projects: HQProject[], sources: LeadSource[], floors: { id: string; repo?: string; name?: string }[], mine: boolean): HQLead[] {
   const connected = new Set<string>();
   return projects.flatMap((p, projectIndex) => {
     const floorId = projectFloor(p, sources[0]?.floorId, floors);
@@ -41,7 +40,7 @@ export function projectLeads(projects: HQProject[], sources: LeadSource[], floor
     const base = { ...(source?.mac ? { mac: true, working: liveWorkers(source).filter(a => !p.departmentLeads.some(d => !!d.lead && d.lead === a.lead)).length } : {}), project: p.name, projectIndex, ...(floorId ? { floorId } : {}), computer: sourceComputer(source) ?? sourceComputer(sources[0]) ?? 'your computer' };
     return [
       ...(p.hasMainLead ? [{ ...base, id: info ? `cubby:${info.id}` : `project:${identity}:ceo`, role: 'CEO', title: 'Main lead', ...(source?.mac ? { leadStatus: p.leadStatus ?? { status: 'off' as const, updatedAt: source.observedAt } } : {}),
-        where: leadWhere(source?.pitch, !source?.mac && !!source && !!floorId, working(registered.lead)), needsYou: !!info?.interior?.needsYou.length || (needs?.open ?? 0) > 0, ...(needs ? { needs } : {}), ...(cubby ? { cubby } : {}) }] : []),
+        where: source?.mac ? 'hq' as const : leadWhere(source?.pitch, !source?.mac && !!source && !!floorId, working(registered.lead)), needsYou: !!info?.interior?.needsYou.length || (needs?.open ?? 0) > 0, ...(needs ? { needs } : {}), ...(cubby ? { cubby } : {}) }] : []),
       ...p.departmentLeads.map((d, departmentIndex) => ({ ...base, id: `project:${identity}:department:${d.department}:${d.title}`, departmentIndex,
         role: d.department, title: d.title, ...(source?.mac ? { leadStatus: d.leadStatus ?? { status: 'off' as const, updatedAt: source.observedAt } } : {}), ...(source?.mac ? { working: liveWorkers(source).filter(a => !!d.lead && a.lead === d.lead).length } : {}), where: leadWhere(undefined, !source?.mac && !!source && !!floorId, working(registered.departmentLeads.find(q => q.department === d.department && q.title === d.title)?.lead)), needsYou: false })),
     ];
@@ -55,8 +54,11 @@ export function hqAccess(ctx: Ctx, c: Client) {
   if (owner) return { owner, floorId: floor.id, mine: ctx.hq.owns(c.accountId) };
 }
 export function leadsFor(ctx: Ctx, owner: string, mine: boolean) {
-  const sources = hqSources(ctx, owner);
-  return projectLeads(hqProjects(ctx, owner), sources, [...ctx.floors.values()].map(f => ({ id: f.id, repo: f.def.repo })), mine).filter(l => l.projectIndex < HQ_FURNISHED_PROJECTS);
+  const remembered = !ctx.hq.mac?.sources(owner) ? ctx.hq.mac?.rememberedSources(owner) : undefined;
+  const sources = remembered ?? hqSources(ctx, owner);
+  const leads = projectLeads(remembered?.flatMap(s => s.projects) ?? hqProjects(ctx, owner), sources, [...ctx.floors.values()].map(f => ({ id: f.id, repo: f.def.repo, name: f.def.name })), mine);
+  if (ctx.hq.mac?.owner()) leads.unshift({ id: 'cofounder', mac: true, project: 'HQ', projectIndex: -1, role: 'Chief of staff', title: 'Cofounder', computer: 'your Mac', where: 'hq', needsYou: false, leadStatus: ctx.hq.mac.cofounder(owner) ?? { status: 'unknown', updatedAt: 0 } });
+  return leads.filter(l => l.mac || l.projectIndex < HQ_FURNISHED_PROJECTS).map(l => ({ ...l, ...(mine && l.mac ? { conversation: ctx.hq.mac?.talk.view(owner, l.id, owner) } : {}) }));
 }
 /** Add only location metadata on a project floor; never grant cubby-interior admission. */
 export function withHQLeads(ctx: Ctx, c: Client, state: CubbiesState): CubbiesState {
