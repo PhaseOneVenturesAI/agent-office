@@ -1,4 +1,4 @@
-// Real UI + server handlers + admitted fake Mac link. No provider or external site calls.
+// Real UI + server handlers + admitted fake Mac link. No provider or external site calls (the live site is served by a local route).
 import { createServer } from 'vite';
 import { chromium } from 'playwright-core';
 import { mkdirSync, realpathSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -120,11 +120,20 @@ try {
   await stand(page,-1.7,11,-4.05,10,-.35);await shot(page,'09-project-helper-desks-desktop');
   pages.get(page).client.floorId='hq';await page.evaluate(()=>{const s=window.__office.store;s.floor='hq';s.emit('floor');});publish();await page.waitForTimeout(300);
 
+  // The live site plays on the wall in a sandboxed frame; served by a local route so no external site is called.
+  await page.route('https://example.com/**',r=>r.fulfill({contentType:'text/html',body:'<h1>Live Plimbo</h1>'}));
   pitch.status='ready';pitch.pieces=[{id:'home',kind:'site',title:'Home page',url:'https://example.com/v1',images:[],notes:['Versioned site']},{id:'slides',kind:'slides',title:'Launch deck',images:[],notes:[]}];snapshot();pitchChanged(office.ctx);
   await page.getByText('Pitch ready: Plimbo Marketing',{exact:false}).waitFor();await shot(page,'04-ready-alert-desktop');await page.getByRole('button',{name:'Go there',exact:true}).click();
   await page.waitForTimeout(1600);assert.ok(await page.evaluate(()=>window.__office.scene.getObjectByName('pitch-room').userData.dim<.4));
   assert.ok(await page.evaluate(()=>window.__office.scene.getObjectByName('pitch-follow-spotlight').intensity>0));
-  await stand(page,14.3,9.3,16.1,9.5,.08);await page.keyboard.press('KeyE');await page.getByRole('dialog',{name:'Pitch review'}).waitFor();
+  await stand(page,14.3,9.3,16.1,9.5,.08);
+  const frame=page.locator('.pitch-site-frame iframe');await frame.waitFor({state:'attached'});
+  assert.equal(await frame.getAttribute('src'),'https://example.com/v1');assert.equal(await frame.getAttribute('sandbox'),'allow-scripts allow-same-origin allow-forms');assert.equal(await frame.getAttribute('referrerpolicy'),'no-referrer');
+  await page.waitForTimeout(1500);
+  const live=page.frames().find(f=>f.url()==='https://example.com/v1');assert.ok(live,'live site frame loaded');assert.equal(await live.locator('h1').innerText(),'Live Plimbo');
+  assert.ok(await page.evaluate(()=>{const f=window.__office.scene.getObjectByName('pitch-face-site');return f.material.opacity===0&&!f.parent.getObjectByName('pitch-placeholder')?.visible;}),'the wall opens onto the live page and its placeholder hides');
+  await shot(page,'11-live-site-desktop');
+  await page.keyboard.press('KeyE');await page.getByRole('dialog',{name:'Pitch review'}).waitFor();
   assert.equal(await page.getByRole('link',{name:/Open site/}).getAttribute('href'),'https://example.com/v1');
   await page.getByRole('button',{name:'Approve',exact:true}).click();await page.waitForTimeout(300);assert.equal(links.at(-1).review.verdict,'approve');await page.keyboard.press('Escape');
   await page.emulateMedia({reducedMotion:'reduce'});await page.waitForTimeout(200);

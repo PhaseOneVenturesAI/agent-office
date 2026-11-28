@@ -15,7 +15,7 @@ declare module '../../world/types' {
 }
 export function installPitch(ctx: Ctx, deps: { lights(): { intensity: number }[]; setMeetingNotice(text?: string): void }) {
   wirePitchFlow(ctx);
-  const room = new PitchRoom(), screens = new PitchScreens(ctx), bulbs = new RoomBulbs(ctx.office.group);
+  const room = new PitchRoom(), screens = new PitchScreens(ctx), site = new PitchScreens(ctx, 'pitch-site-layer'), bulbs = new RoomBulbs(ctx.office.group);
   const slides = new Map<string, number>(); let content = '', dim = 1;
   ctx.scene.add(room.group);
   const active = () => !!store.pitch && ctx.inOffice() && !ctx.upTop();
@@ -24,7 +24,7 @@ export function installPitch(ctx: Ctx, deps: { lights(): { intensity: number }[]
     return active() && p.x > R.minX && p.x < R.maxX && p.z > R.minZ && p.z < R.maxZ && p.y >= -0.1 && p.y < R.height - 1;
   };
   const sync = () => {
-    screens.stop();
+    screens.stop(); site.stop();
     if (store.pitch) room.show(store.pitch, slides); else room.clear();
   };
   ctx.usables.add({ usable: () => active() ? room.stations.map(s => s.it) : [], pickable: () => room.group });
@@ -43,6 +43,7 @@ export function installPitch(ctx: Ctx, deps: { lights(): { intensity: number }[]
     const p = active() ? store.pitch?.pitch : undefined;
     deps.setMeetingNotice(p ? `${p.department} pitch · ${p.status}${p.status === 'ready' ? ' — walk the room' : ''}` : undefined);
     screens.tick(inside() && store.pitch?.pitch.status === 'ready' ? room.stations.find(s => s.piece.kind === 'video') : undefined);
+    site.tick(inside() && store.pitch?.pitch.status === 'ready' ? room.stations.find(s => s.piece.kind === 'site') : undefined);
   });
   ctx.ticks.add('env', ({ dt }) => {
     const want = inside() && store.pitch?.pitch.status === 'ready' ? 0.35 : 1;

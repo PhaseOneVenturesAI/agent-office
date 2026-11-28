@@ -43,6 +43,8 @@ async function setup(page, owner = true, lite = false) {
   await page.route('**/api/**', r => r.fulfill({ contentType: 'application/json', body: '{}' }));
   await page.route('**/api/whoami', r => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ me: { admin: false, account: { id: owner ? 'alice' : 'bob', name: owner ? 'Alice' : 'Bob', role: 'member' } } }) }));
   await page.route('**/api/pitch/**', r => r.fulfill({ contentType: 'image/png', body: png }));
+  // The site piece's live wall frame is served locally: no external site calls.
+  await page.route('https://example.com/**', r => r.fulfill({ contentType: 'text/html', body: '<h1>Live site</h1>' }));
   await page.route('**/main.ts*', async r => { const response = await r.fetch(); await r.fulfill({ response, body: (await response.text()) + '\nwindow.__audit = { ctx, core, parts };' }); });
   await page.route('**/lite.ts*', async r => { const response = await r.fetch(); await r.fulfill({ response, body: (await response.text()) + '\nwindow.__lite = { store, net };' }); });
   await page.routeWebSocket(/\/ws(?:\?|$)/, ws => { sockets.set(page, ws); ws.onMessage(raw => {
