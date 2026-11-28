@@ -10,6 +10,7 @@ import { presence, runsDir } from '../../cubbies/local/presence.js';
 import { needsFor, readNeeds } from '../../cubbies/local/needs.js';
 import { localPitch } from '../../cubbies/local/pitch.js';
 import { githubRepo } from '../projects.js';
+import { originRepo } from './origin.js';
 import { type MacSnapshot } from '../wire.js';
 import type { MacConfig } from './config.js';
 
@@ -31,7 +32,7 @@ export function macEntries(registry: unknown) {
       const clean = cleanProjects([{ name: 'local', hasMainLead: false, departmentLeads: [{ department: r.department ?? key, title: r.title, lead: r.sessionId }] }])[0]?.departmentLeads[0];
       return clean ? [{ clean, ids: [r.sessionId, r.appSession] }] : [];
     });
-    const project = cleanProjects([{ name, repo: githubRepo(p.url), lead,
+    const project = cleanProjects([{ name, repo: githubRepo(p.url) ?? originRepo(p.path), lead,
       hasMainLead: !!(lead || p.leadAppSession), departmentLeads: cleanedDepartments.map(d => d.clean) }])[0];
     return project ? [{ path: p.path as string, project, sessions: [p.leadSessionId, p.leadAppSession],
       departments: cleanedDepartments }] : [];
