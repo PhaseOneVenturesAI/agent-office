@@ -1,6 +1,8 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import type { MacConnector } from '../hq/local/connector.js';
+import os from 'node:os';
 import { accessHeaders, nodeSocket } from '../join-access.js';
+import { serviceHeaders } from './service-token.js';
 export const ACCESS_RETRY_MS = 5 * 60_000;
 export const backoff = (attempt: number) => Math.min(1000 * 2 ** Math.min(attempt, 5), 30_000);
 export const accessRefused = (status: number) => status === 401 || status === 403 || status >= 300 && status < 400;
@@ -19,8 +21,11 @@ export async function request(origin: string, route: string, body: unknown, head
   } finally { await reader.cancel(); }
   return JSON.parse(text + decoder.decode());
 }
-export async function cachedAccess(origin: string): Promise<Record<string, string>> {
+/** A service token file wins; without one, the user's cached cloudflared login. An unsafe token file throws. */
+export async function cachedAccess(origin: string, home = os.homedir()): Promise<Record<string, string>> {
   if (!origin.startsWith('https:')) return {};
+  const service = serviceHeaders(home, origin);
+  if (service) return service;
   try { return (await accessHeaders(origin)).headers; } catch { return {}; }
 }
 export type ConnectionResult = { access?: boolean; connected?: boolean; revoked?: boolean };
