@@ -1,3 +1,4 @@
+import { kickoffDocuments } from '../src/server/drafts/documents.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -86,14 +87,15 @@ test('office images are owner-only HTTP, no-store, removed with cards, floor and
   assert.equal(get('bob').status, 404); assert.deepEqual(get('bob').body, get('alice', '0'.repeat(64)).body);
   f.publish({}); assert.equal(get('alice').status, 404);
   f.publish(f.boards); f.upload();
-  await f.drafts.kickoff(f.def.id, 'Board', 'alice', f.cubbies);
+  f.building.launchDraft(f.def.id); f.cubbies.dropDraftImages(f.def.id);
   assert.equal(get('alice').status, 404);
   assert.equal((f.cubbies as any).images.size, 0);
   f.publish(f.boards); f.upload(); assert.equal((f.cubbies as any).images.size, 0);
-  const bytes = execFileSync('git', ['--git-dir', path.join(f.dir, 'remotes/board.git'), 'show', 'main:design/screens/welcome.png']);
-  assert.deepEqual(bytes, png);
-  const read = (file: string) => execFileSync('git', ['--git-dir', path.join(f.dir, 'remotes/board.git'), 'show', 'main:' + file], { encoding: 'utf8' });
-  assert.match(read('docs/BRIEF.md'), /Explore it/); assert.match(read('docs/FEEDBACK.md'), /Looks good/); assert.match(read('design/SCREENS.md'), /screens\/welcome.png/);
+  const docs = kickoffDocuments('Board', f.boards, hash => hash === f.image.meta.hash ? f.image : undefined);
+  assert.deepEqual(docs['design/screens/welcome.png'], png);
+  assert.match(String(docs['docs/BRIEF.md']), /Explore it/);
+  assert.match(String(docs['docs/FEEDBACK.md']), /Looks good/);
+
 });
 
 test('removed drafts and cubbies clear retained images; sleeping computers retain them', t => {
@@ -145,22 +147,6 @@ test('image contents must match the declared mime, and unadmitted computers cann
   f.nodes.extension?.(node.id, 'bob', imageFrames(f.def.id, f.image)[0]);
   assert.equal(f.cubbies.draftImage(f.def.id, 'alice', f.image.meta.hash), undefined);
   assert.equal(ws.readyState, 3);
-});
-
-test('failed kickoff rolls back binary export and retains draft images for a retry', async t => {
-  const f = boardFixture(t); f.upload();
-  const launch = f.building.launchDraft.bind(f.building);
-  f.building.launchDraft = () => { throw Error('Persistence failure'); };
-  await assert.rejects(f.drafts.kickoff(f.def.id, 'Board', 'alice', f.cubbies), /save kickoff/);
-  assert.deepEqual(f.cubbies.draftImage(f.def.id, 'alice', f.image.meta.hash)?.bytes, png);
-  assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: f.def.dir, encoding: 'utf8' }), '');
-  assert.equal(execFileSync('git', ['rev-list', '--count', 'HEAD'], { cwd: f.def.dir, encoding: 'utf8' }).trim(), '1');
-  const { existsSync } = await import('node:fs');
-  assert.equal(existsSync(path.join(f.def.dir, 'design')), false);
-  assert.equal(existsSync(path.join(f.dir, 'remotes/board.git')), false);
-  f.building.launchDraft = launch;
-  await f.drafts.kickoff(f.def.id, 'Board', 'alice', f.cubbies);
-  assert.equal(f.cubbies.draftImage(f.def.id, 'alice', f.image.meta.hash), undefined);
 });
 
 test('owner board exposes an image URL only when its bytes are ready to serve', t => {

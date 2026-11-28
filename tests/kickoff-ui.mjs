@@ -166,59 +166,15 @@ try {
   const near = await designerTags();
   assert.ok(near.shown > 0, `the designer you stand by shows its tags (${JSON.stringify(near)})`);
 
-  // No kickoff in this office: the hint says why.
-  push({ t: 'drafts', state: { enabled: true, canStart: true, here } });
+  // Old metadata never offers VPS kickoff, even if an old server claimed it could.
+  push({ t: 'drafts', state: { enabled: true, canStart: false, here, canKickoff: true } });
   await page.waitForTimeout(200);
-  assert.match(await hintOf('studiotable'), /Studio table.*Talk to Nova.*Kickoff isn’t set up in this office/);
-  push({ t: 'drafts', state: { enabled: true, canStart: true, here, canKickoff: true } });
-  await page.waitForTimeout(200);
-  assert.match(await hintOf('studiotable'), /Studio table.*E.*Talk to Nova.*K.*Kick off/);
-
-  // ---- K at the studio table: the confirm panel. ----
-  await stand(5.4, -2.2, 0, -0.22);
-  await page.waitForTimeout(400);
-  await page.mouse.click(700, 500);
+  assert.match(await hintOf('studiotable'), /predates the Mac Studio/);
+  await stand(5.4, -2.2, 0, -0.22); await page.mouse.click(700, 500);
   await page.waitForFunction(() => window.__office.player.hasMouse);
-  assert.equal(await page.evaluate(() => window.__audit.parts.pointer.target()?.kind), 'studiotable');
-  assert.match(await hintText(), /Kick off/);
-  await shot('02-studio-table-hint');
-  await page.keyboard.press('k');
-  await page.waitForSelector('.modal.draft-kickoff');
-  assert.equal(await page.locator('.draft-kickoff .btn.close').count(), 1, 'the panel has its ✕');
-  const button = page.locator('.draft-kickoff button[type="submit"]');
-  assert.equal(await button.isDisabled(), true, 'disabled until the name is typed');
-  await page.fill('.draft-kickoff input', 'kindly');
-  assert.equal(await button.isDisabled(), true, 'the name as it is');
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(100);
-  assert.equal(await page.locator('.modal').count(), 0, 'Esc closes it');
-  await page.waitForFunction(() => window.__office.player.hasMouse, null, { timeout: 2000 });
-  await page.keyboard.press('k');
-  await page.waitForSelector('.modal.draft-kickoff');
-  await page.locator('.draft-kickoff .btn.close').click();
-  await page.waitForFunction(() => window.__office.player.hasMouse, null, { timeout: 2000 });
-  assert.equal(sent.filter((m) => m.t === 'drafts.kickoff').length, 0, 'closing sends nothing');
-
-  await page.keyboard.press('k');
-  await page.waitForSelector('.modal.draft-kickoff');
-  await page.fill('.draft-kickoff input', 'Kindly');
-  assert.equal(await button.isDisabled(), false);
-  await shot('03-confirm-panel');
-  await button.click();
-  await page.waitForTimeout(150);
-  assert.deepEqual(sent.filter((m) => m.t === 'drafts.kickoff'), [{ t: 'drafts.kickoff', floorId: 'draft-1', confirm: 'Kindly' }]);
-  assert.match(await page.locator('.draft-kickoff footer').innerText(), /Kicking off…/);
-  assert.equal(await button.isDisabled(), true);
-  await shot('04-kicking-off');
-  push({ t: 'drafts.kickoffFailed', floorId: 'draft-1', error: 'GitHub said no: the team’s token can’t make repositories' });
-  await page.waitForTimeout(150);
-  assert.match(await page.locator('.draft-kickoff .ko-err').innerText(), /GitHub said no/);
-  assert.equal(await button.isDisabled(), false, 'try again');
-  await shot('05-kickoff-failed');
-  await button.click();
-  await page.waitForTimeout(100);
-  assert.equal(sent.filter((m) => m.t === 'drafts.kickoff').length, 2);
-
+  await page.keyboard.press('k'); await page.waitForTimeout(100);
+  assert.equal(sent.filter(m => m.t === 'drafts.kickoff').length, 0);
+  // Mac Open floor confirmations are covered by studio-ui; retain the floor's presentation checks here.
   // ---- The kickoff moment. ----
   // Where you see the floor change: by the studio table, looking over the desks.
   const overView = [12.5, 7.5, toward(12.5, 7.5, -4, -4.5), -0.12];

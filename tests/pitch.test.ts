@@ -1,32 +1,26 @@
 import { legacyCubby } from './support/legacy-cubby.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, existsSync, symlinkSync, statSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, symlinkSync } from 'node:fs';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { cleanPitch, pitchUrl, pitchImages } from '../src/shared/pitch/clean.js';
 import { localPitch } from '../src/server/cubbies/local/pitch.js';
-import { CubbyConnector } from '../src/server/cubbies/local/connector.js';
 import { Cubbies } from '../src/server/cubbies/index.js';
 import { Nodes } from '../src/server/nodes.js';
-import { memoryStore, pinOf } from '../src/server/cubbies/local/devices.js';
-import { cubbyKey, relaySignature, verifyOwnerVerdict, verifyRelay } from '../src/server/cubbies/wire.js';
-import { pitchChanged, pitchHandlers } from '../src/server/ws/handlers/pitch.js';
+import { pitchChanged } from '../src/server/ws/handlers/pitch.js';
 import { pitchImageRoute } from '../src/server/http/routes/pitch-images.js';
 import { PitchStore } from '../src/server/pitch/store.js';
 import { PITCH_LIMITS } from '../src/shared/protocol/pitch.js';
 import { DRAFT_LIMITS } from '../src/shared/protocol/drafts.js';
 import { cleanImage } from '../src/server/drafts/image-format.js';
-import { testOwnerKey } from './support/cubby-keys.js';
 import { png, socket, imageFrames, pngChunk } from './support/draft-board.js';
-import type { LocalConfig } from '../src/server/cubbies/local/config.js';
 const raw = () => ({ department: 'Marketing', lead: 'Plimbo Marketing lead', version: 'v3', status: 'ready', pieces: [
   { id: 'home', kind: 'site', title: 'Home page', url: 'https://example.com', image: 'pitch/home.png', notes: ['Review this'] },
   { id: 'video', kind: 'video', title: 'Explainer', youtube: 'dQw4w9WgXcQ', image: 'pitch/home.png' },
   { id: 'slides', kind: 'slides', title: 'Launch deck', images: ['pitch/home.png'] },
   { id: 'ads', kind: 'ads', title: 'Ads', images: ['pitch/home.png', 'pitch/home.png'] },
 ] });
-const tick = () => new Promise(r => setTimeout(r, 15));
 function files(t: any) {
   const dir = mkdtempSync(path.join(tmpdir(), 'pitch-'));
   mkdirSync(path.join(dir, '.agent-office/pitch'), { recursive: true });
@@ -65,53 +59,7 @@ test('local pitch refuses aliases, traversal, oversized records, unclean metadat
   rmSync(file); writeFileSync(path.join(dir, 'private.json'), JSON.stringify(raw())); symlinkSync(path.join(dir, 'private.json'), file); assert.throws(() => localPitch(dir));
   rmSync(path.join(dir, '.agent-office'), { recursive: true }); mkdirSync(path.join(dir, 'alias')); symlinkSync(path.join(dir, 'alias'), path.join(dir, '.agent-office')); assert.throws(() => localPitch(dir));
 });
-function connector(t: any, busy = false) {
-  const dir = files(t), now = Date.now(), owner = testOwnerKey(), stranger = testOwnerKey(), sent: any[] = [], turns: string[] = [];
-  const binding = { cubbyId: 'cub', floorId: 'floor', ownerId: 'alice', computerId: 'computer', connectionId: 'connection' };
-  const config: LocalConfig = { ownerKey: owner.ownerKey, project: dir, floor: 'floor', roots: [dir], branches: new Map(), state: dir, computerId: 'computer', provider: 'claude', session: 'session', executable: 'claude', claudeHome: dir, fresh: false };
-  const deps = { now: () => now, release() {}, head: async () => undefined, devices: memoryStore([pinOf(owner.ownerKey, 'Owner', now)]),
-    snapshot: async () => ({ t: 'cubby.snapshot' as const, floorId: 'floor', observedAt: now, agents: [], plan: [], needsYou: [], pitch: localPitch(dir).pitch }),
-    lead: { busy, send: async (text: string) => { turns.push(text); return 'Received'; }, stop: async () => {} } };
-  const trust = { binding, verify: (row: any) => deps.devices.pins().some(p => verifyOwnerVerdict(p.key, row)) };
-  let c = new CubbyConnector(config, 'token', deps);
-  const send = (f: any) => c.receive(JSON.stringify({ ...f, signature: relaySignature(cubbyKey('token'), f) }));
-  const ready = () => { c.connected(f => { sent.push(f); }); send({ t: 'cubby.ready', ...binding }); };
-  const note = (extra: any = {}, signer = owner) => { const f = { t: 'cubby.verdict', ...binding, pieceId: 'home', version: 'v3', verdict: 'change', note: 'Make it clearer', requestId: 'verdict', at: now, ...extra }; return { ...f, ownerSig: signer.signVerdict(f) }; };
-  ready(); t.after(async () => c.close());
-  return { dir, owner, stranger, sent, turns, send, note, devices: deps.devices, read: () => localPitch(dir, trust), file: path.join(dir, '.agent-office/pitch-feedback.json'),
-    restart: async () => { await c.close(); c = new CubbyConnector(config, 'token', deps); ready(); } };
-}
-test('signed verdict is saved at 0600, echoed as a stamp, delivered to lead and refuses replay across restart', async t => {
-  const f = connector(t); await tick(); const note = f.note();
-  assert.equal(verifyOwnerVerdict(f.owner.ownerKey, note), true); f.send(note); await tick();
-  assert.equal(statSync(f.file).mode & 0o777, 0o600);
-  assert.deepEqual(f.turns, ['Pitch verdict on Home page (v3): Change — Make it clearer']);
-  assert.equal(f.read().pitch!.pieces[0].stamp?.requestId, 'verdict');
-  assert.ok(f.sent.some(s => s.t === 'cubby.snapshot' && s.pitch?.pieces[0].stamp?.requestId === 'verdict'));
-  const stored = JSON.parse(readFileSync(f.file, 'utf8'))[0];
-  for (const key of ['cubbyId', 'floorId', 'computerId', 'requestId', 'at', 'version', 'pieceId', 'verdict', 'note', 'ownerSig']) assert.equal(stored[key], note[key], key);
-  const saved = readFileSync(f.file); f.send(note); await tick(); assert.deepEqual(readFileSync(f.file), saved);
-  await f.restart(); await tick(); f.send(note); await tick(); assert.deepEqual(readFileSync(f.file), saved); assert.equal(f.turns.length, 1);
-  assert.ok(f.sent.some(s => s.t === 'cubby.snapshot' && s.pitch?.pieces[0].stamp));
-  assert.equal(f.sent.filter(s => s.t === 'cubby.design-image').length, 2, 'one shared image per connection');
-});
-test('forged, stale, replayed, wrong-version and invalid verdicts cannot change the saved file', async t => {
-  const f = connector(t); await tick();
-  for (const bad of [f.note({}, f.stranger), { ...f.note(), verdict: 'approve' }, f.note({ at: Date.now() - 61_000 }), f.note({ at: Date.now() + 61_000 }),
-    f.note({ version: 'v2' }), f.note({ pieceId: 'unknown' }), f.note({ note: '' }), f.note({ note: 'a'.repeat(1001) }), f.note({ verdict: 'other' })]) f.send(bad);
-  assert.equal(existsSync(f.file), false); assert.deepEqual(f.turns, []);
-  f.send(f.note()); await tick(); const saved = readFileSync(f.file);
-  f.send(f.note({ requestId: 'changed', version: 'v2' })); assert.deepEqual(readFileSync(f.file), saved);
-  const target = path.join(f.dir, 'secret'); writeFileSync(target, '[]'); rmSync(f.file); symlinkSync(target, f.file);
-  f.send(f.note({ requestId: 'alias' })); assert.equal(readFileSync(target, 'utf8'), '[]');
-});
-test('busy lead gets saved verdict without a concurrent turn; a new version clears stamps', async t => {
-  const f = connector(t, true); await tick(); f.send(f.note()); await tick(); assert.equal(f.turns.length, 0);
-  assert.equal(f.read().pitch!.pieces[0].stamp?.verdict, 'change');
-  writeFileSync(path.join(f.dir, '.agent-office/pitch.json'), JSON.stringify({ ...raw(), version: 'v4' }));
-  assert.equal(f.read().pitch!.pieces[0].stamp, undefined);
-});
-test('shared-floor owner-only delivery, chunked images, verdict relay and authenticated image endpoint', t => {
+test('legacy publications retain owner-only delivery, chunked images and authenticated image endpoint', t => {
   const dir = files(t); let c!: Cubbies;
   const nodes = new Nodes(dir, () => c?.refresh()); t.after(() => nodes.close());
   c = new Cubbies(dir, true, nodes, id => id, id => id === 'floor', () => {});
@@ -128,51 +76,11 @@ test('shared-floor owner-only delivery, chunked images, verdict relay and authen
   assert.equal(c.pitchImage(a.id, 'bob', image.meta.hash), undefined); assert.ok(c.pitchImage(a.id, 'alice', image.meta.hash));
   const alice = { accountId: 'alice' }, bob = { accountId: 'bob' }, frames: any[] = [];
   const ctx: any = { cubbies: c, clients: new Map([['a', alice], ['b', bob]]), floorOf: () => ({ id: 'floor' }), sendTo: (client: any, msg: any) => frames.push({ client, msg }) };
-  pitchChanged(ctx); assert.ok(frames.find(f => f.client === alice).msg.view); assert.equal(frames.find(f => f.client === bob).msg.view, undefined);
-  const owner = testOwnerKey(), binding = ws.sent.find(s => s.t === 'cubby.ready');
-  const payload = { ...binding, pieceId: 'home', version: 'v3', verdict: 'approve', requestId: 'approve', at: Date.now() };
-  const message = { ...payload, ownerSig: owner.signVerdict(payload) };
-  assert.throws(() => c.verdict('floor', 'bob', a.id, message)); c.verdict('floor', 'alice', a.id, message);
-  assert.equal(ws.sent.at(-1).t, 'cubby.verdict'); assert.equal(verifyRelay(cubbyKey(a.token), ws.sent.at(-1)), true);
-  assert.equal(verifyRelay(cubbyKey(a.token), { ...ws.sent.at(-1), verdict: 'drop' }), false);
-  ws.frame({ t: 'cubby.reply', floorId: 'floor', requestId: message.requestId, text: 'Private pitch reply' });
-  assert.equal(c.pitchView('floor', 'alice')!.notice?.text, 'Private pitch reply');
-  assert.equal(c.state('floor', 'alice').cubbies[0].interior!.chat.some(l => l.text.includes('Private pitch')), false);
-  assert.equal(JSON.stringify(c.state('floor', 'bob', 'bob-browser')).includes('Private pitch'), false);
+  pitchChanged(ctx); assert.equal(frames.find(f => f.client === alice).msg.view.readOnly, true); assert.equal(frames.find(f => f.client === bob).msg.view, undefined);
   const statuses: number[] = [], res: any = { writeHead: (code: number) => statuses.push(code), end() {} };
   for (const id of ['bob', 'alice']) pitchImageRoute.handle(ctx, { res, path: `/api/pitch/${a.id}/images/${image.meta.hash}`, session: { account: { id } } } as any);
   assert.deepEqual(statuses, [404, 200]);
-  const warnings: string[] = []; ctx.warn = (_: any, s: string) => warnings.push(s);
-  pitchHandlers['pitch.verdict'](ctx, bob as any, { ...message, t: 'pitch.verdict', cubbyId: a.id, floorId: 'floor' }); assert.equal(warnings.length, 1);
   const off = new Cubbies(dir, false, nodes, id => id, () => true, () => {}); assert.equal(off.pitchView('floor', 'alice'), undefined);
-});
-
-test('saved verdicts require a genuine signature for this binding and currently trusted device', async t => {
-  const f = connector(t); await tick();
-  const signed = f.note({ verdict: 'approve', note: '  Keep exact signed spacing.  ' });
-  const { ownerSig: _sig, ...unsigned } = signed;
-  const bad = [unsigned, { ...f.note(), verdict: 'approve' }, { ...signed, note: 'Rewritten' },
-    { ...signed, at: signed.at + 1 }, { ...signed, requestId: 'forged' }, { ...signed, pieceId: 'video' },
-    { ...signed, version: 'v2' }, f.note({ verdict: 'approve' }, f.stranger),
-    ...['cubbyId', 'floorId', 'computerId'].map(key => f.note({ [key]: 'another-binding', verdict: 'approve' }))];
-  for (const row of bad) {
-    writeFileSync(f.file, JSON.stringify([row]));
-    assert.ok(f.read().pitch!.pieces.every(p => !p.stamp));
-    f.sent.length = 0; await f.restart(); await tick();
-    const snapshot = f.sent.find(s => s.t === 'cubby.snapshot');
-    assert.ok(snapshot, 'connector published a snapshot');
-    assert.ok(snapshot.pitch.pieces.every((p: any) => !p.stamp), 'invalid saved approval was not published');
-  }
-  writeFileSync(f.file, JSON.stringify([signed]));
-  assert.equal(f.read().pitch!.pieces[0].stamp?.verdict, 'approve');
-  assert.equal(localPitch(f.dir).pitch!.pieces[0].stamp, undefined, 'no trust context means no stamp');
-  f.sent.length = 0; await f.restart(); await tick();
-  assert.equal(f.sent.find(s => s.t === 'cubby.snapshot').pitch.pieces[0].stamp?.verdict, 'approve');
-  // Re-read the current trust source, not the constructor's initial owner key.
-  f.devices.update(s => { s.pins = [pinOf(f.stranger.ownerKey, 'Replacement', Date.now())]; });
-  assert.equal(f.read().pitch!.pieces[0].stamp, undefined);
-  f.sent.length = 0; await f.restart(); await tick();
-  assert.equal(f.sent.find(s => s.t === 'cubby.snapshot').pitch.pieces[0].stamp, undefined);
 });
 
 for (const reason of ['disconnect', 'record', 'floor', 'account', 'not-admitted', 'floor-image-cleanup']) {

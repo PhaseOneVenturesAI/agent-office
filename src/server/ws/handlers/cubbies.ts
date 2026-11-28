@@ -34,12 +34,7 @@ export function cubbiesChanged(ctx: Ctx) {
 export const cubbiesHandlers = {
   'cubbies.get'(ctx, c) { ctx.sendTo(c, { t: 'cubbies', state: cubbiesView(ctx, ctx.floorOf(c), c) }); },
   'cubbies.setup'(ctx, c) { ctx.warn(c, 'Cubby setup removed: use agent-office link <url>'); },
-  'cubbies.chat'(ctx, c, msg) {
-    const floor = ctx.floorOf(c);
-    if (!c.accountId || !floor) return ctx.warn(c, 'Only the cubby owner can talk to its lead');
-    try { ctx.cubbies.chat(floor.id, c.accountId, msg.id, msg); }
-    catch (e) { ctx.warn(c, (e as Error).message); }
-  },
+  'cubbies.chat'(ctx, c) { ctx.warn(c, 'Cubby chat removed: use your linked lead'); },
   'cubbies.addDevice'(ctx, c) { ctx.warn(c, 'Device enrollment removed: use agent-office link <url>'); },
   'cubbies.device'(ctx, c) { ctx.warn(c, 'Device enrollment removed: use agent-office link <url>'); },
   'cubbies.knock'(ctx, c, msg) {

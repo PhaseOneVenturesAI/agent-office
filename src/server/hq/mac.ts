@@ -138,7 +138,7 @@ export class HQMac {
     return fresh.live.projects.flatMap((row, i) => {
       if (row.project.localState === 'draft') return [];
       const view = this.pitches.view(`hq-mac-${fresh.record.nodeId}-${i}`, fresh.record.floor, 'hq');
-      return view ? [{ ...view, project: row.project.name, projectIndex: i, readOnly: true }] : [];
+      return view ? [{ ...view, project: row.project.name, projectIndex: i }] : [];
     });
   }
   accept(nodeId: string, owner: string | undefined, raw: unknown): boolean {

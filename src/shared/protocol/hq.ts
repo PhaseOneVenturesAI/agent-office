@@ -78,7 +78,7 @@ export interface HQMessage {
   id: string; manager: string; lead: string; text: string; at: number;
   state: 'waiting' | 'passed' | 'declined' | 'expired';
 }
-export type HQPassMessage = { t: 'cubbies.chat'; id: string; hqMessageId: string; ownerPublicKey: string } & CubbyOwnerMessage;
+export type HQPassMessage = { t: 'cubbies.chat'; id: string; hqMessageId: string } & CubbyOwnerMessage;
 export type HQClientMsg = HQTalkClientMsg | { t: 'hq.pitch'; projectIndex: number } | { t: 'hq.message'; lead: string; text: string } | { t: 'hq.decline'; id: string } | HQPassMessage;
 export function managerMessageText(item: Pick<HQMessage, 'manager' | 'text'>) {
   return `Message from ${item.manager} (HQ manager; can't approve merges, publishes or spending): ${item.text}`;

@@ -40,4 +40,3 @@
   .cubby-chat .cb-side { border-left: 0; border-top: 3px solid var(--ink); max-height: 30vh; }
   .cubby-chat header .cb-sub { display: none; }
 }
-/* Which devices can talk to the lead (devices.ts). */

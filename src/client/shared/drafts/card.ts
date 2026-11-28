@@ -4,15 +4,13 @@ import type { ClientMsg } from '../../../shared/protocol';
 import { DRAFT_LIMITS } from '../../../shared/protocol/drafts';
 import { store } from '../../state';
 import { h, openModal, type Modal } from '../../ui/dom';
-import { deviceTrusted } from '../cubby/devices';
-import { ownerDeviceKey, signOwnerFeedback, type OwnerDeviceKey } from '../cubby/keys';
 import { clip } from '../cubby/text';
 import { CARD_BOARD_TITLE, SCREEN_CHIP, boardCards, feedbackLanded, feedbackTime, findCard, type BoardCard, type CardBoard } from './board';
 import { draftImage, imageCanvas, onDraftImage } from './images';
 
 // One card of the design board, opened big (cubbies step 5): its image (or its words, when it has
 // none or the image wouldn't load), title, status and note, every feedback note left on it, newest
-// last, and a box to leave one. A note is signed with this browser's owner key and only shows once the
+// last, and an owner-account feedback box. A note only shows once the
 // owner's computer has saved it and reported it back in the boards; until then it says "Sending…".
 // The 3D office opens it from the wall (E on a card), the phone (/lite) from its Draft board.
 // Everything shown is put in as text, never as HTML.
@@ -64,19 +62,14 @@ export function openDraftCard(deps: CardWindowDeps, board: CardBoard, cardId: st
   );
 
   const account = store.me.account?.name;
-  let key: OwnerDeviceKey | undefined;
-  let keyError = '';
-  let signing = false;
+  let sendError = '';
+  let sending = false;
   let closed = false;
   let pending: Pending | undefined;
   let figureKey = '';
   let logKey = '';
 
   const draft = () => store.drafts.here;
-  const cubby = () => {
-    const id = draft()?.cubbyId;
-    return id ? store.cubbies.cubbies.find((c) => c.id === id && c.mine) : undefined;
-  };
   const cards = () => { const d = draft(); return d ? boardCards(d.boards, at.board) : []; };
   const go = (step: number) => {
     const list = cards();
@@ -146,36 +139,18 @@ export function openDraftCard(deps: CardWindowDeps, board: CardBoard, cardId: st
     where.textContent = `${CARD_BOARD_TITLE[card.board]} · ${i + 1} of ${list.length}`;
     prev.disabled = next.disabled = list.length < 2;
 
-    // Who can send: this account, on a device the draft's computer trusts, with the computer awake.
-    const cb = cubby();
-    const it = cb?.interior;
-    const computer = clip(it?.computerName ?? '', 32) || 'your computer';
-    const lead = clip(it?.leadName ?? d.leadName ?? '', 24) || 'your lead';
-    const asleep = !d.online || cb?.lamp === 'asleep';
-    const trusted = deviceTrusted(cb, key);
     const sameAccount = store.me.account?.name === account;
-    let why = '';
-    let needsDevice = false;
-    if (!sameAccount) why = 'Account changed. Close and reopen this card.';
-    else if (!d.cubbyId || !cb) why = 'Set up your lead at the studio table to leave feedback.';
-    else if (keyError) why = keyError;
-    else if (!key) why = 'Preparing this device’s owner key…';
-    else if (!it?.ownerDevices || !it.computerId) why = `Waiting for ${computer} to say which devices it trusts.`;
-    else if (!trusted) {
-      why = 'This device cannot leave legacy feedback. Use an already trusted browser until feedback moves to the Mac link.';
-      needsDevice = true;
-    } else if (asleep) why = `💤 ${computer} is asleep. Feedback can be sent once it wakes.`;
-    else if (pending?.failed && pending.board === card.board && pending.cardId === card.id) why = `${computer} didn't confirm that note. Check it's awake and try again.`;
-    status.textContent = why;
-    status.style.display = why ? '' : 'none';
-    status.classList.toggle('asleep', asleep && !needsDevice);
-    chatBtn.style.display = needsDevice && deps.openChat ? '' : 'none';
-    form.style.display = sameAccount && d.cubbyId && cb && trusted ? '' : 'none';
+    const asleep = !d.online;
+    status.textContent = !sameAccount ? 'Account changed. Close and reopen this card.' : sendError || (asleep ? 'Your Mac link is offline or this project has no linked lead.' : pending?.failed ? 'Your Mac did not confirm this note. Check the lead chat before retrying.' : '');
+    status.style.display = status.textContent ? '' : 'none';
+    chatBtn.style.display = 'none';
+    form.style.display = sameAccount ? '' : 'none';
     const sendingHere = !!pending && !pending.failed;
-    text.disabled = asleep || signing;
-    send.disabled = asleep || signing || sendingHere || !trusted;
-    send.textContent = signing || sendingHere ? 'Sending…' : 'Send feedback';
-    text.placeholder = asleep ? '' : `Feedback on ${clip(card.title, 40)}…`;
+    text.disabled = asleep || sending;
+    send.disabled = asleep || sending || sendingHere;
+    send.textContent = sending || sendingHere ? 'Sending…' : 'Send feedback';
+    text.placeholder = `Feedback on ${clip(card.title, 40)}…`;
+
   }
 
   chatBtn.addEventListener('click', () => {
@@ -187,21 +162,15 @@ export function openDraftCard(deps: CardWindowDeps, board: CardBoard, cardId: st
     e.preventDefault();
     const d = draft();
     const card = findCard(d?.boards, at.board, at.id);
-    const cb = cubby();
-    const computerId = cb?.interior?.computerId;
     const body = text.value.replace(/\r\n?/g, '\n').trim().slice(0, DRAFT_LIMITS.feedbackText);
-    if (!body || !d || !card || !cb || !computerId || !d.online || cb.lamp === 'asleep' || signing || (pending && !pending.failed) ||
-      !key || !deviceTrusted(cb, key) || store.me.account?.name !== account) return;
-    signing = true;
+    if (!body || !d || !card || !d.online || sending || (pending && !pending.failed) || store.me.account?.name !== account) return;
+    sending = true;
     paint();
     try {
-      const signed = { cardId: card.id, text: body, requestId: crypto.randomUUID(), at: Date.now() };
-      const ownerSig = await signOwnerFeedback(key, { ...signed, cubbyId: cb.id, floorId: d.id, computerId });
-      const now = draft();
-      if (closed || now?.id !== d.id || store.me.account?.name !== account || cubby()?.interior?.computerId !== computerId || !deviceTrusted(cubby(), key)) return;
+      const feedback = { cardId: card.id, text: body, requestId: crypto.randomUUID(), at: Date.now() };
       if (pending) clearTimeout(pending.timer);
       const p: Pending = {
-        board: card.board, cardId: card.id, requestId: signed.requestId, text: body, before: new Set(card.feedback.map((f) => f.id)), failed: false,
+        board: card.board, cardId: card.id, requestId: feedback.requestId, text: body, before: new Set(card.feedback.map((f) => f.id)), failed: false,
         timer: setTimeout(() => {
           if (pending !== p) return;
           p.failed = true;
@@ -210,12 +179,12 @@ export function openDraftCard(deps: CardWindowDeps, board: CardBoard, cardId: st
         }, CONFIRM_MS),
       };
       pending = p;
-      deps.send({ t: 'drafts.feedback', floorId: d.id, ...signed, ownerSig });
+      deps.send({ t: 'drafts.feedback', floorId: d.id, ...feedback });
       text.value = '';
     } catch {
-      keyError = 'Could not sign this note. Reopen the card and check browser storage.';
+      sendError = 'Could not send this note. Reopen the card and try again.';
     } finally {
-      signing = false;
+      sending = false;
       paint();
     }
   });
@@ -239,7 +208,6 @@ export function openDraftCard(deps: CardWindowDeps, board: CardBoard, cardId: st
       for (const off of offs) off();
     },
   });
-  void ownerDeviceKey(account).then((k) => { key = k; paint(); }).catch((error: Error) => { keyError = error.message; paint(); });
   if (deps.focus) setTimeout(() => { if (!text.disabled) text.focus(); }, 30);
   return modal;
 }

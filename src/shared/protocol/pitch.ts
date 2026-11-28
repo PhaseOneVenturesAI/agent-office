@@ -14,20 +14,13 @@ export interface PitchPiece {
 }
 export interface Pitch { department: string; lead: string; status: 'building' | 'ready'; version: string; pieces: PitchPiece[] }
 export interface PitchView {
-  /** HQ display location; floorId remains the source cubby for signatures. */
+  /** HQ display location; floorId remains the source project. */
   displayFloorId?: string;
   readOnly?: boolean;
-  /** Only the owner receives device fingerprints for cross-floor verdict signing. */
-  ownerDevices?: import('./cubbies.js').CubbyDevice[];
   cubbyId: string; floorId: string; computerId: string; pitch: Pitch; notice?: { requestId: string; text: string };
 }
-export interface PitchVerdictMessage extends PitchStamp { pieceId: string; version: string; ownerSig: string }
-export type PitchVerdictPayload = { cubbyId: string; floorId: string; computerId: string } & Omit<PitchVerdictMessage, 'ownerSig'>;
+export interface PitchVerdictMessage extends PitchStamp { pieceId: string; version: string }
 export type PitchClientMsg = { t: 'pitch.verdict'; cubbyId: string; floorId: string } & PitchVerdictMessage;
 export type PitchServerMsg = { t: 'pitch'; view?: PitchView };
 export const PITCH_LIMITS = { pieces: 4, slides: 24, ads: 8, images: 34, ownerImageBytes: 32 * 1024 * 1024, note: 1000, feedbackBytes: 64 * 1024 } as const;
-export function ownerVerdictEncoding(f: PitchVerdictPayload): string {
-  return JSON.stringify(['agent-office/cubby-owner-verdict/v1', f.cubbyId, f.floorId, f.computerId,
-    f.requestId, f.at, f.version, f.pieceId, f.verdict, f.note ?? null]);
-}
 export const pitchImageUrl = (cubbyId: string, hash: string) => `/api/pitch/${encodeURIComponent(cubbyId)}/images/${hash}`;

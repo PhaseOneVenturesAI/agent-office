@@ -2,9 +2,6 @@ import './style.css';
 import { pitchImageUrl, type PitchClientMsg, type Verdict } from '../../../shared/protocol/pitch';
 import { store } from '../../state';
 import { h, openModal } from '../../ui/dom';
-import { ownerDeviceKey } from '../cubby/keys';
-import { deviceTrusted } from '../cubby/devices';
-import { signVerdict } from './verdict';
 export const verdictLabel = (v: Verdict) => ({ approve: 'Approved', change: 'Change requested', drop: 'Dropped' })[v];
 export interface ReviewDeps {
   send(m: PitchClientMsg): void;
@@ -55,15 +52,11 @@ export function openPitchPiece(deps: ReviewDeps, pieceId: string, initial = 0, a
     if (verdict === 'change' && !text) { status.textContent = 'Add a note so your lead knows what to change.'; note.focus(); return; }
     busy = true; paint();
     try {
-      const key = await ownerDeviceKey(account);
-      if (!(view.displayFloorId ? view.ownerDevices?.some(d => d.fingerprint === key.fingerprint) : deviceTrusted(cb, key))) throw Error('Use an already trusted browser for legacy pitch verdicts until they move to the Mac link.');
-      if (cb?.lamp === 'asleep') throw Error('Reconnect your computer to save a verdict.');
       const payload = { cubbyId: view.cubbyId, floorId: view.floorId, computerId: view.computerId, version: view.pitch.version,
         pieceId, verdict, ...(text ? { note: text } : {}), requestId: crypto.randomUUID(), at: Date.now() };
-      const ownerSig = await signVerdict(key, payload);
       if (closed || !piece() || store.me.account?.name !== account || store.pitch?.computerId !== view.computerId) return;
       pending = payload.requestId; status.textContent = 'Sending to your computer…';
-      deps.send({ t: 'pitch.verdict', ...payload, ownerSig });
+      deps.send({ t: 'pitch.verdict', ...payload });
       timer = setTimeout(() => { pending = ''; status.textContent = 'Your computer has not confirmed this verdict. Check the lead chat before retrying.'; paint(); }, 20_000);
     } catch (error) { status.textContent = (error as Error).message; }
     finally { busy = false; if (!closed) paint(); }

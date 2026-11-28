@@ -48,7 +48,7 @@ async function setup(page, owner = true, lite = false) {
   await page.routeWebSocket(/\/ws(?:\?|$)/, ws => { sockets.set(page, ws); ws.onMessage(raw => {
     const m = JSON.parse(String(raw)); sent.push(m);
     if (m.t === 'pitch.verdict') {
-      assert.equal(m.ownerSig.length, 86);
+      assert.equal(m.ownerSig, undefined);
       // Echo models the computer saving a verified verdict (the full path is tested in pitch.test.ts).
       const p = pitch.pieces.find(p => p.id === m.pieceId);
       p.stamp = { requestId: m.requestId, verdict: m.verdict, note: m.note, at: m.at };
@@ -77,8 +77,6 @@ async function setup(page, owner = true, lite = false) {
     return c.toDataURL('image/png').split(',')[1];
   }), 'base64');
   if (owner) {
-    const fingerprint = await page.evaluate(async () => (await (await import('/shared/cubby/keys.ts')).ownerDeviceKey('Alice')).fingerprint);
-    cubbies.cubbies[0].interior.ownerDevices = [{ fingerprint, label: 'Fixture', addedAt: Date.now() }];
     push(page, { t: 'cubbies', state: cubbies }); push(page, { t: 'pitch', view });
   } else push(page, { t: 'pitch' });
   await page.waitForTimeout(400);
@@ -174,6 +172,6 @@ try {
   assert.equal(await boardText(page), normalBoard, 'clearing the pitch restores the shared board');
   assert.equal(await boardText(other), normalBoard, 'other account stays unchanged');
   assert.deepEqual(errors, []);
-  writeFileSync(`${out}/results.json`, JSON.stringify({ state, errors, checks: 'owner stations, walk-in dimming, four E reviews, close, signed verdict echo/stamp, slides, non-owner, lite, owner ready/building board, normal second-account board, cleared-board restoration, building restoration' }, null, 2));
+  writeFileSync(`${out}/results.json`, JSON.stringify({ state, errors, checks: 'owner stations, walk-in dimming, four E reviews, close, owner-account verdict echo/stamp, slides, non-owner, lite, owner ready/building board, normal second-account board, cleared-board restoration, building restoration' }, null, 2));
   console.log(`Pitch UI passed; screenshots in ${out}`);
 } finally { await browser.close(); await server.close(); }

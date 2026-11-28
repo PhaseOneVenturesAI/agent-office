@@ -1,12 +1,10 @@
 import './chat.css';
-import type { CubbyChatLine, CubbyAgent, CubbyDeviceAction, CubbyInfo, CubbyOwnerMessage } from '../../../shared/protocol/cubbies';
+import type { CubbyChatLine, CubbyAgent, CubbyInfo } from '../../../shared/protocol/cubbies';
 import { store } from '../../state';
-import { ownerDeviceKey, signOwnerChat, type OwnerDeviceKey } from './keys';
-import { deviceTrusted } from './devices';
 import { h, openModal } from '../../ui/dom';
 import { STATUS_TEXT, ROLE_LABEL, clip, deadlineText, agentCard, helperName } from './text';
 
-// A cubby's windows: talking to its lead, and one helper's card. Both are the office's cream dialog
+// A cubby's windows: legacy read-only history, and one helper's card. Both are the office's cream dialog
 // with its ✕ and Esc; everything shown is put in as text, never as HTML. The 3D office opens them from
 // inside the cubby, the phone (/lite) from My cubby. Someone the owner let in to watch gets the same
 // windows read-only: the lines, never a box to type in.
@@ -15,25 +13,20 @@ export interface CubbyWindows {
   /** Optional feature-owned UI, composed without changing ordinary cubby access. */
   extension?: {
     el: HTMLElement;
-    paint(c: CubbyInfo | undefined, key: OwnerDeviceKey | undefined): void;
+    paint(c: CubbyInfo | undefined): void;
     close(): void;
     label?(line: CubbyChatLine): string | undefined;
     compose?: { allowed(): boolean; note(c: CubbyInfo): string; maxLength: number; send(text: string): void };
   };
   sourceFloor?(id: string): string | undefined;
   visit?: { label: string; go(): void };
-  /** Your cubby with this id, as the store has it now (only yours has an inside). */
+  /** Your cubby, or a room whose owner admitted this connection. */
   cubby(id: string): CubbyInfo | undefined;
   /** Hears the store's cubbies change; returns how to stop. */
   onChange(fn: () => void): () => void;
-  /** Sends one chat line to the lead. */
-  sendChat(id: string, message: CubbyOwnerMessage): void;
   /** The owner sends a watcher out (cubbies.admit allow false). */
   sendOut?(id: string, accountId: string): void;
-  /** This device asks the computer to trust it (devices.ts). */
-  addDevice?(id: string, publicKey: string, label: string): void;
-  /** A trusted device's signed approve, deny or remove. */
-  device?(id: string, action: CubbyDeviceAction): void;
+
 }
 
 /** What a cubby's chat shows you: yours to talk in, someone else's you're watching, or nothing (gone). */
@@ -57,9 +50,8 @@ export function helperLine(a: CubbyAgent, asleep: boolean): string {
 const MAX_CHAT = 4000;
 
 /**
- * Talking to your lead: the same conversation as that lead's on your computer. Only your own words go
- * to it, as chat; nothing here runs a tool or answers an approval. With the computer asleep there's
- * nobody to hear it, so the box is shut until it wakes.
+ * Legacy history stays read-only. The optional HQ extension supplies the manager's held-message
+ * composer; linked owner conversations use the native talk UI.
  */
 export function openLeadChat(w: CubbyWindows, cubbyId: string): { close(): void } {
   const log = h('div.cb-log', { role: 'log', 'aria-live': 'polite' });
@@ -75,9 +67,6 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string): { close(): void 
   if (w.extension) log.after(w.extension.el);
   if (w.visit) el.querySelector('header')!.append(h('button.btn.hq-go', { type: 'button', onclick: () => w.visit!.go() }, w.visit.label));
   const account = store.me.account?.name;
-  let deviceKey: OwnerDeviceKey | undefined;
-  let keyError = '';
-  let signing = false;
   let closed = false;
   const keyNote = h('p.cb-note', { 'aria-live': 'polite' });
   note.after(keyNote);
@@ -86,7 +75,7 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string): { close(): void 
   const paint = () => {
     const c = w.cubby(cubbyId);
     const mode = chatMode(c);
-    w.extension?.paint(c, deviceKey);
+    w.extension?.paint(c);
     const it = mode ? c!.interior : undefined;
     if (!c || !it) {
       title.textContent = '💬 Your lead';
@@ -117,15 +106,12 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string): { close(): void 
       note.classList.add('watch');
     } else {
       note.classList.remove('watch');
-      const keyMatches = deviceTrusted(c, deviceKey);
-      const sameAccount = store.me.account?.name === account;
-      text.disabled = send.disabled = asleep || !keyMatches || !sameAccount || signing || !it.computerId;
-      form.style.display = note.style.display = keyMatches && sameAccount ? '' : 'none';
-      keyNote.textContent = !sameAccount ? 'Account changed. Close and reopen this chat.' : keyError || (!deviceKey ? 'Preparing this device’s owner key…' :
-        !it.ownerDevices ? `Waiting for ${clip(it.computerName, 32)} to say which devices it trusts.` : !keyMatches ? 'Legacy chat requires an already trusted browser. New lead conversations use the Mac link.' : '');
-      text.placeholder = asleep ? '' : `Message ${lead}…`;
-      note.textContent = asleep ? `💤 ${clip(it.computerName, 32)} is asleep. ${lead} can't hear you until it wakes.` : 'Chat only: tools, commands and approvals stay on your computer.';
-      note.classList.toggle('asleep', asleep);
+      text.disabled = send.disabled = true;
+      form.style.display = 'none';
+      note.style.display = '';
+      keyNote.textContent = '';
+      note.textContent = 'This is a saved cubby conversation. Talk to your lead through the Mac link.';
+
     }
     const composer = w.extension?.compose;
     if (mode === 'watching' && composer?.allowed()) {
@@ -173,22 +159,7 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string): { close(): void 
     if (body && chatMode(c) === 'watching' && composer?.allowed()) {
       composer.send(body.slice(0, composer.maxLength)); text.value = ''; return;
     }
-    const viewingFloor = store.floor;
-    const floorId = w.sourceFloor?.(cubbyId) ?? viewingFloor;
-    const computerId = c?.interior?.computerId;
-    if (!body || !floorId || !computerId || chatMode(c) !== 'owner' || c.lamp === 'asleep' || signing ||
-      !deviceKey || !deviceTrusted(c, deviceKey) || store.me.account?.name !== account) return;
-    signing = true; paint();
-    try {
-      const message = { text: body.slice(0, MAX_CHAT), requestId: crypto.randomUUID(), at: Date.now() };
-      const ownerSig = await signOwnerChat(deviceKey, { ...message, cubbyId, floorId, computerId });
-      const current = w.cubby(cubbyId);
-      if (closed || store.floor !== viewingFloor || store.me.account?.name !== account || !current?.mine ||
-        current.lamp === 'asleep' || current.interior?.computerId !== computerId || !deviceTrusted(current, deviceKey)) return;
-      w.sendChat(cubbyId, { ...message, ownerSig });
-      text.value = '';
-    } catch { keyError = 'Could not sign this message. Reopen chat and check browser storage.'; }
-    finally { signing = false; if (!closed) paint(); }
+
   });
   // Enter sends, Shift+Enter is a new line; the game doesn't get the keys while you type.
   text.addEventListener('keydown', (e) => {
@@ -204,9 +175,6 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string): { close(): void 
   const c = w.cubby(cubbyId);
   const owner = chatMode(c) === 'owner';
   const modal = openModal(el, { doing: owner ? '💬 talking to their lead' : '👀 watching a cubby', onClose: () => { closed = true; off(); w.extension?.close(); } });
-  // Only the owner signs: a watcher's browser never makes or uses an owner key.
-  if (owner) void ownerDeviceKey(account).then((key) => { deviceKey = key; if (!closed) paint(); })
-    .catch((error: Error) => { keyError = error.message; if (!closed) paint(); });
   log.scrollTop = log.scrollHeight;
   if (owner && c?.lamp !== 'asleep') setTimeout(() => text.focus(), 30);
   return modal;

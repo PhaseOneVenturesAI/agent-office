@@ -11,7 +11,7 @@ export async function sendHeadless(config: MacConfig, target: LocalTarget, frame
   if (!target.sessionId) throw new LeadError('Open this lead in the Claude app once so it can be reached');
   if (!target.project) throw new LeadError('Cofounder has no registered project folder for headless resume');
   const lead = new NativeLead({
-    ownerKey: '', floor: '', project: target.project, roots: [target.project], branches: new Map(),
+    floor: '', project: target.project, roots: [target.project], branches: new Map(),
     state: config.state, computerId: config.computerId, provider: 'claude', session: target.sessionId,
     executable, claudeHome: path.join(config.home, '.claude'), fresh: false,
   }, async () => ({ complete: true, processes: [] }));

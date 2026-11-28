@@ -5,7 +5,7 @@
 // the draft's name and what that connection last said.
 
 /**
- * The owner's note on a card (cubbies step 5), signed on a trusted device and saved on the owner's
+ * The owner's note on a card (cubbies step 5), authorized by the HQ owner's account and saved on the owner's
  * computer next to draft.json (`.agent-office/feedback.json`). The office only shows what the computer reports.
  */
 export interface DraftFeedback { id: string; text: string; at: number }
@@ -90,7 +90,7 @@ export interface Launched {
 export interface DraftsState {
   studio?: boolean;
   enabled: boolean;
-  /** You may press New project (the office's AGENT_OFFICE_PROJECT_STARTERS names you). */
+  /** You may press New project as the signed-in HQ owner through Mac Studio. */
   canStart: boolean;
   /** The floor you're on, when it's a draft of yours. */
   here?: DraftView;
@@ -105,7 +105,7 @@ export type DraftsClientMsg =
   | { t: 'drafts.new'; name: string }
   /** Kick off (cubbies step 3): `confirm` must be the draft's name, typed again. */
   | { t: 'drafts.kickoff'; floorId: string; confirm: string }
-  /** Feedback on one card (step 5), signed by a device the owner's computer trusts (ownerFeedbackEncoding). */
+  /** Feedback on one card (step 5), authorized by the HQ owner's account and sent over the Mac link. */
   | ({ t: 'drafts.feedback'; floorId: string } & DraftFeedbackMessage);
 
 export type DraftsServerMsg =
@@ -131,12 +131,9 @@ export function cleanDraftName(s: unknown): string {
 /** Empty boards, before the owner's computer has said anything. */
 export const EMPTY_BOARDS: DraftBoards = { ideas: [], decisions: [], plan: [], screens: [], brand: { colors: [] } };
 
-/** A note on a card, as the owner's device signs it. */
-export interface DraftFeedbackMessage { cardId: string; text: string; requestId: string; at: number; ownerSig: string }
-export type DraftFeedbackPayload = { cubbyId: string; floorId: string; computerId: string } & Omit<DraftFeedbackMessage, 'ownerSig'>;
-export function ownerFeedbackEncoding(f: DraftFeedbackPayload): string {
-  return JSON.stringify(['agent-office/cubby-owner-feedback/v1', f.cubbyId, f.floorId, f.computerId, f.requestId, f.at, f.cardId, f.text]);
-}
+/** A note on a card, sent by the signed-in owner. */
+export interface DraftFeedbackMessage { cardId: string; text: string; requestId: string; at: number }
+
 /** Limits on what a board carries (enforced on the computer and again at the office). */
 export const DRAFT_LIMITS = {
   ideas: 16, screens: 24, feedbackPerCard: 20, feedbackText: 1000, note: 400,

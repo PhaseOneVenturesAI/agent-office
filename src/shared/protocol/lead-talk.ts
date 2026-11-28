@@ -1,3 +1,4 @@
+import { cleanReview, type LeadReview } from './lead-review.js';
 /**
  * v8 phase 2: talking to the owner's leads through the Mac link.
  * Frames ride the link's existing /ws/node connection. Session ids, paths and
@@ -9,7 +10,7 @@ export const TALK_TEXT_CAP = 4000;
 export type TalkTarget = { cofounder: true } | { project: string; department?: number };
 
 /** Office → link. `from` is a display label: "Jonathan", or "Ivan H (held, passed on by Jonathan)". */
-export interface LeadSend { t: 'lead.send'; id: string; target: TalkTarget; text: string; from: string }
+export interface LeadSend { t: 'lead.send'; id: string; target: TalkTarget; text: string; from: string; review?: LeadReview }
 
 export type LeadState = 'queued' | 'delivered' | 'working' | 'replied' | 'failed';
 /** Link → office. `path` says how it was delivered; `error` is a short owner-facing sentence. */
@@ -31,7 +32,9 @@ export function cleanTarget(raw: unknown): TalkTarget | undefined {
 
 export function cleanLeadSend(raw: any): LeadSend | undefined {
   const target = cleanTarget(raw?.target), text = clip(raw?.text, TALK_TEXT_CAP), from = clip(raw?.from, 80);
-  return raw?.t === 'lead.send' && TALK_ID.test(raw.id) && target && text && from ? { t: 'lead.send', id: raw.id, target, text, from } : undefined;
+  const review = raw?.review === undefined ? undefined : cleanReview(raw.review);
+  if (raw?.review !== undefined && !review) return;
+  return raw?.t === 'lead.send' && TALK_ID.test(raw.id) && target && text && from ? { t: 'lead.send', id: raw.id, target, text, from, ...(review ? { review } : {}) } : undefined;
 }
 
 export function cleanLeadFrame(raw: any): LeadStateFrame | LeadReply | undefined {

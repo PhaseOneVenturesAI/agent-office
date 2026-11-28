@@ -1,3 +1,4 @@
+import { studioFeedback } from './reviews.js';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -76,6 +77,10 @@ export class HQStudio {
   state(floor: string | undefined, owner: string | undefined, fallback: DraftsState): DraftsState {
     const state: DraftsState = { ...fallback, enabled: fallback.enabled || this.enabled(owner), ...(this.ctx.hq.enabled ? { canStart: this.enabled(owner), studio: this.enabled(owner) } : {}) };
     const launched = floor && this.launched.get(floor); if (launched) { state.enabled = true; state.launched = launched; }
+    if (state.here && !state.here.studio) {
+      const row = owner && this.ctx.hq.owns(owner) ? this.ctx.hq.mac?.freshest(owner)?.live.projects.find(p => p.project.name === state.here!.name) : undefined;
+      state.here = { ...state.here, online: !!row?.project.hasMainLead, boards: row?.draft ?? state.here.boards };
+    }
     if (!floor || !this.owns(floor, owner)) return state;
     const r = this.records.get(floor)!, row = this.ctx.hq.mac?.freshest(owner!)?.live.projects.find(p => p.project.name === r.name);
     return { enabled: true, studio: true, canStart: true, canKickoff: !!row, here: { id: r.id, name: r.name, createdAt: r.createdAt, studio: true, leadName: 'Studio lead', online: !!row, boards: row?.draft ?? this.boards.get(floor)?.draft ?? EMPTY_BOARDS, designers: 0 } };
@@ -84,13 +89,7 @@ export class HQStudio {
     if (c.out || !this.enabled(c.accountId)) throw Error('Only the HQ owner signed in through Cloudflare can use Studio');
     const owner = c.accountId!;
     if (raw.t === 'studio.feedback') {
-      const row = this.ctx.hq.mac?.freshest(owner)?.live.projects.find(p => p.project.name === raw.project && p.project.localState === 'draft');
-      const card = [...row?.draft?.ideas ?? [], ...row?.draft?.screens ?? []].find(c => c.id === raw.cardId);
-      if (!card || typeof raw.text !== 'string' || !raw.text.trim() || raw.text.length > 1000) throw Error('Choose a current card and write your feedback');
-      const lead = leadsFor(this.ctx, owner, true).find(l => l.project === raw.project && l.departmentIndex === undefined && l.mac);
-      if (!lead) throw Error('Studio lead unavailable');
-      const version = 'status' in card ? ` v${'version' in card ? card.version ?? 1 : 1}` : '';
-      return this.ctx.hq.mac!.talk.submit(owner, lead, `Feedback on ${version ? 'screen' : 'card'} ${card.title}${version} (${card.id}): ${raw.text.trim()}`, this.ctx.hq.ownerName);
+      return studioFeedback(this.ctx, c, raw.project, raw.cardId, raw.text);
     }
     const frame = cleanProjectCommand({ ...raw, t: raw.t.replace('studio.', 'project.') });
     if (!frame) throw Error('Check the project name, repository or exact confirmation');

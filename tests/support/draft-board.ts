@@ -1,3 +1,4 @@
+import { legacyDraft } from './legacy-draft.js';
 import { legacyCubby } from './legacy-cubby.js';
 import { mkdtempSync, rmSync } from 'node:fs';
 import path from 'node:path';
@@ -6,7 +7,6 @@ import { Building } from '../../src/server/building.js';
 import { Drafts } from '../../src/server/drafts/index.js';
 import { Nodes } from '../../src/server/nodes.js';
 import { Cubbies } from '../../src/server/cubbies/index.js';
-import { runKickoff } from '../../src/server/drafts/remote.js';
 import { cleanDraftBoards } from '../../src/server/drafts/boards.js';
 import { DRAFT_LIMITS } from '../../src/shared/protocol/drafts.js';
 import { cleanImage, type DesignImage } from '../../src/server/drafts/image-format.js';
@@ -38,9 +38,8 @@ export function imageFrames(floorId: string, image: DesignImage) {
 }
 export function boardFixture(t: any) {
   const dir = mkdtempSync(path.join(tmpdir(), 'draft-board-')), building = new Building(dir, dir);
-  const drafts = new Drafts(dir, true, 'alice', id => id, building, { AGENT_OFFICE_KICKOFF_REMOTE: path.join(dir, 'remotes') },
-    (cmd, args, cwd) => { if (cmd !== 'git') throw Error('No network'); return runKickoff(cmd, args, cwd); });
-  const def = drafts.create('Board', 'alice');
+  const drafts = new Drafts(dir, true, undefined, id => id, building, {});
+  const def = legacyDraft(drafts, building, dir, 'Board', 'alice');
   let cubbies!: Cubbies;
   const nodes = new Nodes(dir, () => cubbies?.refresh());
   cubbies = new Cubbies(dir, true, nodes, id => id, id => building.list().some(d => d.id === id), () => {}, Date.now,

@@ -21,8 +21,6 @@ import { pitchHandlers } from '../src/server/ws/handlers/pitch.js';
 import { floorParam } from '../src/server/http/routes/files.js';
 import { socket, png, imageFrames } from './support/draft-board.js';
 import { cleanImage } from '../src/server/drafts/image-format.js';
-import { testOwnerKey } from './support/cubby-keys.js';
-import { verifyOwnerVerdict, verifyOwner, ownerFingerprint } from '../src/server/cubbies/wire.js';
 import type { Ctx } from '../src/server/office/context.js';
 const registry = path.join(import.meta.dirname, 'fixtures/hq/projects.json');
 const projects = readProjects(registry);
@@ -91,7 +89,6 @@ test('owner and managers enter; outsiders cannot list, arrive, enter or fetch HQ
     const before = c.ws.sent.length; dispatch(f.ctx, c, { t: type } as any); assert.equal(c.ws.sent.length, before + 1, type); assert.match(c.ws.sent.at(-1).text, /owner’s computer/);
   }
   dispatch(f.ctx, a, { t: 'drafts.kickoff', floorId: 'hq', confirm: 'HQ' }); assert.match(a.ws.sent.at(-1).text, /cannot be kicked off/);
-  await assert.rejects(f.drafts.kickoff('hq', 'HQ', 'alice', f.ctx.cubbies), /No such floor/);
   dispatch(f.ctx, a, { t: 'floor.remove', floor: 'hq' }); await new Promise(r => setTimeout(r, 10)); assert.equal(f.ctx.floors.has('hq'), false);
 });
 test('HQ office chat and positions reach HQ occupants only and never enter shared chat history', t => {
@@ -131,20 +128,19 @@ test('latest owner projects from any cubby go only to HQ occupants, not watchers
   first.ws.frame({ t: 'cubby.snapshot', floorId: 'normal', observedAt: Date.now() + 1, agents: [], plan: [], needsYou: [] });
   assert.deepEqual(hqView(f.ctx, f.ctx.floorOf(a), a)!.projects, []);
 });
-test('HQ pitch is cross-floor, managers read only, owner verdict remains bound and signed to source cubby', t => {
+test('HQ pitch is cross-floor, managers read only, legacy pitch remains read only', t => {
   const f = fixture(t), a = f.client('alice'), b = f.client('bob'), e = f.client('eve');
   a.peer.floor = b.peer.floor = 'hq'; e.peer.floor = 'normal';
-  const { cb, ws } = f.publish(), image = cleanImage(png), key = testOwnerKey();
+  const { cb, ws } = f.publish(), image = cleanImage(png);
   const pitch = { department: 'Marketing', lead: 'Lead', version: 'v1', status: 'ready', pieces: [{ id: 'site', kind: 'site', title: 'Pitch', images: [], image: image.meta, notes: [] }] };
   ws.frame({ t: 'cubby.snapshot', floorId: 'normal', observedAt: Date.now(), agents: [], plan: [], needsYou: [], projects, pitch });
   imageFrames('normal', image).forEach(frame => ws.frame(frame));
   assert.equal(hqPitch(f.ctx, a)?.floorId, 'normal'); assert.equal(hqPitch(f.ctx, a)?.displayFloorId, 'hq'); assert.equal(hqPitch(f.ctx, b)?.readOnly, true);
   assert.equal(hqPitch(f.ctx, e), undefined); assert.ok(hqImage(f.ctx, 'bob', cb.id, image.meta.hash)); assert.equal(hqImage(f.ctx, 'eve', cb.id, image.meta.hash), undefined);
   const payload = { cubbyId: cb.id, floorId: 'normal', computerId: 'computer-normal', pieceId: 'site', version: 'v1', verdict: 'approve' as const, requestId: 'verdict', at: Date.now() };
-  const message = { ...payload, t: 'pitch.verdict' as const, ownerSig: key.signVerdict(payload) };
+  const message = { ...payload, t: 'pitch.verdict' as const };
   const count = ws.sent.length; pitchHandlers['pitch.verdict'](f.ctx, b, message); assert.equal(ws.sent.length, count);
-  pitchHandlers['pitch.verdict'](f.ctx, a, message); assert.equal(ws.sent.at(-1).t, 'cubby.verdict'); assert.equal(ws.sent.at(-1).floorId, 'normal');
-  assert.equal(verifyOwnerVerdict(key.ownerKey, ws.sent.at(-1)), true);
+  pitchHandlers['pitch.verdict'](f.ctx, a, message); assert.equal(ws.sent.length, count);
   b.peer.floor = 'normal'; assert.equal(hqImage(f.ctx, 'bob', cb.id, image.meta.hash), undefined);
   assert.equal(f.ctx.cubbies.pitchView('normal', 'bob'), undefined);
 });
@@ -199,36 +195,6 @@ test('HQ project links use the own snapshot floor, otherwise exact repo names; n
   assert.equal(projectLeads([{ ...p, own: true }, { ...p, repo: 'o/r' }], sources, [{ id: 'normal', repo: 'o/r' }], true).filter(l => l.cubby).length, 1);
 });
 
-test('HQ lead chat preserves source signatures; managers read but cannot send; other cubbies and outsiders stay unchanged', async t => {
-  const { cubbiesView } = await import('../src/server/ws/handlers/cubbies.js');
-  const { hqChat } = await import('../src/server/hq/leads.js');
-  const f = fixture(t), { cb, ws } = f.publish('normal', Date.now(), [{ name: 'Plimbo', own: true, hasMainLead: true, departmentLeads: [] }]);
-  const a = f.client('alice'), m = f.client('bob'), e = f.client('eve');
-  a.peer.floor = m.peer.floor = 'hq'; e.peer.floor = 'normal';
-  const owner = testOwnerKey();
-  ws.frame({ t: 'cubby.devices', floorId: 'normal', devices: [{ fingerprint: ownerFingerprint(owner.ownerKey), label: 'Owner', addedAt: Date.now() }], requests: [] });
-  const manager = hqView(f.ctx, f.ctx.floorOf(m), m)!.leads![0].cubby!;
-  assert.equal(manager.mine, false); assert.equal(manager.watching, true); assert.ok(manager.interior); assert.equal(manager.interior.ownerDevices, undefined); assert.equal(manager.interior.computerId, undefined);
-  const payload = { cubbyId: cb.id, floorId: 'normal', computerId: 'computer-normal', requestId: 'message', at: Date.now(), text: 'Same lead' };
-  const message = { id: cb.id, ...payload, ownerSig: owner.sign(payload) };
-  assert.throws(() => hqChat(f.ctx, m, message), /Only the cubby owner/);
-  assert.throws(() => hqChat(f.ctx, e, message), /Only the cubby owner/);
-  hqChat(f.ctx, a, message);
-  assert.equal(ws.sent.at(-1).t, 'cubby.chat'); assert.equal(ws.sent.at(-1).floorId, 'normal'); assert.equal(ws.sent.at(-1).ownerSig, message.ownerSig);
-  assert.equal(verifyOwner(owner.ownerKey, ws.sent.at(-1)), true);
-  assert.equal(verifyOwner(owner.ownerKey, { ...ws.sent.at(-1), floorId: 'hq' }), false);
-  a.peer.floor = m.peer.floor = 'normal';
-  const mine = cubbiesView(f.ctx, f.ctx.floorOf(a), a)!;
-  assert.equal(mine.cubbies[0].hqLead?.lead.where, 'hq');
-  const watched = cubbiesView(f.ctx, f.ctx.floorOf(m), m)!.cubbies[0];
-  assert.equal(watched.hqLead, undefined); assert.equal(watched.interior, undefined); assert.equal(watched.watching, undefined, 'HQ does not admit managers to cubby interiors');
-  assert.equal(cubbiesView(f.ctx, f.ctx.floorOf(e), e)!.cubbies[0].hqLead, undefined);
-  legacyCubby(f.ctx.cubbies, 'normal', 'bob', 1, 'Other lead', {} as any);
-  assert.equal(cubbiesView(f.ctx, f.ctx.floorOf(a), a)!.cubbies[1].hqLead, undefined);
-  f.ctx.hq = new HQ(f.dir, '', '', () => undefined, f.building);
-  assert.equal(cubbiesView(f.ctx, f.ctx.floorOf(a), a)!.cubbies[0].hqLead, undefined);
-});
-
 test('portfolio overflow never removes a cubby body without a furnished HQ desk', async t => {
   const { cubbiesView } = await import('../src/server/ws/handlers/cubbies.js');
   const f = fixture(t);
@@ -240,8 +206,8 @@ test('portfolio overflow never removes a cubby body without a furnished HQ desk'
   assert.equal(cubbiesView(f.ctx, f.ctx.floorOf(a), a)!.cubbies[0].hqLead, undefined);
 });
 
-test('held manager messages are private; only a trusted owner signature passes the exact labelled chat to the connector', async t => {
-  const { sendManagerMessage, declineManagerMessage, passManagerMessage, messages } = await import('../src/server/hq/messages.js');
+test('held manager messages are private; legacy threads retain holding and decline privacy', async t => {
+  const { sendManagerMessage, declineManagerMessage, messages } = await import('../src/server/hq/messages.js');
   const { managerMessageText } = await import('../src/shared/protocol/hq.js');
   const { cubbiesView } = await import('../src/server/ws/handlers/cubbies.js');
   const f = fixture(t), { cb, ws } = f.publish('normal', Date.now(), [{ name: 'Plimbo', own: true, hasMainLead: true, departmentLeads: [] }]);
@@ -267,29 +233,6 @@ test('held manager messages are private; only a trusted owner signature passes t
   assert.throws(() => sendManagerMessage(f.ctx, m, lead.id, 'Wrong floor'), /HQ only/);
   assert.throws(() => declineManagerMessage(f.ctx, a, item.id), /HQ only/);
   a.peer.floor = m.peer.floor = 'hq';
-  const owner = testOwnerKey(), attacker = testOwnerKey();
-  ws.frame({ t: 'cubby.devices', floorId: 'normal', devices: [{ fingerprint: ownerFingerprint(owner.ownerKey), label: 'Owner', addedAt: Date.now() }], requests: [] });
-  const payload = { cubbyId: cb.id, floorId: 'normal', computerId: 'computer-normal', requestId: item.id, at: Date.now(), text: managerMessageText(item) };
-  const pass = { t: 'cubbies.chat' as const, id: cb.id, ...payload, hqMessageId: item.id, ownerPublicKey: owner.ownerKey, ownerSig: owner.sign(payload) };
-  const count = ws.sent.length;
-  for (const c of [m, other, e]) assert.throws(() => passManagerMessage(f.ctx, c, pass));
-  for (const forged of [
-    { ...pass, ownerSig: 'A'.repeat(86) },
-    { ...pass, ownerSig: attacker.sign(payload), ownerPublicKey: attacker.ownerKey },
-    { ...pass, text: 'Unlabelled text' },
-    { ...pass, ownerSig: owner.sign({ ...payload, floorId: 'hq' }) },
-    { ...pass, requestId: 'different-id' },
-  ]) assert.throws(() => passManagerMessage(f.ctx, a, forged), /trusted device/);
-  assert.equal(ws.sent.length, count); assert.equal(visible(a)?.[0].state, 'waiting');
-  dispatch(f.ctx, a, pass);
-  const delivered = ws.sent.at(-1);
-  assert.equal(delivered.t, 'cubby.chat'); assert.equal(delivered.text, "Message from Bob (HQ manager; can't approve merges, publishes or spending): Please review this idea.");
-  assert.equal(delivered.ownerSig, pass.ownerSig); assert.equal(verifyOwner(owner.ownerKey, delivered), true, 'connector verifier accepts the full labelled text');
-  assert.equal(delivered.hqMessageId, undefined); assert.equal(delivered.ownerPublicKey, undefined);
-  for (const c of [a, m, other]) assert.equal(visible(c)?.[0].state, 'passed');
-  assert.throws(() => passManagerMessage(f.ctx, a, pass), /No waiting/);
-  ws.frame({ t: 'cubby.reply', floorId: 'normal', requestId: item.id, text: 'I will review the idea.' });
-  assert.equal(hqView(f.ctx, f.ctx.floorOf(m), m)!.leads![0].cubby!.interior!.chat.at(-1)!.text, 'I will review the idea.');
   const declined = sendManagerMessage(f.ctx, other, lead.id, 'Another idea');
   const prior = ws.sent.length;
   declineManagerMessage(f.ctx, a, declined.id);

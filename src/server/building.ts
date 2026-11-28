@@ -1,3 +1,4 @@
+import { legacyDrafts } from './drafts/legacy.js';
 import { spawn } from 'node:child_process';
 import { accessSync, constants, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
@@ -109,6 +110,7 @@ export class Building {
     this.pickedFile = path.join(dataDir, 'projects-folder.json');
     this.localFile = path.join(dataDir, 'local-floor.json');
     this.load();
+    legacyDrafts(dataDir, this.defs);
     this.loadPicked();
     this.loadLocalOff();
   }

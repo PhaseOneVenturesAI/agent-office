@@ -39,8 +39,8 @@ test('the store keeps canKickoff and what a kicked-off floor keeps, cleaned', ()
 
 test('the studio table offers K to kick off, or says why it can’t', () => {
   assert.equal(ko.KICKOFF_KEY, 'K');
-  assert.deepEqual(ko.kickoffOffer({ here: here as never, canKickoff: true }), { can: true, label: 'Kick off' });
-  assert.deepEqual(ko.kickoffOffer({ here: here as never }), { can: false, why: 'Kickoff isn’t set up in this office' });
+  assert.deepEqual(ko.kickoffOffer({ here: { ...here, studio: true } as never, canKickoff: true }), { can: true, label: 'Kick off' });
+  assert.deepEqual(ko.kickoffOffer({ here: { ...here, studio: true } as never }), { can: false, why: 'Kickoff isn’t set up in this office' });
   assert.equal(ko.kickoffOffer({ canKickoff: true }), null, 'nothing off a draft of yours');
 });
 

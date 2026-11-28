@@ -1,3 +1,4 @@
+import { projectPitch } from './reviews.js';
 import { liveWorkProjects } from './live-work.js';
 import { talkChanged } from './talk-views.js';
 import { hqProjects, hqSources } from './sources.js';
@@ -18,7 +19,7 @@ export const hqView: ViewPieces['hq'] = (ctx, floor, c) => {
   const owner = ctx.hq.owns(c.accountId) ? c.accountId : ownerId(ctx);
   return { floorId: floor!.id, ownerName: ctx.hq.ownerName, mine: ctx.hq.owns(c.accountId),
     ...(owner && ctx.hq.owns(c.accountId) ? { mac: ctx.hq.mac?.status(owner) } : {}),
-    ...(owner ? { pitches: ctx.hq.mac?.pitchViews(owner) } : {}),
+    ...(owner ? { pitches: ctx.hq.mac?.pitchViews(owner).map(p => ({ ...p, readOnly: !ctx.hq.owns(c.accountId) })) } : {}),
     ownerColor: ctx.cubbies.records.color(owner ?? ctx.hq.ownerName), projects: owner ? publicProjects(liveWorkProjects(liveProjects(hqProjects(ctx, owner), hqSources(ctx, owner)), leadsFor(ctx, owner, ctx.hq.owns(c.accountId))), ctx.hq.owns(c.accountId)) : [], leads: owner ? messageLeads(ctx, c, owner, leadsFor(ctx, owner, ctx.hq.owns(c.accountId)), true) : [] };
 };
 export function hqPitch(ctx: Ctx, c: Client) {
@@ -47,7 +48,11 @@ export function hqChanged(ctx: Ctx) {
 export function hqImage(ctx: Ctx, account: string, cubby: string, hash: string) {
   if (!ctx.hq) return;
   const c = [...ctx.clients.values()].find(c => c.accountId === account && !c.out && ctx.hq?.is(ctx.floorOf(c)?.id));
-  if (!c || !ctx.hq.visible(ctx.floorOf(c)!.id, account)) return;
+  if (!c) {
+    const projectClient = [...ctx.clients.values()].find(c => c.accountId === account && projectPitch(ctx, c)?.cubbyId === cubby);
+    return projectClient ? ctx.hq.mac?.pitches.image(cubby, hash) : undefined;
+  }
+  if (!ctx.hq.visible(ctx.floorOf(c)!.id, account)) return;
   const owner = ownerId(ctx);
   if (!owner) return;
   if (ctx.hq.mac?.pitchViews(owner).some(p => p.cubbyId === cubby)) return ctx.hq.mac.pitches.image(cubby, hash);

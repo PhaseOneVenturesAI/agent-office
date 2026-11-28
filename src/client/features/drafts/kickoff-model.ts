@@ -19,6 +19,7 @@ export const NO_KICKOFF = 'Kickoff isn’t set up in this office';
 /** What the studio table offers for kickoff: the key, or why not. Nothing off a draft of yours. */
 export function kickoffOffer(d: Pick<DraftsState, 'here' | 'canKickoff'>): { can: true; label: string } | { can: false; why: string } | null {
   if (!d.here) return null;
+  if (!d.here.studio) return { can: false, why: 'This draft predates the Mac Studio; start a New project' };
   return d.canKickoff ? { can: true, label: 'Kick off' } : { can: false, why: NO_KICKOFF };
 }
 
