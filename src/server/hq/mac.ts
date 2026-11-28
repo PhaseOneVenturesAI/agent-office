@@ -1,3 +1,5 @@
+import { HQLiveWork, leadWorkTarget } from './live-work.js';
+import type { HQLead } from '../../shared/protocol/hq.js';
 import { HQTalk } from './talk.js';
 import { cleanLeadStatus, type LeadStatus } from '../../shared/protocol/hq.js';
 import { Pairings } from '../link/pairings.js';
@@ -20,11 +22,13 @@ export class HQMac {
   private admitted = new Map<string, string>();
   private file: string;
   readonly talk: HQTalk;
+  readonly work: HQLiveWork;
   readonly dataDir: string;
   readonly pairings: Pairings;
   readonly pitches = new PitchStore();
   constructor(dir: string, private hq: Pick<HQ, 'owns' | 'is' | 'floorId'>, private nodes: Nodes, private changed: () => void, private now = Date.now) {
     this.dataDir = dir;
+    this.work = new HQLiveWork(now);
     this.talk = new HQTalk(dir, owner => hq.owns(owner), owner => this.talkNode(owner), (node, frame) => nodes.sendSigned(node, () => frame), changed, now);
     this.pairings = new Pairings(owner => this.hq.owns(owner), (owner, computer, name) => this.link(owner, computer, name), id => this.remove(id), changed, now);
     this.file = path.join(dir, 'hq-macs.json');
@@ -60,6 +64,7 @@ export class HQMac {
     this.remove(id);
   }
   private remove(id: string) {
+    this.work.forget(id);
     this.pairings.forgetNode(id);
     const r = this.records.get(id); this.records.delete(id); this.admitted.delete(id);
     if (r?.computerId) this.live.delete(this.key(r.owner, r.computerId));
@@ -83,12 +88,15 @@ export class HQMac {
     return this.freshest(owner)?.record.nodeId ?? [...this.records.values()].find(r => r.owner === owner && this.admitted.has(r.nodeId) && this.nodes.isOnline(r.nodeId))?.nodeId;
   }
   cofounder(owner: string) { return this.freshest(owner)?.live.cofounder; }
+  activity(owner: string, lead: HQLead) { return this.work.get(this.freshest(owner)?.record.nodeId, leadWorkTarget(lead)); }
   refresh() {
+    if (this.work.sweep()) this.changed();
     this.pairings.sweep();
     this.talk.sweep(node => this.nodes.isOnline(node) && this.admitted.has(node));
     for (const node of this.admitted.keys()) if (!this.nodes.isOnline(node)) {
       const r = this.records.get(node);
       if (r) { r.lastSeen = this.now(); try { this.save(); } catch { /* live status still changes */ } }
+      this.work.forget(node);
       this.admitted.delete(node);
     }
   }
@@ -137,6 +145,15 @@ export class HQMac {
     // Consume all frames for HQ invitations: they can never become cubby connections.
     if (!owner || owner !== r.owner || !this.hq.owns(owner) || !this.hq.is(r.floor) || !this.nodes.isOnline(nodeId) || !raw || typeof raw !== 'object') return true;
     const f = raw as any;
+    if (f.t === 'hq.activity') {
+      const projects = r.computerId ? this.live.get(this.key(owner, r.computerId))?.projects : undefined;
+      if (this.work.accept(nodeId, f, this.admitted.has(nodeId), target => {
+        if ('cofounder' in target) return true;
+        const p = projects?.find(p => p.project.name === target.project)?.project;
+        return !!p && (target.department === undefined ? p.hasMainLead : !!p.departmentLeads[target.department]);
+      })) this.changed();
+      return true;
+    }
     if (f.t === 'lead.state' || f.t === 'lead.reply') {
       if (this.admitted.has(nodeId)) this.talk.accept(nodeId, owner, f);
       return true;
@@ -167,7 +184,7 @@ export class HQMac {
       const { own: _own, workers: _workers, ...project } = clean.projects[0];
       // Department positions are the send target: never shift them by dropping malformed entries.
       if (project.departmentLeads.length !== row.project.departmentLeads.length) return true;
-      const agents = clean.agents.filter(a => a.id.startsWith('harness:') && a.role !== 'lead' && a.status === 'working' && !seen.has(a.id));
+      const agents = clean.agents.filter(a => a.id.startsWith('harness:') && a.role !== 'lead' && ['working', 'idle'].includes(a.status) && !seen.has(a.id));
       agents.forEach(a => seen.add(a.id));
       projects.push({ project, agents, ...(clean.pitch ? { pitch: clean.pitch } : {}), ...(clean.draft ? { draft: clean.draft } : {}) });
     }

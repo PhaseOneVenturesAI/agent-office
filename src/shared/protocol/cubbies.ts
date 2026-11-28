@@ -5,6 +5,9 @@ import type { Look } from '../avatar.js';
 export type CubbyRole = 'lead' | 'builder' | 'reviewer' | 'factory' | 'paradev' | 'direct';
 export type CubbyStatus = 'idle' | 'working' | 'needs-you' | 'unknown';
 export interface CubbyAgent {
+  kind?: 'worker' | 'factory';
+  lastTool?: string;
+  updatedAt?: number;
   id: string;
   tool: string;
   department?: string;

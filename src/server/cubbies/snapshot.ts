@@ -1,3 +1,4 @@
+import { cleanPresenceWork } from '../../shared/protocol/live-work.js';
 import { cleanProjects, leadId } from '../../shared/protocol/hq.js';
 import { cleanPitch } from '../../shared/pitch/clean.js';
 import { cleanDraftBoards } from '../drafts/boards.js';
@@ -12,7 +13,7 @@ export function snapshot(raw: Record<string, unknown>, now: number): Extract<Cub
   for (const a of raw.agents) {
     if (!a || typeof a !== 'object' || typeof a.id !== 'string' || !/^[\w:.-]{1,128}$/.test(a.id) || ids.has(a.id) || !roles.has(a.role) || !statuses.has(a.status)) return;
     ids.add(a.id);
-    agents.push({ id: a.id, ...(leadId(a.lead) ? { lead: leadId(a.lead) } : {}),
+    agents.push({ ...cleanPresenceWork(a), id: a.id, ...(leadId(a.lead) ? { lead: leadId(a.lead) } : {}),
       ...(typeof a.startedAt === 'number' && Number.isFinite(a.startedAt) ? { startedAt: a.startedAt } : {}), ...Object.fromEntries(['department', 'harnessRole', 'leadTitle'].filter(k => typeof a[k] === 'string').map(k => [k, short(a[k], 60)])), ...(a.designer === true ? { designer: true } : {}), tool: short(a.tool, 40), role: a.role, task: a.role === 'direct' ? `${short(a.tool, 40)} session` : short(a.task, 160), branch: short(a.branch, 120), status: a.status,
       ...(a.role !== 'direct' && typeof a.progress === 'string' ? { progress: short(a.progress, 600) } : {}),
       ...(a.role === 'factory' && typeof a.deadlineAt === 'number' && Number.isFinite(a.deadlineAt) ? { deadlineAt: a.deadlineAt } : {}) });

@@ -13,7 +13,7 @@ export function needsElement(needs?: HQNeeds, raised = false) {
 export function projectElement(p: HQProject) {
   const section = h('section', {}, h('h3', {}, p.name), needsElement(p.needs));
   const workers = p.workers ?? [];
-  for (const w of workers.slice(0, 5)) section.append(h('p', {}, `${w.title} · ${w.provider} · ${w.branch || '—'}`));
+  for (const w of workers.slice(0, 5)) section.append(h('p', {}, [w.title, w.doing && w.doing !== 'working' && w.doing !== 'idle' ? w.doing : '', w.provider ? `${w.provider} · ${w.branch || '—'}` : w.doing ?? ''].filter(Boolean).join(' · ')));
   if (workers.length > 5) section.append(h('p', {}, `+${workers.length - 5} more`));
   if (!workers.length) section.append(h('p', {}, 'No live workers'));
   return section;

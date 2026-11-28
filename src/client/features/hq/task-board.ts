@@ -11,7 +11,7 @@ export function taskBoard(c: CanvasRenderingContext2D, w: number, p: HQProject) 
   workers.slice(0, 5).forEach((a, i) => {
     const y = 210 + i * 110;
     c.font = 'bold 46px sans-serif'; fitText(c, a.title, 30, y, w - 60);
-    c.font = '38px sans-serif'; fitText(c, `${a.provider} · ${a.branch || '—'}`, 30, y + 45, w - 60);
+    c.font = '38px sans-serif'; fitText(c, a.doing && a.doing !== 'working' && a.doing !== 'idle' ? a.doing : a.provider ? `${a.provider} · ${a.branch || '—'}` : a.doing ?? '', 30, y + 45, w - 60);
   });
   if (workers.length > 5) { c.font = 'bold 40px sans-serif'; c.fillText(`+${workers.length - 5} more`, 30, 790); }
 }

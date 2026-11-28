@@ -1,3 +1,4 @@
+import { linkLiveActivity } from './live.js';
 import os from 'node:os';
 import { setTimeout as delay } from 'node:timers/promises';
 import { officeOrigin } from '../join-access.js';
@@ -24,6 +25,7 @@ export async function linkCommand(args: string[], home = os.homedir(), log = con
   catch (e) { if (e instanceof ServiceTokenError) { log(e.message); return args.includes('--run') ? 78 : 1; } throw e; }
   const stop = new AbortController(), interrupt = () => stop.abort();
   let talks: Awaited<ReturnType<typeof startLeadTalk>> | undefined;
+  let live: ReturnType<typeof linkLiveActivity> | undefined;
   let connector: MacConnector | undefined, refresh: (() => void) | undefined;
   try {
     let token = readToken(home, origin);
@@ -46,6 +48,8 @@ export async function linkCommand(args: string[], home = os.homedir(), log = con
     }
     connector = new MacConnector(config, token!, undefined, frame => talks?.talk.receive(frame));
     talks = await startLeadTalk(config, frame => connector!.sendLead(frame));
+    live = linkLiveActivity(config, frame => connector!.sendActivity(frame));
+    talks.activity.on('activity', live.activity);
     refresh = startNeedsRefresh(home, log);
     const code = await reconnect(origin, stop.signal, log, async () => connection(origin, token!, name, await cachedAccess(origin, home), connector!, stop.signal));
     if (code === 78) forgetToken(home, origin, token!);
@@ -54,7 +58,7 @@ export async function linkCommand(args: string[], home = os.homedir(), log = con
     if (stop.signal.aborted) return 0;
     log(e instanceof AccessRequired ? signInNeeded(origin) : (e as Error).message); return 1;
   } finally {
-    refresh?.(); await talks?.close(); await connector?.close();
+    live?.close(); refresh?.(); await talks?.close(); await connector?.close();
     for (const s of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.removeListener(s, interrupt);
   }
 }
