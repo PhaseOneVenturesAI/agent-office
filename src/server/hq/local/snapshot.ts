@@ -13,6 +13,7 @@ import { needsFor, readNeeds } from '../../cubbies/local/needs.js';
 import { localPitch } from '../../cubbies/local/pitch.js';
 import { githubRepo } from '../projects.js';
 import { originRepo } from './origin.js';
+import { headlessIdle } from './headless-status.js';
 import { type MacSnapshot } from '../wire.js';
 import type { MacConfig } from './config.js';
 
@@ -60,7 +61,7 @@ export async function macSnapshot(config: MacConfig, deps: { run?: Run; isAlive?
     try { agents = presence(scope.roots, runsDir(config.home), deps.isAlive); } catch { /* next observation retries */ }
     const workers = agents.map(a => a.agent).filter(a => !seen.has(a.id)).slice(0, 64 - seen.size);
     workers.forEach(a => seen.add(a.id));
-    const project = { ...entry.project, requestStatus: requests.find(r => r.project === entry.project.name)?.status, leadStatus: status(entry.sessions), departmentLeads: entry.project.departmentLeads.map((d, i) => ({ ...d, leadStatus: status(entry.departments[i]?.ids ?? []) })), needs: needsFor(needs, entry.path, scope.roots) };
+    const project = { ...entry.project, requestStatus: requests.find(r => r.project === entry.project.name)?.status, leadStatus: headlessIdle(config.home, entry.path, entry.sessions, status(entry.sessions)), departmentLeads: entry.project.departmentLeads.map((d, i) => ({ ...d, leadStatus: status(entry.departments[i]?.ids ?? []) })), needs: needsFor(needs, entry.path, scope.roots) };
     let pitch;
     try { const local = localPitch(entry.path); pitch = local.pitch; deps.images?.set(frame.projects.length, local.images); } catch { /* no published pitch */ }
     let draft;

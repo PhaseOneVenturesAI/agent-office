@@ -75,6 +75,13 @@ export class HQTalk {
     if (node && !this.send(node, frame)) { line.state = 'failed'; line.error = 'Your Mac link is offline'; this.pending.delete(line.id); this.save(); }
     this.changed(); return line;
   }
+  /** A lead the office just started answered its first prompt: show that as the conversation's opening line. */
+  greet(owner: string, lead: string, text: string) {
+    if (!this.owns(owner) || !text.trim()) return;
+    const key = this.key(owner, lead), thread = this.threads.get(key) ?? { owner, lead, lines: [] };
+    thread.lines.push({ id: randomUUID(), role: 'assistant', text: text.slice(0, 4000), at: this.now(), state: 'replied', path: 'headless' });
+    thread.lines = thread.lines.slice(-50); this.threads.set(key, thread); this.save(); this.changed();
+  }
   accept(node: string, owner: string, raw: unknown) {
     const frame = cleanLeadFrame(raw), pending = frame && this.pending.get(frame.id);
     if (!frame || !pending || pending.node !== node || pending.owner !== owner || !this.owns(owner)) return false;
