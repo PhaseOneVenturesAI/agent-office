@@ -1,3 +1,4 @@
+import { PitchDecisions } from '../pitch/decisions.js';
 import { HQLiveWork, leadWorkTarget } from './live-work.js';
 import type { HQLead } from '../../shared/protocol/hq.js';
 import { HQTalk } from './talk.js';
@@ -22,12 +23,14 @@ export class HQMac {
   private admitted = new Map<string, string>();
   private file: string;
   readonly talk: HQTalk;
+  readonly decisions: PitchDecisions;
   readonly work: HQLiveWork;
   readonly dataDir: string;
   readonly pairings: Pairings;
   readonly pitches = new PitchStore();
   constructor(dir: string, private hq: Pick<HQ, 'owns' | 'is' | 'floorId' | 'studio'>, private nodes: Nodes, private changed: () => void, private now = Date.now) {
     this.dataDir = dir;
+    this.decisions = new PitchDecisions(dir);
     this.work = new HQLiveWork(now);
     this.talk = new HQTalk(dir, owner => hq.owns(owner), owner => this.talkNode(owner), (node, frame) => nodes.sendSigned(node, () => frame), changed, now);
     this.pairings = new Pairings(owner => this.hq.owns(owner), (owner, computer, name) => this.link(owner, computer, name), id => this.remove(id), changed, now);
@@ -138,7 +141,7 @@ export class HQMac {
     return fresh.live.projects.flatMap((row, i) => {
       if (row.project.localState === 'draft') return [];
       const view = this.pitches.view(`hq-mac-${fresh.record.nodeId}-${i}`, fresh.record.floor, 'hq');
-      return view ? [{ ...view, project: row.project.name, projectIndex: i }] : [];
+      return view ? [{ ...view, pitch: this.decisions.view(owner, row.project.name, view.pitch), project: row.project.name, projectIndex: i }] : [];
     });
   }
   accept(nodeId: string, owner: string | undefined, raw: unknown): boolean {

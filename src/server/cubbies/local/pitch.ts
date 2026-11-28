@@ -20,6 +20,10 @@ export function localPitch(project: string) {
     const cap = p.kind === 'slides' ? 24 : p.kind === 'ads' ? 8 : 0;
     p.images = (Array.isArray(p.images) ? p.images.slice(0, cap) : []).map(resolve).filter(Boolean);
   }
+  for (const d of Array.isArray(raw?.directions) ? raw.directions.slice(0, 3) : []) {
+    if (d && typeof d === 'object') d.image = resolve(d.image);
+  }
+  if (raw) delete raw.picked; // Only the owner's Office decision marks a direction picked.
   const clean = cleanPitch(raw), pitch = clean && mergeVerdicts(project, clean);
   const referenced = new Set(pitchImages(pitch).map(i => i.hash));
   for (const hash of images.keys()) if (!referenced.has(hash)) images.delete(hash);

@@ -1,3 +1,6 @@
+import { pitchPanel } from './shared/pitch/flow';
+import { pitchAlerts } from './shared/pitch/alerts';
+import { openTalk } from './shared/hq/talk';
 import { store } from './state';
 import type { Net } from './net';
 import { h } from './ui/dom';
@@ -5,8 +8,12 @@ import { pitchImageUrl } from '../shared/protocol/pitch';
 import { openPitchPiece, verdictLabel } from './shared/pitch/review';
 /** Owner-only list in the existing main content; uses the same review window and signatures. */
 export function installLitePitch(net: Net) {
+  const flow = pitchPanel(net);
+  document.querySelector('.lite-main')!.prepend(flow.el);
+  const alert = pitchAlerts(net);
+  net.onMessage(m => { if (m.t === 'pitch.ready') alert(m); if (m.t === 'pitch.started') openTalk(net, m.leadId); });
   const section = h('section.pitch-list', { 'aria-label': 'Pitch' });
-  document.querySelector('.lite-main')!.prepend(section);
+  flow.el.after(section);
   function paint() {
     const v = store.pitch; section.hidden = !v;
     if (!v) { section.replaceChildren(); return; }
@@ -17,7 +24,7 @@ export function installLitePitch(net: Net) {
           h('h3', {}, p.title), h('p', {}, p.notes.join('\n')), h('p.pitch-stamp', {}, p.stamp ? `${verdictLabel(p.stamp.verdict)}${p.stamp.note ? ` — ${p.stamp.note}` : ''}` : 'Awaiting your verdict'),
           h('button.btn', { onclick: () => openPitchPiece({ send: m => net.send(m) }, p.id) }, 'Open / large view'),
           h('div.pitch-actions', {}, ...([['approve', 'Approve'], ['change', 'Change…'], ['drop', 'Drop']] as const).map(([verdict, label]) =>
-            h('button.btn', { onclick: () => openPitchPiece({ send: m => net.send(m) }, p.id, 0, verdict) }, label))));
+            h('button.btn', { disabled: !!v.readOnly, onclick: () => openPitchPiece({ send: m => net.send(m) }, p.id, 0, verdict) }, label))));
       })));
   }
   store.on('pitch', paint); store.on('floor', paint); paint();

@@ -80,6 +80,6 @@ export class PitchRoom {
         this.textures.add(texture); texture.colorSpace = THREE.SRGBColorSpace;
         material.map = texture; material.color.set('white'); material.needsUpdate = true;
       }, undefined, () => {});
-    } else group.add(this.label(piece.kind === 'video' ? '▶ opens on your computer' : 'Preview coming soon', 0, 0, 0.02, 0, width * 0.95));
+    } else { const label = this.label(piece.kind === 'video' ? '▶ opens on your computer' : 'Preview coming soon', 0, 0, 0.02, 0, width * 0.95); label.name = 'pitch-placeholder'; group.add(label); }
   }
 }

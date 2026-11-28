@@ -161,3 +161,45 @@ A positive project needs count raises only its CEO's hand, lights the desk, and 
 These signals also appear on the linked project floor and through the HQ entry in `/lite`, beside My cubby. Only the HQ owner and allowed managers receive this additional data. There are no phone push alerts. Ordinary cubby sharing stays unchanged.
 
 When an already-linked project floor detects a merged PR, its existing merge gong event also rings HQ's gong and shows “<Project>: PR #N merged” to current HQ viewers. Each PR rings once; HQ adds no GitHub polling.
+
+## Pitch room brief, directions and costs
+
+On HQ or your linked project floor, press **E** at the pitch table. Choose the project and then Marketing, Design, Product, Growth/Sales or Support. Only registered department leads can be selected. A missing lead displays “Ask <project> lead to add a <Dept> lead”; the Office never creates one here. The registered lead's figure walks from the elevator to the table and opens the existing chat beside it. Reduced motion places the figure at the table immediately. Closing any window with **✕** or **Esc** returns directly to mouse-look.
+
+The kickoff asks that department lead three to five brief questions through the existing `lead.send` relay. The lead publishes `.agent-office/pitch.json` in its project folder. Existing piece fields remain unchanged; these fields are additive:
+
+```json
+{
+  "department": "Marketing",
+  "lead": "Marketing lead",
+  "status": "building",
+  "version": "v1",
+  "brief": {
+    "title": "Launch brief",
+    "audience": "Parents",
+    "goal": "Start a trial",
+    "constraints": ["Use existing assets"]
+  },
+  "directions": [
+    { "id": "gallery", "title": "Gallery", "summary": "A calm product walkthrough", "image": "pitch/gallery.png" },
+    { "id": "story", "title": "Story", "summary": "Follow a family through its week" }
+  ],
+  "budget": { "session": 10 },
+  "costs": [
+    { "id": "render-1", "tool": "Video tool", "what": "One render", "estimate": 6, "status": "asked" }
+  ],
+  "pieces": []
+}
+```
+
+The brief appears on the whiteboard. Up to three directions appear on the glass; **E** opens the readable review list with **Pick**. Only one direction can be picked for a pitch version. The board shows the lead's phase-3 activity and helpers, and those helpers glow on the project floor while the picked pitch builds. `/lite` provides the same departments, chat, brief, directions, progress, costs and piece verdicts as a list.
+
+Cost cards show the estimate and remaining session budget. **OK** sends “Jonathan OKs cost <id> (<what>, up to $<estimate>) for this one call”; **Decline** sends “Jonathan declines cost <id>”. Missing budgets and estimates above the remaining budget refuse OK on the server. OK immediately reserves the estimate, so another card cannot spend the same allowance. Reservations and choices persist in private `pitch-decisions.json` on the Office server and survive repeated or omitted publication rows and reconnects. There is no automatic retry of a failed message. Check a failed or unanswered turn with the lead before publishing a new pitch version.
+
+Only the lead writes `status: "spent"` and optional `spent` USD on a cost. The board reports actual spent, reserved and remaining amounts; publishing `spent` releases that card's unused reservation. Keep stable cost IDs within a pitch version, and publish actual spend before asking for more paid calls. The Office never invokes paid generation. Its single-call message grants no merge, publish, deployment or further spending approval. Delivery remains versioned links and a PR; ask Jonathan in the lead's chat before merging or publishing.
+
+The local reader and snapshot/browser boundaries cap directions at three, costs at 24, title/audience/goal at 120/300/300 characters, constraints at eight 200-character lines, summaries at 600, cost tool/description at 80/300, and each USD value at 1,000,000. Nonfinite, negative and string USD values are dropped; malformed and duplicate IDs, arbitrary fields and unsafe image paths are dropped. Direction images share the existing total image and byte budgets with pieces.
+
+A `ready` publication sends the owner one “Pitch ready: <project> <department>” alert per pitch version, retained across server restarts. **Go there** enters the HQ pitch room and selects that project. The room dims and the spotlight follows the registered lead through the existing gallery pieces. Managers inspect the HQ pitch read-only; coworkers receive none of this private publication. Start, Pick, OK, Decline and verdicts require the owner account on the server.
+
+**Live site frame.** On desktop, the home-page piece plays live on the wall screen through the TV's CSS3D technique, in a sandboxed iframe (`allow-scripts allow-same-origin allow-forms`: no top navigation, popups, downloads or device access, and no referrer). Only `https` URLs without credentials play. The published screenshot stays on the wall until the page loads, and remains if the site refuses to be framed. On phones and with reduced motion, the wall keeps the screenshot and the review keeps **Open site**.
