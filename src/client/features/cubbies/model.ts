@@ -181,27 +181,3 @@ export function usableAt(p: CubbyPlacement, kind: CubbyIt['kind'], x: number, z:
   const q = toFloor(p, x, z);
   return { kind, x: q.x, z: q.z, ...(p.y ? { y: p.y } : {}), radius, slot: p.slot, ...extra };
 }
-
-// ---- Joining a computer -------------------------------------------------------------------------------
-
-/** `s` quoted for a POSIX shell, unless it's plain enough not to need it. */
-export function shellQuote(s: string): string {
-  return /^[\w@%+=:,./-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`;
-}
-
-export const PROJECT_PLACEHOLDER = '<local project path>';
-
-/**
- * What the owner runs on their computer to bring a cubby to life: the Satellites join command with
- * cubbies on, for this floor, and the project folder they pick there (the office never learns it).
- */
-export function joinCommand(o: { origin: string; token: string; floorId: string; project: string; cloudflare: boolean }): string {
-  const project = o.project.trim();
-  const where = project ? shellQuote(project) : `'${PROJECT_PLACEHOLDER}'`;
-  return `agent-office join ${o.origin} --token ${shellQuote(o.token)} --cubbies --floor ${shellQuote(o.floorId)} --project ${where}${o.cloudflare ? ' --cloudflare-access' : ''}`;
-}
-
-/** A lead's name as setup sends it: trimmed, one line, at most 24 characters. */
-export function cleanLeadName(s: string): string {
-  return s.replace(/\s+/g, ' ').trim().slice(0, 24);
-}

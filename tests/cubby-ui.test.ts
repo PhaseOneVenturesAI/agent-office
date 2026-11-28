@@ -128,15 +128,6 @@ test('a session local session shows its tool, branch and state, never its task',
   assert.equal(model.workerStatus('needs-you', false), 'needs_input');
 });
 
-test('the join command carries the token, the floor and a locally chosen project folder, safely quoted', () => {
-  const base = { origin: 'https://office.example', token: 'tok_123', floorId: 'plimbo', cloudflare: false };
-  assert.equal(model.joinCommand({ ...base, project: '' }), "agent-office join https://office.example --token tok_123 --cubbies --floor plimbo --project '<local project path>'");
-  assert.equal(model.joinCommand({ ...base, project: "/Users/me/it's here", cloudflare: true }), "agent-office join https://office.example --token tok_123 --cubbies --floor plimbo --project '/Users/me/it'\\''s here' --cloudflare-access");
-  assert.equal(model.shellQuote('a;rm -rf /'), "'a;rm -rf /'");
-  assert.equal(model.shellQuote('$(x)'), "'$(x)'");
-  assert.equal(model.cleanLeadName('  Nova \n the   lead with a very long name '), 'Nova the lead with a ver');
-});
-
 test('placements turn a cubby’s own frame onto the floor', () => {
   const p = { slot: 0, x: -22, z: 5, width: 4.3, depth: 4, rotY: Math.PI / 2 };
   const door = model.toFloor(p, 0, 2);

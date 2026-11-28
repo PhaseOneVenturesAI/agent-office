@@ -3,7 +3,7 @@ import { hqProjects, hqSources } from './sources.js';
 import { liveWorkers, sameProject } from './live.js';
 import { HQ_FURNISHED_PROJECTS, visibleNeeds } from '../../shared/protocol/hq.js';
 import { messageLeads } from './messages.js';
-import type { HQLead, HQProject, LeadWhere } from '../../shared/protocol/hq.js';
+import type { HQLead, HQProject } from '../../shared/protocol/hq.js';
 import type { CubbyInfo, CubbiesState } from '../../shared/protocol/cubbies.js';
 import type { Pitch } from '../../shared/protocol/pitch.js';
 import type { Ctx } from '../office/context.js';
@@ -15,10 +15,6 @@ export type LeadSource = { floorId: string; projects: HQProject[]; pitch?: Pitch
   | { mac?: false; agents?: import('../../shared/protocol/cubbies.js').CubbyAgent[]; cubby: CubbyInfo });
 const sourceComputer = (source?: LeadSource) => source?.mac ? source.computerName : source?.cubby.interior?.computerName;
 
-/** The single location decision point: a ready pitch wins over verified linked presence. */
-export function leadWhere(pitch?: Pitch, linked = false, workingHere = false): LeadWhere {
-  return pitch?.status === 'ready' && pitch.pieces.some(p => !p.stamp) ? 'pitch' : linked && workingHere ? 'project' : 'hq';
-}
 /** The project part of linked lead ids: the repo when known, else the project name. */
 export const leadIdentity = (p: { repo?: string; name: string }) => p.repo?.toLowerCase() ?? p.name;
 export function projectFloor(project: HQProject, sourceFloor: string | undefined, floors: { id: string; repo?: string; name?: string }[]) {
@@ -32,8 +28,6 @@ export function projectLeads(projects: HQProject[], sources: LeadSource[], floor
     // A repo link alone never claims an unrelated cubby's conversation.
     const source = sources.find(s => s.mac && s.projects.some(q => sameProject(p, q))) ?? sources.find(s => !s.mac && !connected.has(s.cubby.id) && s.floorId === floorId && s.projects.some(q => q.own && sameProject(p, q)));
     const info = source?.mac ? undefined : source?.cubby;
-    const registered = source?.projects.find(q => q.own && sameProject(p, q)) ?? p;
-    const working = (id?: string) => !!id && liveWorkers(source).some(a => a.lead === id);
     const needs = visibleNeeds(p.needs, mine);
     if (info && p.hasMainLead) connected.add(info.id);
     const cubby = info && (mine ? info : { id: info.id, slot: info.slot, ownerName: info.ownerName, ownerColor: info.ownerColor,
@@ -43,9 +37,9 @@ export function projectLeads(projects: HQProject[], sources: LeadSource[], floor
     const base = { ...(source?.mac ? { mac: true, working: liveWorkers(source).filter(a => !p.departmentLeads.some(d => !!d.lead && d.lead === a.lead)).length } : {}), project: p.name, projectIndex, ...(floorId ? { floorId } : {}), computer: sourceComputer(source) ?? sourceComputer(sources[0]) ?? 'your computer' };
     return [
       ...(p.hasMainLead ? [{ ...base, id: info ? `cubby:${info.id}` : `project:${identity}:ceo`, role: 'CEO', title: 'Main lead', ...(source?.mac ? { leadStatus: p.leadStatus ?? { status: 'off' as const, updatedAt: source.observedAt } } : {}),
-        where: source?.mac ? 'hq' as const : leadWhere(source?.pitch, !source?.mac && !!source && !!floorId, working(registered.lead)), needsYou: !!info?.interior?.needsYou.length || (needs?.open ?? 0) > 0, ...(needs ? { needs } : {}), ...(cubby ? { cubby } : {}) }] : []),
+        where: 'hq' as const, needsYou: !!info?.interior?.needsYou.length || (needs?.open ?? 0) > 0, ...(needs ? { needs } : {}), ...(cubby ? { cubby } : {}) }] : []),
       ...p.departmentLeads.map((d, departmentIndex) => ({ ...base, id: `project:${identity}:department:${d.department}:${d.title}`, departmentIndex,
-        role: d.department, title: d.title, ...(source?.mac ? { leadStatus: d.leadStatus ?? { status: 'off' as const, updatedAt: source.observedAt } } : {}), ...(source?.mac ? { working: liveWorkers(source).filter(a => !!d.lead && a.lead === d.lead).length } : {}), where: leadWhere(undefined, !source?.mac && !!source && !!floorId, working(registered.departmentLeads.find(q => q.department === d.department && q.title === d.title)?.lead)), needsYou: false })),
+        role: d.department, title: d.title, ...(source?.mac ? { leadStatus: d.leadStatus ?? { status: 'off' as const, updatedAt: source.observedAt } } : {}), ...(source?.mac ? { working: liveWorkers(source).filter(a => !!d.lead && a.lead === d.lead).length } : {}), where: 'hq' as const, needsYou: false })),
     ];
   });
 }
@@ -66,7 +60,7 @@ export function leadsFor(ctx: Ctx, owner: string, mine: boolean) {
 /** Add only location metadata on a project floor; never grant cubby-interior admission. */
 export function withHQLeads(ctx: Ctx, c: Client, state: CubbiesState): CubbiesState {
   const access = hqAccess(ctx, c);
-  if (!access || !state.enabled) return state;
+  if (!access || !state.enabled || (!access.mine && !ctx.hq.is(state.floorId))) return state;
   const leads = messageLeads(ctx, c, access.owner, leadsFor(ctx, access.owner, access.mine), false);
   return { ...state, cubbies: state.cubbies.map(info => {
     const lead = leads.find(l => l.cubby?.id === info.id && l.floorId === state.floorId);

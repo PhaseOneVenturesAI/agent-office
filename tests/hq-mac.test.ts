@@ -1,3 +1,4 @@
+import { legacyCubby } from './support/legacy-cubby.js';
 import { boundMacSnapshot } from '../src/server/hq/local/bounds.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -122,7 +123,7 @@ test('HQ invitations are owner-only, single pending, re-setup revokes, account/c
 
 test('fresh Mac wins, fallback cubbies survives, HQ privacy and all projects, helpers, floor links, pitch and manager notes', t => {
   const f = server(t), a = f.client('alice'), b = f.client('bob'), e = f.client('eve');
-  const cb = f.cubbies.setup('normal', 'alice', 0, 'Lead', {} as any), cubby = f.connect(cb.token);
+  const cb = legacyCubby(f.cubbies, 'normal', 'alice', 0, 'Lead', {} as any), cubby = f.connect(cb.token);
   cubby.frame({ t: 'cubby.hello', floorId: 'normal', computerId: 'cubby-computer', computerName: 'Mac cubby' });
   cubby.frame({ t: 'cubby.snapshot', floorId: 'normal', observedAt: Date.now(), agents: [], projects: [project('Fallback')], plan: [], needsYou: [] });
   assert.equal(hqProjects(f.ctx, 'alice')[0].name, 'Fallback');

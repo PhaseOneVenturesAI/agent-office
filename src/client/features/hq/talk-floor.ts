@@ -23,7 +23,8 @@ export function talkFloor(ctx: Ctx, deps: HQLeadDeps) {
       return info?.ownerName === view?.ownerName;
     });
     if (room && leads.length) room.setLeadPresent(false);
-    const next = JSON.stringify([leads, view?.ownerColor, room?.place]);
+    const canTalk = !!view?.mine;
+    const next = JSON.stringify([leads, view?.ownerColor, room?.place, canTalk]);
     group.visible = active;
     if (next !== key) {
       key = next; work.clear(); people.forEach(p => p.dispose()); people = []; targets = []; group.clear();
@@ -35,7 +36,8 @@ export function talkFloor(ctx: Ctx, deps: HQLeadDeps) {
         model.root.position.set(at.x, room?.place.y ?? 0, at.z); model.root.name = `project-body-${lead.id}`;
         work.add(lead, view!.ownerColor, group, { ...at, y: room?.place.y }, 'project');
         const target: LeadTarget = { kind: 'hqlead', lead, x: at.x, z: at.z, radius: 1.2 };
-        model.root.userData.interact = target; targets.push(target); people.push(model); group.add(model.root);
+        if (canTalk) { model.root.userData.interact = target; targets.push(target); }
+        people.push(model); group.add(model.root);
       });
       if (leads.some(l => l.helpers !== undefined || l.doing)) work.board(leads, group, room ? { ...toFloor(room.place, room.place.width / 2 - .6, 0), y: room.place.y } : { x: -7.5, z: 9 });
     }

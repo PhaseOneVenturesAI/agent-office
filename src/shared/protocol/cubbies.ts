@@ -42,7 +42,7 @@ export interface CubbyInterior {
   error?: string;
 }
 export interface CubbyInfo {
-  hqLead?: import('./hq.js').HQLeadAway;
+  hqLead?: import('./hq.js').HQLeadPresence;
   id: string;
   slot: number;
   ownerName: string;

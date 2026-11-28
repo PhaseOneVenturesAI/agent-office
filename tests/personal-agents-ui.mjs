@@ -27,7 +27,6 @@ const push = m => socket.send(JSON.stringify(m));
 const shot = async (name, frame) => {
   for (const [width, height, suffix] of [[1280, 800, 'desktop'], [390, 844, 'phone']]) {
     await page.setViewportSize({ width, height }); if (frame) await frame(width); await page.waitForTimeout(350);
-    if (name === 'setup-swatches') await page.getByRole('radiogroup', { name: 'Owner colour', exact: true }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: `${out}/${name}-${suffix}.png` });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'no page overflow');
   }
@@ -62,23 +61,8 @@ try {
   await page.waitForTimeout(300);
   await page.mouse.click(700, 700);
   await page.evaluate(() => { const a = window.__audit; a.ctx.interactions.use(a.cubbies.rooms().get(0).door, 'E', null); });
-  await page.waitForSelector('.cubby-setup');
-  assert.equal(await page.getByRole('radio', { name: 'Owner colour: Violet', exact: true }).getAttribute('aria-checked'), 'true');
-  await page.getByRole('radio', { name: 'Owner colour: Blue', exact: true }).click();
-  assert.equal(await page.getByRole('radio', { name: 'Owner colour: Blue', exact: true }).getAttribute('aria-checked'), 'true');
-  assert.equal(await page.locator('.cubby-setup .btn.close').count(), 1);
-  await shot('setup-swatches');
-  await page.fill('input[aria-label="Lead name"]', 'Nova');
-  await page.locator('.cubby-setup button[type="submit"]').click();
-  await page.waitForTimeout(150);
-  assert.equal(sent.find(m => m.t === 'cubbies.setup')?.ownerColor, color);
-  await page.locator('.cubby-setup .btn.close').click();
-  await page.waitForFunction(() => window.__office.player.hasMouse);
-  // The existing setup close/Escape path returns directly to mouse-look.
-  await page.evaluate(() => { const a = window.__audit; a.ctx.interactions.use(a.cubbies.rooms().get(0).door, 'E', null); });
-  await page.waitForSelector('.cubby-setup');
-  await page.keyboard.press('Escape');
-  await page.waitForFunction(() => window.__office.player.hasMouse);
+  assert.equal(await page.locator('.cubby-setup').count(), 0);
+  assert.equal(sent.some(m => m.t === 'cubbies.setup'), false);
   push({ t: 'cubbies', state }); await page.waitForTimeout(400);
   const materialEvidence = await page.evaluate(() => {
     const room = window.__audit.cubbies.rooms().get(0), inside = room.interior;
@@ -242,5 +226,5 @@ try {
   assert.equal(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches), true);
   assert.deepEqual(errors, []);
   writeFileSync(out + '/evidence.json', JSON.stringify({ defaultInteriorFovOverlapChecks: true, lineupOverviewFov: { desktop: 85, phone: 120 }, acrossTheRoomDistanceMeters: 9, evidence, errors, sent: sent.filter(m => m.t === 'cubbies.setup') }, null, 2));
-  console.log(`PASS: setup, materials, silhouettes, labels, draft and desktop/phone captures: ${out}`);
+  console.log(`PASS: retired setup, materials, silhouettes, labels, draft and desktop/phone captures: ${out}`);
 } finally { await browser.close(); await server.close(); }

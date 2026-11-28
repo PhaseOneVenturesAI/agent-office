@@ -6,7 +6,7 @@ import { presence } from '../src/server/cubbies/local/presence.js';
 import { readNeeds, needsFor } from '../src/server/cubbies/local/needs.js';
 import { readProjects } from '../src/server/hq/projects.js';
 import { cleanProjects, publicProjects, leadId } from '../src/shared/protocol/hq.js';
-import { projectLeads, leadWhere, type LeadSource } from '../src/server/hq/leads.js';
+import { projectLeads, type LeadSource } from '../src/server/hq/leads.js';
 import { liveProjects } from '../src/server/hq/live.js';
 import { snapshot } from '../src/server/cubbies/snapshot.js';
 import type { HQProject } from '../src/shared/protocol/hq.js';
@@ -81,17 +81,15 @@ test('one helper per HQ floor, exact lead desk or scoped CEO fallback, newest fi
   assert.equal(liveProjects([p], [{ ...s, cubby: { ...s.cubby, lamp: 'asleep' } }])[0].workers, undefined);
 });
 
-test('leadWhere precedence and source scope; CEO needs OR, department exclusion and manager privacy', () => {
+test('stable dual-floor identities and source scope; CEO needs OR, department exclusion and manager privacy', () => {
   const s = source(), floors = [{ id: 'project' }];
   const leads = projectLeads([p], [s], floors, true);
-  assert.deepEqual(leads.map(l => l.where), ['project', 'project']); assert.equal(leads[0].needsYou, true); assert.equal(leads[1].needsYou, false);
+  assert.deepEqual(leads.map(l => l.where), ['hq', 'hq']); assert.equal(leads[0].needsYou, true); assert.equal(leads[1].needsYou, false);
   const managers = projectLeads([p], [s], floors, false);
   assert.deepEqual(managers[0].needs?.items, []); assert.doesNotMatch(JSON.stringify(managers), /onerror/);
   assert.deepEqual(projectLeads([p], [s], [], true).map(l => l.where), ['hq', 'hq']);
   assert.equal(projectLeads([{ ...p, lead: 'elsewhere' }], [{ ...s, projects: [{ ...p, lead: 'elsewhere' }] }], floors, true)[0].where, 'hq');
   const pitch: any = { status: 'ready', pieces: [{}] };
-  assert.equal(leadWhere(pitch, true, true), 'pitch'); assert.equal(leadWhere(undefined, true, true), 'project'); assert.equal(leadWhere(undefined, false, true), 'hq');
-  assert.equal(leadWhere({ ...pitch, pieces: [{ stamp: {} }] }, true, true), 'project');
   s.cubby.interior!.needsYou = ['Existing private line'];
   const zero = projectLeads([{ ...p, needs: { ...needs, open: 0 } }], [s], floors, false)[0];
   assert.equal(zero.needsYou, true); assert.deepEqual(zero.cubby?.interior?.needsYou, []);

@@ -1,6 +1,5 @@
 import { cubbyWithoutHQMetadata } from '../hq/privacy.js';
 import { hqRecords, hqCubbyPitch } from '../hq/cubbies.js';
-import { isOwnerColor } from '../../shared/personal-agents/appearance.js';
 import { PitchStore } from '../pitch/store.js';
 import { validVerdict } from '../../shared/pitch/clean.js';
 import type { PitchVerdictMessage } from '../../shared/protocol/pitch.js';
@@ -9,12 +8,9 @@ import { boardFeedbackBytes, FEEDBACK_FULL } from '../drafts/feedback-budget.js'
 import { BOARD_TOO_BIG } from './publication.js';
 import { DRAFT_LIMITS, EMPTY_BOARDS, type DraftFeedbackMessage, type DraftBoards } from '../../shared/protocol/drafts.js';
 import { randomBytes } from 'node:crypto';
-import type { Look } from '../../shared/avatar.js';
-import { sanitizeLook, lookFromSeed } from '../../shared/avatar.js';
-import type { CubbyBinding, CubbyChatLine, CubbyDevice, CubbyDeviceAction, CubbyDeviceRequest, CubbyInterior, CubbiesState, CubbyRelayFrame, CubbyOwnerMessage } from '../../shared/protocol/cubbies.js';
+import type { CubbyBinding, CubbyChatLine, CubbyDevice, CubbyDeviceRequest, CubbyInterior, CubbiesState, CubbyRelayFrame, CubbyOwnerMessage } from '../../shared/protocol/cubbies.js';
 import type { Nodes, NodeExtension } from '../nodes.js';
 import { CubbyRecords, type CubbyRecord } from './records.js';
-import { HALL_SLOTS } from '../../shared/cubbyhall.js';
 import { relaySignature } from './wire.js';
 import { devicesOf, short, snapshot } from './snapshot.js';
 import { CubbySharing, watcherInterior } from './sharing.js';
@@ -28,7 +24,6 @@ export class Cubbies {
   private live = new Map<string, Live>();
   private sharing: CubbySharing;
   private images = new Map<string, DraftImages>();
-  private deviceRequests = new Map<string, number[]>();
   constructor(dir: string, readonly enabled: boolean, private nodes: Nodes,
     private accountName: (id: string) => string | undefined, private floorExists: (id: string) => boolean,
     private changed: () => void, private now = Date.now, private draftOwner: (floor: string) => string | undefined = () => undefined) {
@@ -39,7 +34,7 @@ export class Cubbies {
   state(floorId?: string, owner?: string, clientId?: string): CubbiesState {
     this.sharing.refresh();
     if (!this.enabled || !floorId || !this.floorExists(floorId) || (this.draftOwner(floorId) !== undefined && this.draftOwner(floorId) !== owner)) return { enabled: false, cubbies: [], setupAllowed: false };
-    return { enabled: true, floorId, ...(owner ? { ownerColor: this.records.color(owner) } : {}), setupAllowed: !!owner && !!this.accountName(owner), cubbies: [...this.records.rows.values()]
+    return { enabled: true, floorId, ...(owner ? { ownerColor: this.records.color(owner) } : {}), setupAllowed: false, cubbies: [...this.records.rows.values()]
       .filter(r => r.floorId === floorId)
       .map(r => {
         const mine = r.owner === owner && !!this.accountName(r.owner);
@@ -172,30 +167,6 @@ export class Cubbies {
     pending.set(requestId, this.now());
     if (!this.send(r, frame)) { pending.delete(requestId); throw Error('Your computer disconnected; verdict was not queued'); }
   }
-  setup(floorId: string, owner: string, slot: number, name: string, look: Look, ownerColor?: unknown) {
-    if (!this.enabled || !this.floorExists(floorId) || !this.accountName(owner)) throw Error('Cubbies require your own account on an open project floor');
-    const draftOwner = this.draftOwner(floorId);
-    if (draftOwner !== undefined && (owner !== draftOwner || slot !== 0)) throw Error('A draft has one cubby, for its owner at the studio table');
-    if (!Number.isInteger(slot) || slot < 0 || slot >= HALL_SLOTS) throw Error(`Choose one of the ${HALL_SLOTS} cubbies`);
-    const previous = [...this.records.rows.values()].find(r => r.floorId === floorId && r.slot === slot);
-    if (previous && previous.owner !== owner) throw Error('That cubby is already set up');
-    if (previous && this.nodes.isOnline(previous.nodeId)) throw Error('Stop your local connection before setting this cubby up again');
-    const leadName = short(name, 32).trim(); if (!leadName) throw Error('Give your lead a name');
-    if (!previous && [...this.records.rows.values()].some(r => r.owner === owner && r.floorId === floorId && !r.computerId)) throw Error('Connect your pending cubby before setting up another computer');
-    if (ownerColor !== undefined && !isOwnerColor(ownerColor)) throw Error('Choose an owner colour from the palette');
-    const color = isOwnerColor(ownerColor) ? ownerColor : this.records.color(owner);
-    const invite = this.nodes.invite('Cubby computer', 'private', owner, true);
-    const r: CubbyRecord = { ...previous, id: previous?.id ?? id(), floorId, owner, nodeId: invite.id, slot, leadName, ownerColor: color, look: sanitizeLook(look, lookFromSeed(owner)) };
-    this.records.rows.set(r.id, r);
-    const restoreColors = this.records.setColor(owner, color);
-    try { this.records.save(); } catch (e) {
-      restoreColors();
-      if (previous) this.records.rows.set(previous.id, previous); else this.records.rows.delete(r.id);
-      this.nodes.revoke(invite.id); throw e;
-    }
-    if (previous) { this.dropDraftImages(floorId); this.pitches.drop(previous.id); this.live.delete(previous.id); this.nodes.revoke(previous.nodeId); }
-    this.changed(); return { id: r.id, floorId, token: invite.token };
-  }
   chat(floorId: string, owner: string, cubbyId: string, message: CubbyOwnerMessage) {
     const r = this.records.rows.get(cubbyId), live = this.live.get(cubbyId);
     if (!this.enabled || !r || r.floorId !== floorId || r.owner !== owner || !this.accountName(owner)) throw Error('Only the owner can talk to this lead');
@@ -210,31 +181,6 @@ export class Cubbies {
     if (!this.send(r, frame)) throw Error('Your computer disconnected; your message was not queued');
     live.pending = { id: requestId, at: this.now() };
     this.line(live, { id: requestId, role: 'user', text: frame.text, at }); this.changed();
-  }
-  /** From a device that isn't trusted yet: ask the owner's computer to trust its key. Only the computer decides. */
-  addDevice(floorId: string, owner: string, cubbyId: string, publicKey: unknown, label: unknown) {
-    const { r, live } = this.ownerLink(floorId, owner, cubbyId);
-    if (typeof publicKey !== 'string' || !/^[A-Za-z0-9_-]{100,160}$/.test(publicKey)) throw Error('This device’s key is not valid');
-    const now = this.now();
-    for (const [account, times] of this.deviceRequests) {
-      const recent = times.filter(at => now - at < 60_000);
-      if (recent.length && this.accountName(account)) this.deviceRequests.set(account, recent);
-      else this.deviceRequests.delete(account);
-    }
-    const recent = this.deviceRequests.get(owner) ?? [];
-    if (recent.length >= 4) throw Error('You can request at most 4 devices per minute. Wait a minute and try again.');
-    this.deviceRequests.set(owner, [...recent, now]);
-    const frame: CubbyRelayFrame = { t: 'cubby.device-request', ...live.binding, requestId: id(), at: now, publicKey, label: short(label, 40) || 'Device', signature: '' };
-    if (!this.send(r, frame)) throw Error('Your computer disconnected; try again when it’s back');
-  }
-  /** A trusted device approves, denies or removes a device. Its signature is checked on the computer, not here. */
-  device(floorId: string, owner: string, cubbyId: string, a: Partial<CubbyDeviceAction>) {
-    const { r, live } = this.ownerLink(floorId, owner, cubbyId);
-    if (!['add', 'deny', 'revoke'].includes(a.action as string) || typeof a.target !== 'string' || a.target.length > 200 ||
-      typeof a.requestId !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(a.requestId) || !Number.isSafeInteger(a.at) ||
-      typeof a.ownerSig !== 'string' || !/^[A-Za-z0-9_-]{86}$/.test(a.ownerSig)) throw Error('Sign the change on a device your computer trusts');
-    const frame: CubbyRelayFrame = { t: 'cubby.device', ...live.binding, action: a.action as CubbyDeviceAction['action'], target: a.target, requestId: a.requestId, at: a.at!, ownerSig: a.ownerSig, signature: '' };
-    if (!this.send(r, frame)) throw Error('Your computer disconnected; try again when it’s back');
   }
   private ownerLink(floorId: string, owner: string, cubbyId: string) {
     const r = this.records.rows.get(cubbyId), live = this.live.get(cubbyId);

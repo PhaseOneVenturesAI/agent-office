@@ -72,7 +72,7 @@ export function messages(ctx: Ctx) {
 }
 function accessOnHQ(ctx: Ctx, c: Client) {
   const access = hqAccess(ctx, c);
-  if (!access || (!ctx.hq.is(ctx.floorOf(c)?.id) && !ctx.hq.mac?.owner())) throw Error('Messages are available on HQ only');
+  if (!access || (!ctx.hq.is(ctx.floorOf(c)?.id) && (!access.mine || !ctx.hq.mac?.owner()))) throw Error('Messages are available on HQ only');
   return access;
 }
 export function sendManagerMessage(ctx: Ctx, c: Client, leadId: string, text: unknown) {

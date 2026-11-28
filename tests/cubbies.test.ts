@@ -1,3 +1,4 @@
+import { legacyCubby } from './support/legacy-cubby.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs';
@@ -23,7 +24,7 @@ function fixture(t: { after(fn: () => void): void }, enabled = true, now = Date.
   const nodes = new Nodes(dir, () => cubbies?.refresh());
   cubbies = new Cubbies(dir, enabled, nodes, owner => ({ alice: 'Alice', bob: 'Bob' })[owner as 'alice'], id => ['floor', 'other'].includes(id), () => {}, now);
   t.after(() => { nodes.close(); rmSync(dir, { recursive: true, force: true }); });
-  const setup = (owner = 'alice', slot = 0, floor = 'floor') => cubbies!.setup(floor, owner, slot, 'Nova', {skin: 1, hair: 2, style: 3});
+  const setup = (owner = 'alice', slot = 0, floor = 'floor') => legacyCubby(cubbies!, floor, owner, slot, 'Nova', {skin: 1, hair: 2, style: 3});
   const connect = (token: string, floor = 'floor', computerId = 'computer-alice') => {
     const ws = socket(); nodes.attach(ws as any, token);
     ws.frame({ t: 'hello', name: 'Private computer', host: 'secret-host', providers: ['claude'] });
@@ -34,33 +35,13 @@ function fixture(t: { after(fn: () => void): void }, enabled = true, now = Date.
 }
 const roster = () => ({ t: 'cubby.snapshot', floorId: 'floor', observedAt: Date.now(), agents: [{id:'builder',tool:'Claude',role:'builder',task:'Private marketing draft',branch:'private-branch',status:'working',progress:'Private progress'}], plan:['Private plan'],needsYou:['Private decision'] });
 
-test('device requests are limited to four per rolling minute per account, with a sender notice', t => {
-  let now = Date.now();
-  const f = fixture(t, true, () => now), first = f.setup(), a = f.connect(first.token);
-  const second = f.setup('alice', 1, 'other'), b = f.connect(second.token, 'other');
-  const bob = f.setup('bob', 2), c = f.connect(bob.token, 'floor', 'computer-bob');
-  const notices: { client: unknown; text: string }[] = [];
-  const ctx = { cubbies: f.cubbies, floorOf: (client: any) => ({ id: client.floor }),
-    warn: (client: unknown, text: string) => notices.push({ client, text }) } as any;
-  const send = (accountId: string, floor: string, id: string) => {
-    const client = { accountId, floor } as any; // A fresh browser connection cannot reset the account limit.
-    cubbiesHandlers['cubbies.addDevice'](ctx, client, { t: 'cubbies.addDevice', id, publicKey: 'A'.repeat(124), label: 'Phone' });
-    return client;
-  };
-  for (let i = 0; i < 4; i++) { send('alice', 'floor', first.id); now += 100; }
-  const refused = send('alice', 'other', second.id);
-  assert.equal(a.sent.filter(m => m.t === 'cubby.device-request').length, 4);
-  assert.equal(b.sent.filter(m => m.t === 'cubby.device-request').length, 0);
-  assert.equal(notices.length, 1);
-  assert.equal(notices[0].client, refused);
-  assert.match(notices[0].text, /4.*minute/i);
-  send('bob', 'floor', bob.id);
-  assert.equal(c.sent.filter(m => m.t === 'cubby.device-request').length, 1);
-  now += 59_600; // Only the first request has aged out.
-  send('alice', 'other', second.id);
-  send('alice', 'other', second.id);
-  assert.equal(b.sent.filter(m => m.t === 'cubby.device-request').length, 1);
-  assert.equal(notices.length, 2);
+test('old device enrollment requests fail without reaching the connector', t => {
+  const f = fixture(t), invite = f.setup(), ws = f.connect(invite.token), notices: string[] = [];
+  const ctx = { warn: (_c: unknown, text: string) => notices.push(text) } as any;
+  cubbiesHandlers['cubbies.addDevice'](ctx, {} as any, {} as any);
+  cubbiesHandlers['cubbies.device'](ctx, {} as any, {} as any);
+  assert.deepEqual(ws.sent.map(m => m.t), ['cubby.ready']);
+  assert.ok(notices.every(text => /enrollment removed.*agent-office link/.test(text)));
 });
 
 test('a congested satellite refuses signed frames and chat can retry after it drains', t => {
@@ -99,7 +80,6 @@ test('a dropped ready frame does not admit the cubby; a later hello can retry', 
 test('cubbies are inert unless explicitly enabled, with no retired harness state', t => {
   const f = fixture(t, false);
   assert.deepEqual(f.cubbies.state('floor', 'alice'), {enabled:false,cubbies:[],setupAllowed:false});
-  assert.throws(() => f.setup(), /require/);
   assert.equal(existsSync(path.join(f.dir,'cubbies.json')), false);
   for (const name of ['harness.json','harness-history','reviews.json']) assert.equal(existsSync(path.join(f.dir,name)), false);
 });
@@ -164,7 +144,6 @@ test('a node cannot claim another cubby, floor or computer identity; duplicate t
   const duplicate = f.setup('alice',2), duplicateWs = f.connect(duplicate.token);
   assert.deepEqual(duplicateWs.sent,[]);
   assert.equal(f.cubbies.state('floor','alice').cubbies[2].lamp,'asleep');
-  assert.throws(() => f.setup('bob',0),/already/);
 });
 
 test('invalid or stale snapshots and direct-session details cannot leak into accepted presence', t => {
@@ -178,18 +157,6 @@ test('invalid or stale snapshots and direct-session details cannot leak into acc
   assert.equal(f.cubbies.state('floor','alice').cubbies[0].interior!.agents.length,1);
 });
 
-
-test('owner can recover a lost setup token offline without freeing the room or changing its computer', t => {
-  const f = fixture(t), first = f.setup(), ws = f.connect(first.token);
-  assert.throws(() => f.setup(), /Stop your local connection/);
-  ws.close();
-  const next = f.setup(); assert.equal(next.id, first.id); assert.notEqual(next.token, first.token);
-  assert.equal(f.cubbies.records.rows.size, 1);
-  const old = f.connect(first.token); assert.equal(old.readyState, 3);
-  const wrongComputer = f.connect(next.token, 'floor', 'other-computer'); assert.deepEqual(wrongComputer.sent, []);
-  const correct = f.connect(next.token); assert.equal(correct.sent[0].t, 'cubby.ready');
-  assert.equal(f.cubbies.state('floor', 'alice').cubbies[0].lamp, 'online');
-});
 
 
 test('an online computer with stale observations does not keep advertising old work as live', t => {
@@ -216,12 +183,6 @@ test('cubby computers stay owner-only on the Satellite wall, including after rel
   assert.equal(reload.state({id:'alice'}).nodes.length,1);
 });
 
-test('one owner cannot reserve every free slot before connecting a computer', t => {
-  const f = fixture(t); f.setup();
-  assert.throws(()=>f.setup('alice',1),/pending cubby/);
-  assert.doesNotThrow(()=>f.setup('bob',1));
-});
-
 
 test('a missing reply expires visibly without replaying work or accepting a late reply', t => {
   let now = Date.now(); const f = fixture(t, true, () => now), invite = f.setup(), ws = f.connect(invite.token);
@@ -232,22 +193,4 @@ test('a missing reply expires visibly without replaying work or accepting a late
   ws.frame({t:'cubby.reply',floorId:'floor',requestId:request.requestId,text:'late answer'});
   assert.equal(f.cubbies.state('floor','alice').cubbies[0].interior!.chat.length,2);
   assert.doesNotThrow(()=>f.cubbies.chat('floor','alice',invite.id,message('explicit new message')));
-});
-
-
-test('owner colour validates before inviting, persists across floors and is visible to watchers', t => {
-  const f = fixture(t), look = { skin: 1, hair: 2, style: 3 };
-  assert.throws(() => f.cubbies.setup('floor', 'alice', 0, 'Nova', look, '#ffffff'), /palette/);
-  assert.equal(f.cubbies.records.rows.size, 0);
-  const first = f.cubbies.setup('floor', 'alice', 0, 'Nova', look, '#0f7a6b');
-  f.connect(first.token);
-  f.cubbies.setup('other', 'alice', 0, 'Nova', look, '#c0283f');
-  assert.equal(f.cubbies.state('floor', 'alice').cubbies[0].ownerColor, '#c0283f');
-  assert.equal(f.cubbies.state('other', 'alice').ownerColor, '#c0283f');
-  assert.equal(f.cubbies.state('floor', 'bob').cubbies[0].ownerColor, '#c0283f');
-  f.cubbies.knock('floor', 'bob', first.id, 'bob-client');
-  f.cubbies.admit('floor', 'alice', first.id, 'bob', true);
-  assert.equal(f.cubbies.state('floor', 'bob', 'bob-client').cubbies[0].ownerColor, '#c0283f');
-  const saved = JSON.parse(readFileSync(path.join(f.dir, 'cubbies.json'), 'utf8'));
-  assert.ok(saved.every((r: any) => r.ownerColor === '#c0283f'));
 });

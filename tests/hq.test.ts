@@ -1,3 +1,4 @@
+import { legacyCubby } from './support/legacy-cubby.js';
 import { publicProjects } from '../src/shared/protocol/hq.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -48,7 +49,7 @@ function fixture(t: any, owner: string | undefined = ' ALICE ') {
   const normal = building.addLocal({ id: 'normal', dir, name: 'Normal', addedBy: 'Alice', addedAt: 1 }); ctx.openFloor(normal);
   const publish = (floor = 'normal', observedAt = Date.now(), projectList = projects) => {
     if (!ctx.floors.has(floor)) ctx.openFloor(building.addLocal({ id: floor, dir: path.join(dir, floor), name: floor, addedBy: 'Alice', addedAt: 1 }));
-    const cb = ctx.cubbies.setup(floor, 'alice', 0, 'Lead', {} as any, '#0f7a6b'), ws = socket();
+    const cb = legacyCubby(ctx.cubbies, floor, 'alice', 0, 'Lead', {} as any, '#0f7a6b'), ws = socket();
     nodes.attach(ws as any, cb.token); ws.frame({ t: 'hello', host: 'fixture', providers: [] });
     ws.frame({ t: 'cubby.hello', floorId: floor, computerId: `computer-${floor}`, computerName: 'Mac fixture' });
     ws.frame({ t: 'cubby.snapshot', floorId: floor, observedAt, agents: [], plan: [], needsYou: [], projects: projectList });
@@ -161,7 +162,7 @@ test('HQ owner and managers can be named by Cloudflare email, which survives a r
 });
 
 test('HQ project links use the own snapshot floor, otherwise exact repo names; never guess by display name', async t => {
-  const { projectFloor, projectLeads, leadWhere } = await import('../src/server/hq/leads.js');
+  const { projectFloor, projectLeads } = await import('../src/server/hq/leads.js');
   const { githubRepo } = await import('../src/server/hq/projects.js');
   const p = { name: 'Plimbo', hasMainLead: true, departmentLeads: [{ department: 'Marketing', title: 'Marketing lead' }] };
   const floors = [{ id: 'local' }, { id: 'repo', repo: 'Owner/Plimbo' }, { id: 'Plimbo' }];
@@ -186,12 +187,10 @@ test('HQ project links use the own snapshot floor, otherwise exact repo names; n
   const leads = hqView(f.ctx, f.ctx.floorOf(a), a)!.leads!;
   assert.equal(leads[0].floorId, 'normal'); assert.equal(leads[0].cubby?.id, cb.id); assert.equal(leads[0].where, 'hq'); assert.equal(leads[1].cubby, undefined);
   const pitch: any = { department: 'Marketing', lead: 'Marketing lead', status: 'ready', version: 'v1', pieces: [{ id: 'site', kind: 'site', title: 'Page', notes: [], images: [] }] };
-  assert.equal(leadWhere(), 'hq'); assert.equal(leadWhere({ ...pitch, status: 'building' }), 'hq'); assert.equal(leadWhere(pitch), 'pitch');
   ws.frame({ t: 'cubby.snapshot', floorId: 'normal', observedAt: Date.now(), agents: [], plan: [], needsYou: ['Review'], projects: [{ ...p, own: true }], pitch });
   const pending = hqView(f.ctx, f.ctx.floorOf(a), a)!.leads!;
-  assert.equal(pending[0].where, 'pitch'); assert.equal(pending[1].where, 'hq'); assert.equal(pending[0].needsYou, true);
+  assert.equal(pending[0].where, 'hq'); assert.equal(pending[1].where, 'hq'); assert.equal(pending[0].needsYou, true);
   const stamped = { ...pitch, pieces: pitch.pieces.map((p: any) => ({ ...p, stamp: { requestId: 'verdict', verdict: 'approve', at: Date.now() } })) };
-  assert.equal(leadWhere(stamped), 'hq');
   ws.frame({ t: 'cubby.snapshot', floorId: 'normal', observedAt: Date.now(), agents: [], plan: [], needsYou: [], projects: [{ ...p, own: true }], pitch: stamped });
   assert.equal(hqView(f.ctx, f.ctx.floorOf(a), a)!.leads![0].where, 'hq');
   const sources = f.ctx.cubbies.hqSources('alice');
@@ -222,10 +221,9 @@ test('HQ lead chat preserves source signatures; managers read but cannot send; o
   const mine = cubbiesView(f.ctx, f.ctx.floorOf(a), a)!;
   assert.equal(mine.cubbies[0].hqLead?.lead.where, 'hq');
   const watched = cubbiesView(f.ctx, f.ctx.floorOf(m), m)!.cubbies[0];
-  assert.ok(watched.hqLead); assert.equal(watched.interior, undefined); assert.equal(watched.watching, undefined, 'HQ does not admit managers to cubby interiors');
-  assert.equal(watched.hqLead.lead.cubby?.mine, false);
+  assert.equal(watched.hqLead, undefined); assert.equal(watched.interior, undefined); assert.equal(watched.watching, undefined, 'HQ does not admit managers to cubby interiors');
   assert.equal(cubbiesView(f.ctx, f.ctx.floorOf(e), e)!.cubbies[0].hqLead, undefined);
-  f.ctx.cubbies.setup('normal', 'bob', 1, 'Other lead', {} as any);
+  legacyCubby(f.ctx.cubbies, 'normal', 'bob', 1, 'Other lead', {} as any);
   assert.equal(cubbiesView(f.ctx, f.ctx.floorOf(a), a)!.cubbies[1].hqLead, undefined);
   f.ctx.hq = new HQ(f.dir, '', '', () => undefined, f.building);
   assert.equal(cubbiesView(f.ctx, f.ctx.floorOf(a), a)!.cubbies[0].hqLead, undefined);
@@ -265,7 +263,7 @@ test('held manager messages are private; only a trusted owner signature passes t
   a.peer.floor = m.peer.floor = 'normal';
   assert.match(cubbiesView(f.ctx, f.ctx.floorOf(a), a)!.cubbies[0].hqLead!.lead.messageBadge!, /1 message from Bob/);
   assert.equal(cubbiesView(f.ctx, f.ctx.floorOf(a), a)!.cubbies[0].hqLead!.lead.messages, undefined);
-  assert.equal(cubbiesView(f.ctx, f.ctx.floorOf(m), m)!.cubbies[0].hqLead!.lead.messageBadge, undefined);
+  assert.equal(cubbiesView(f.ctx, f.ctx.floorOf(m), m)!.cubbies[0].hqLead, undefined);
   assert.throws(() => sendManagerMessage(f.ctx, m, lead.id, 'Wrong floor'), /HQ only/);
   assert.throws(() => declineManagerMessage(f.ctx, a, item.id), /HQ only/);
   a.peer.floor = m.peer.floor = 'hq';
@@ -332,7 +330,7 @@ test('HQ live projections hide lines and matching IDs from managers/outsiders; e
   a.peer.floor = m.peer.floor = e.peer.floor = 'hq'; elsewhere.peer.floor = 'normal';
   ws.frame({ t: 'cubby.snapshot', floorId: 'normal', observedAt: Date.now(), agents: [{ id: 'harness:123', tool: 'codex', role: 'builder', status: 'working', task: 'HQ live', branch: 'main', lead: 'private-session', startedAt: 1 }], plan: [], needsYou: [], projects: [p] });
   const owner = hqView(f.ctx, f.ctx.floorOf(a), a)!;
-  assert.equal(owner.projects[0].workers?.[0].title, 'HQ live'); assert.equal(owner.leads?.[0].where, 'project'); assert.equal(owner.leads?.[0].needs?.items[0], 'SECRET_NEEDS');
+  assert.equal(owner.projects[0].workers?.[0].title, 'HQ live'); assert.equal(owner.leads?.[0].where, 'hq'); assert.equal(owner.leads?.[0].needs?.items[0], 'SECRET_NEEDS');
   assert.doesNotMatch(JSON.stringify(owner), /private-session/);
   const manager = hqView(f.ctx, f.ctx.floorOf(m), m)!;
   assert.equal(manager.projects[0].needs?.open, 2); assert.doesNotMatch(JSON.stringify(manager), /SECRET_NEEDS|private-session/);
@@ -348,4 +346,26 @@ test('HQ live projections hide lines and matching IDs from managers/outsiders; e
   for (const c of [e, elsewhere]) assert.equal(c.ws.sent.some((m: any) => m.t === 'hq.gong'), false);
   emit(floor, { t: 'gong', why: 'hit', by: 'Owner' });
   assert.equal(a.ws.sent.filter((m: any) => m.t === 'hq.gong').length, 1);
+});
+
+test('legacy sharing grants cannot expose HQ owner threads on projects; retired setup is inert', async t => {
+  const { cubbiesView, cubbiesHandlers } = await import('../src/server/ws/handlers/cubbies.js');
+  const f = fixture(t), { cb } = f.publish('normal', Date.now(), [{ name: 'Plimbo', own: true, hasMainLead: true, departmentLeads: [] }]);
+  const viewer = f.client('bob'); viewer.peer.floor = 'normal';
+  f.ctx.cubbies.knock('normal', 'bob', cb.id, viewer.id);
+  f.ctx.cubbies.admit('normal', 'alice', cb.id, 'bob', true);
+  assert.ok(f.ctx.cubbies.state('normal', 'bob', viewer.id).cubbies[0].interior, 'fixture has an old sharing grant');
+  const view = cubbiesView(f.ctx, f.ctx.floorOf(viewer), viewer)!;
+  assert.equal(view.setupAllowed, false);
+  assert.equal(view.cubbies[0].interior, undefined);
+  assert.equal(view.cubbies[0].watching, undefined);
+  assert.equal(view.cubbies[0].hqLead, undefined);
+  const count = f.ctx.cubbies.records.rows.size;
+  cubbiesHandlers['cubbies.setup'](f.ctx, viewer, { t: 'cubbies.setup', slot: 1, leadName: 'Removed', look: {} as any });
+  cubbiesHandlers['cubbies.knock'](f.ctx, viewer, { t: 'cubbies.knock', id: cb.id });
+  assert.equal(f.ctx.cubbies.records.rows.size, count);
+  assert.match(JSON.stringify(viewer.ws.sent), /setup removed/);
+  assert.match(JSON.stringify(viewer.ws.sent), /watch-only/);
+  viewer.peer.floor = 'hq';
+  assert.deepEqual(cubbiesView(f.ctx, f.ctx.floorOf(viewer), viewer), { enabled: false, cubbies: [], setupAllowed: false });
 });

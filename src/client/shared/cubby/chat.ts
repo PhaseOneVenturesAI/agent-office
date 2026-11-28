@@ -2,7 +2,7 @@ import './chat.css';
 import type { CubbyChatLine, CubbyAgent, CubbyDeviceAction, CubbyInfo, CubbyOwnerMessage } from '../../../shared/protocol/cubbies';
 import { store } from '../../state';
 import { ownerDeviceKey, signOwnerChat, type OwnerDeviceKey } from './keys';
-import { deviceSection, deviceTrusted } from './devices';
+import { deviceTrusted } from './devices';
 import { h, openModal } from '../../ui/dom';
 import { STATUS_TEXT, ROLE_LABEL, clip, deadlineText, agentCard, helperName } from './text';
 
@@ -81,8 +81,6 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string): { close(): void 
   let closed = false;
   const keyNote = h('p.cb-note', { 'aria-live': 'polite' });
   note.after(keyNote);
-  const devices = deviceSection(w.addDevice && w.device ? { addDevice: w.addDevice, device: w.device } : undefined, cubbyId, () => store.floor ?? undefined);
-  keyNote.after(devices.el);
   let lines = '';
   let wasWatching = false;
   const paint = () => {
@@ -97,7 +95,6 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string): { close(): void 
       note.style.display = '';
       form.style.display = 'none';
       keyNote.textContent = '';
-      devices.paint(undefined, undefined, paint);
       text.disabled = send.disabled = true;
       return;
     }
@@ -114,7 +111,6 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string): { close(): void 
       text.disabled = send.disabled = true;
       form.style.display = 'none';
       keyNote.textContent = '';
-      devices.paint(undefined, undefined, paint);
       note.style.display = '';
       note.textContent = watchingNote(c.ownerName, it.leadName);
       note.classList.remove('asleep');
@@ -126,8 +122,7 @@ export function openLeadChat(w: CubbyWindows, cubbyId: string): { close(): void 
       text.disabled = send.disabled = asleep || !keyMatches || !sameAccount || signing || !it.computerId;
       form.style.display = note.style.display = keyMatches && sameAccount ? '' : 'none';
       keyNote.textContent = !sameAccount ? 'Account changed. Close and reopen this chat.' : keyError || (!deviceKey ? 'Preparing this device’s owner key…' :
-        !it.ownerDevices ? `Waiting for ${clip(it.computerName, 32)} to say which devices it trusts.` : '');
-      devices.paint(sameAccount && !keyError ? c : undefined, deviceKey, paint);
+        !it.ownerDevices ? `Waiting for ${clip(it.computerName, 32)} to say which devices it trusts.` : !keyMatches ? 'Legacy chat requires an already trusted browser. New lead conversations use the Mac link.' : '');
       text.placeholder = asleep ? '' : `Message ${lead}…`;
       note.textContent = asleep ? `💤 ${clip(it.computerName, 32)} is asleep. ${lead} can't hear you until it wakes.` : 'Chat only: tools, commands and approvals stay on your computer.';
       note.classList.toggle('asleep', asleep);

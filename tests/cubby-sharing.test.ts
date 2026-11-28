@@ -1,3 +1,4 @@
+import { legacyCubby } from './support/legacy-cubby.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
@@ -71,7 +72,7 @@ function fixture(t: any, enabled = true) {
   }
   const alice = client('alice'), bob = client('bob'), admin = client('admin');
   function setup(floorId = 'floor') {
-    const invite = ctx.cubbies.setup(floorId, 'alice', 0, 'Nova', { skin: 1, hair: 2, style: 3 });
+    const invite = legacyCubby(ctx.cubbies, floorId, 'alice', 0, 'Nova', { skin: 1, hair: 2, style: 3 });
     const ws = socket(); nodes.attach(ws as any, invite.token);
     ws.frame({ t: 'hello', host: 'private-host', providers: [] });
     ws.frame({ t: 'cubby.hello', floorId, computerId: 'private-computer-id', computerName: 'Alice laptop' });
@@ -111,7 +112,7 @@ test('knock and admission share a read-only interior, never owner setup details 
   assert.deepEqual(f.alice.view()[0].knocking, []);
   for (const [msg, error] of [
     [{ t: 'cubbies.chat', id, text: 'forged' }, /Only the owner can talk to this lead/],
-    [{ t: 'cubbies.setup', slot: 0, leadName: 'Stolen', look: {} }, /already set up/],
+    [{ t: 'cubbies.setup', slot: 0, leadName: 'Stolen', look: {} }, /setup removed/],
     [{ t: 'cubbies.sendTask', id, title: 'No', prompt: 'No' }, /Only the cubby owner/],
     [{ t: 'cubbies.admit', id, accountId: 'admin', allow: true }, /Only the cubby owner/],
   ] as const) { f.bob.send(msg); assert.match(last(f.bob, 'toast').text, error); }

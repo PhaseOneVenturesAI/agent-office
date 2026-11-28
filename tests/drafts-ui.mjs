@@ -228,13 +228,11 @@ try {
     return t;
   });
   assert.match(setupHint, /Studio table.*E.*Set up/);
-  await page.waitForSelector('.cubby-setup');
-  await page.locator('.cubby-setup button[type="submit"]').click();
+  // The protected Studio caller still uses setUp; its compatibility seam explains migration.
   await page.waitForTimeout(150);
-  const setup = sent.filter((m) => m.t === 'cubbies.setup');
-  assert.equal(setup.length, 1);
-  assert.equal(setup[0].slot, 0);
-  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('.cubby-setup').count(), 0);
+  assert.equal(sent.filter(m => m.t === 'cubbies.setup').length, 0);
+  assert.match(await page.locator('.toast').last().innerText(), /setup removed.*agent-office link/);
   push({ t: 'drafts', state: drafts(here()) });
 
   // ---- The elevator: your draft's row, and New project. ----

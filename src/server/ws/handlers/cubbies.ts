@@ -7,7 +7,18 @@ import type { CubbiesClientMsg } from '../../../shared/protocol/cubbies.js';
 import type { Ctx } from '../../office/context.js';
 import type { Client } from '../../office/client.js';
 import type { FeatureHooks, HandlerMap, ViewPieces } from './types.js';
-export const cubbiesView: ViewPieces['cubbies'] = (ctx, floor, c) => withHQLeads(ctx, c, ctx.cubbies?.state(floor?.id, c.out ? undefined : c.accountId, c.id) ?? { enabled: false, cubbies: [], setupAllowed: false });
+export const cubbiesView: ViewPieces['cubbies'] = (ctx, floor, c) => {
+  if (ctx.hq?.is(floor?.id)) return { enabled: false, cubbies: [], setupAllowed: false };
+  const state = ctx.cubbies?.state(floor?.id, c.out ? undefined : c.accountId, c.id) ?? { enabled: false, cubbies: [], setupAllowed: false };
+  // Old sharing grants never expose the linked owner's conversation on a project floor.
+  state.cubbies = state.cubbies.map(info => {
+    const owner = ctx.cubbies?.records.rows.get(info.id)?.owner;
+    if (info.mine || !ctx.hq?.owns(owner)) return info;
+    const { interior, watching, watchers, knocking, hqLead, ...publicInfo } = info;
+    return publicInfo;
+  });
+  return withHQLeads(ctx, c, state);
+};
 const last = new WeakMap<Client, string>();
 export function cubbiesChanged(ctx: Ctx) {
   draftsChanged(ctx);
@@ -22,29 +33,19 @@ export function cubbiesChanged(ctx: Ctx) {
 }
 export const cubbiesHandlers = {
   'cubbies.get'(ctx, c) { ctx.sendTo(c, { t: 'cubbies', state: cubbiesView(ctx, ctx.floorOf(c), c) }); },
-  'cubbies.setup'(ctx, c, msg) {
-    const floor = ctx.floorOf(c);
-    if (!c.accountId || !floor) return ctx.warn(c, 'Sign in to set up your cubby on a project floor');
-    try { ctx.sendTo(c, { t: 'cubbies.token', ...ctx.cubbies.setup(floor.id, c.accountId, msg.slot, msg.leadName, msg.look, msg.ownerColor) }); }
-    catch (e) { ctx.warn(c, (e as Error).message); }
-  },
+  'cubbies.setup'(ctx, c) { ctx.warn(c, 'Cubby setup removed: use agent-office link <url>'); },
   'cubbies.chat'(ctx, c, msg) {
     const floor = ctx.floorOf(c);
     if (!c.accountId || !floor) return ctx.warn(c, 'Only the cubby owner can talk to its lead');
     try { ctx.cubbies.chat(floor.id, c.accountId, msg.id, msg); }
     catch (e) { ctx.warn(c, (e as Error).message); }
   },
-  'cubbies.addDevice'(ctx, c, msg) {
-    try { ctx.cubbies.addDevice(signedInFloor(ctx, c).id, c.accountId!, msg.id, msg.publicKey, msg.label); }
-    catch (e) { ctx.warn(c, (e as Error).message); }
-  },
-  'cubbies.device'(ctx, c, msg) {
-    try { ctx.cubbies.device(signedInFloor(ctx, c).id, c.accountId!, msg.id, msg); }
-    catch (e) { ctx.warn(c, (e as Error).message); }
-  },
+  'cubbies.addDevice'(ctx, c) { ctx.warn(c, 'Device enrollment removed: use agent-office link <url>'); },
+  'cubbies.device'(ctx, c) { ctx.warn(c, 'Device enrollment removed: use agent-office link <url>'); },
   'cubbies.knock'(ctx, c, msg) {
     try {
       const floor = signedInFloor(ctx, c);
+      if (ctx.hq?.owns(ctx.cubbies.records.rows.get(msg.id)?.owner)) throw Error('Linked leads are watch-only on project floors');
       const { owner, by } = ctx.cubbies.knock(floor.id, c.accountId!, msg.id, c.id);
       for (const client of ctx.clients.values()) if (!client.out && client.accountId === owner) {
         ctx.sendTo(client, { t: 'cubbies.knocked', id: msg.id, by });

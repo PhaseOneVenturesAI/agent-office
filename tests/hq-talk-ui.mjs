@@ -15,7 +15,7 @@ const pairingId = 'a'.repeat(48);
 let linkState = { pending: [{ id: pairingId, computerName: 'Mac mini', expiresAt: Date.now() + 600000 }], links: [] };
 const actions = [];
 const projects = [
-  { name: 'Kindly', hasMainLead: true, departmentLeads: [{ department: 'Marketing', title: 'Marketing lead' }, { department: 'Design', title: 'Design lead' }] },
+  { name: 'Plimbo', hasMainLead: true, departmentLeads: [{ department: 'Marketing', title: 'Marketing lead' }, { department: 'Design', title: 'Design lead' }] },
   { name: 'Agent Office', hasMainLead: true, departmentLeads: [] },
   { name: 'Garden', hasMainLead: true, departmentLeads: [] },
   { name: 'Skedaddle', hasMainLead: true, departmentLeads: [] },
@@ -30,7 +30,7 @@ let held = [];
 const hq = mine => ({ floorId: 'hq', ownerName: 'Jonathan', ownerColor: '#5b3cc4', mine,
   ...(mine ? { mac: { computerName: 'Mac mini', connected: true, lastSeen: Date.now() } } : {}),
   projects: publicProjects(liveProjects(macSnapshot.projects.map(p => p.project), sources), mine),
-  leads: [{ id: 'cofounder', mac: true, project: 'HQ', projectIndex: -1, title: 'Cofounder', role: 'Chief of staff', computer: 'Mac mini', where: 'hq', needsYou: false, leadStatus: { status: 'unknown', updatedAt: 0 } }, ...projectLeads(macSnapshot.projects.map(p => p.project), sources, [{ id: 'normal', name: 'Kindly' }], mine)].map(l => ({ ...l, conversation: relay.view('owner', l.id, mine ? 'owner' : 'manager'), messages: held.filter(m => m.lead === l.id) })) });
+  leads: [{ id: 'cofounder', mac: true, project: 'HQ', projectIndex: -1, title: 'Cofounder', role: 'Chief of staff', computer: 'Mac mini', where: 'hq', needsYou: false, leadStatus: { status: 'unknown', updatedAt: 0 } }, ...projectLeads(macSnapshot.projects.map(p => p.project), sources, [{ id: 'normal', name: 'Plimbo' }], mine)].map(l => ({ ...l, conversation: relay.view('owner', l.id, mine ? 'owner' : 'manager'), messages: held.filter(m => m.lead === l.id) })) });
 const { HQTalk } = await tsImport('../src/server/hq/talk.ts', import.meta.url);
 const data = mkdtempSync(`${root}/.paradev/talk-ui-`);
 const linkFrames = [];
@@ -123,7 +123,7 @@ async function stand(x, z, tx, tz, pitch = 0) {
 }
 async function shot(name, phone) {
   for (const [width, height, suffix] of [[1280, 800, 'desktop'], [390, 844, 'phone']]) {
-    await page.setViewportSize({ width, height }); if (suffix === 'phone' && phone) await phone(); await page.waitForTimeout(250); const box = await page.locator('.lead-talk').boundingBox(); if (box) assert.ok(box.x >= 0 && box.x + box.width <= width, `Chat fits ${width}px`); await page.screenshot({ path: `${out}/${name}-${suffix}.png` });
+    await page.setViewportSize({ width, height }); if (suffix === 'phone' && phone) await phone(); await page.waitForTimeout(250); const box = await page.locator('.lead-talk').count() ? await page.locator('.lead-talk').boundingBox() : null; if (box) assert.ok(box.x >= 0 && box.x + box.width <= width, `Chat fits ${width}px`); await page.screenshot({ path: `${out}/${name}-${suffix}.png` });
   }
   await page.setViewportSize({ width: 1280, height: 800 });
 }
@@ -148,7 +148,7 @@ async function close() {
 }
 try {
   await setup('owner'); await enter(); publish();
-  const main = 'project:Kindly:ceo', department = hq(true).leads.find(l => l.project === 'Kindly' && l.departmentIndex === 0).id;
+  const main = 'project:Plimbo:ceo', department = hq(true).leads.find(l => l.project === 'Plimbo' && l.departmentIndex === 0).id;
   await page.waitForFunction(() => window.__office.scene.getObjectByName('hq-body-cofounder'));
   await stand(-11.5, -2, -11.5, -7.5, .02);
   await open(main); await chat('Can you check our next milestone?'); await shot('01-hq-chat'); await close();
@@ -157,16 +157,39 @@ try {
   await stand(2, -6, 2, -10.7, .02);
   await open('cofounder'); assert.match(await page.locator('.lead-talk').innerText(), /Chief of staff · status unknown/);
   await chat('Which project needs my attention?'); await shot('03-cofounder'); await close();
-  assert.deepEqual(linkFrames.map(f => f.target), [{ project: 'Kindly' }, { project: 'Kindly', department: 0 }, { cofounder: true }]);
-  await page.evaluate(() => { const s = window.__office.store; s.floor = 'normal'; s.project.name = 'Kindly'; s.emit('floor'); });
+  assert.deepEqual(linkFrames.map(f => f.target), [{ project: 'Plimbo' }, { project: 'Plimbo', department: 0 }, { cofounder: true }]);
+  await page.evaluate(() => { const s = window.__office.store; s.floor = 'normal'; s.project.name = 'Plimbo'; s.emit('floor'); });
   publish();
-  await page.waitForFunction(() => window.__office.scene.getObjectByName('project-body-project:Kindly:ceo'));
+  await page.waitForFunction(() => window.__office.scene.getObjectByName('project-body-project:Plimbo:ceo'));
   assert.equal(await page.evaluate(() => window.__office.scene.getObjectByName('linked-project-leads').children.length), 3);
   await stand(-5, 12, -5, 9, .02); await open(main);
   assert.match(await page.locator('.talk-log').innerText(), /Can you check our next milestone/);
   await chat('Hello from the project floor');
   await page.waitForFunction(() => document.querySelectorAll('.talk-log .assistant').length === 2);
   await shot('04-project-floor-lead'); await close();
+  // Coworkers see figures/status on Plimbo, with no interaction target, hint or chat.
+  await account('outsider');
+  const watch = hq(false).leads.filter(l => l.floorId === 'normal').map(({ conversation, messages, ...lead }) => lead);
+  push(page, { t: 'hq' });
+  push(page, { t: 'hq.leads', view: { ownerName: 'Jonathan', ownerColor: '#5b3cc4', mine: false, manager: false, leads: watch } });
+  await page.waitForTimeout(200);
+  const beforeWatch = sent.length;
+  const watched = await page.evaluate(async () => {
+    const o = window.__office, a = window.__audit, body = o.scene.getObjectByName('project-body-project:Plimbo:ceo');
+    const plate = body.getObjectByName('personal-nameplate');
+    const target = { kind: 'hqlead', lead: o.store.leadTalk.leads[0], x: -5, z: 9, radius: 1.2 };
+    const hint = a.ctx.interactions.hint(target).parts.map(p => typeof p === 'string' ? p : p.textContent).join(' ');
+    a.ctx.interactions.use(target, 'E');
+    (await import('/shared/hq/talk.ts')).openTalk(o.net, target.lead.id);
+    return { lines: plate.userData.lines, target: !!body.userData.interact, hint };
+  });
+  assert.ok(watched.lines.some(t => t.includes("Jonathan's · Plimbo")));
+  assert.ok(watched.lines.some(t => t.includes('working')));
+  assert.equal(watched.target, false); assert.doesNotMatch(watched.hint, /Talk|Listen|Knock/);
+  await stand(-5, 12, -5, 9, .02); await page.keyboard.press('e');
+  assert.equal(await page.locator('.lead-talk, .cubby-chat').count(), 0);
+  assert.equal(sent.slice(beforeWatch).some(m => ['hq.talk', 'hq.message', 'cubbies.knock'].includes(m.t)), false);
+  await shot('07-coworker-watch-only');
   await account('manager'); await enter(false); publish(); await open(main);
   assert.equal(await page.locator('.talk-log .talk-line').count(), 0);
   assert.equal(await page.getByRole('button', { name: 'Send', exact: true }).count(), 0);
@@ -193,7 +216,7 @@ try {
   roleNow = 'manager';
   await page.evaluate(() => { window.__lite.store.me.account.name = 'Ivan'; window.__lite.store.emit('me'); });
   publish();
-  await page.getByRole('button', { name: 'Kindly · Main lead · working', exact: true }).click();
+  await page.getByRole('button', { name: 'Plimbo · Main lead · working', exact: true }).click();
   assert.equal(await page.locator('.talk-log .talk-line').count(), 0);
   const phoneBefore = linkFrames.length;
   await page.getByRole('textbox', { name: 'Message', exact: true }).fill('Held from phone');

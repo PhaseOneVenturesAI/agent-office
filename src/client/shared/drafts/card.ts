@@ -19,7 +19,7 @@ import { draftImage, imageCanvas, onDraftImage } from './images';
 
 export interface CardWindowDeps {
   send(msg: ClientMsg): void;
-  /** Opens the lead's chat (where 📱 Add this device is), for a device the computer doesn't trust yet. */
+  /** Opens the existing lead thread. */
   openChat?(cubbyId: string): void;
   /** Puts the cursor in the box straight away (the 3D office; on a phone it'd pop the keyboard up). */
   focus?: boolean;
@@ -162,7 +162,7 @@ export function openDraftCard(deps: CardWindowDeps, board: CardBoard, cardId: st
     else if (!key) why = 'Preparing this device’s owner key…';
     else if (!it?.ownerDevices || !it.computerId) why = `Waiting for ${computer} to say which devices it trusts.`;
     else if (!trusted) {
-      why = `This device can't leave feedback yet. Add it in ${lead}'s chat with 📱 Add this device, and approve it from a device you already use.`;
+      why = 'This device cannot leave legacy feedback. Use an already trusted browser until feedback moves to the Mac link.';
       needsDevice = true;
     } else if (asleep) why = `💤 ${computer} is asleep. Feedback can be sent once it wakes.`;
     else if (pending?.failed && pending.board === card.board && pending.cardId === card.id) why = `${computer} didn't confirm that note. Check it's awake and try again.`;

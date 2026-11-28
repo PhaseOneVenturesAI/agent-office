@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, rmSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { HQTalk, talkTarget, PENDING_MS } from '../src/server/hq/talk.js';
-import { HQMessages, messages } from '../src/server/hq/messages.js';
+import { HQMessages, messages, sendManagerMessage } from '../src/server/hq/messages.js';
 import { HQMac } from '../src/server/hq/mac.js';
 import { HQ } from '../src/server/hq/index.js';
 import { Nodes } from '../src/server/nodes.js';
 import { Building } from '../src/server/building.js';
 import { Cubbies } from '../src/server/cubbies/index.js';
 import { socket } from './support/draft-board.js';
-import { sendTalk, passTalk } from '../src/server/hq/talk-handlers.js';
+import { sendTalk, passTalk, talkHandlers } from '../src/server/hq/talk-handlers.js';
 import { talkView } from '../src/server/hq/talk-views.js';
 import type { HQLead } from '../src/shared/protocol/hq.js';
 import type { Ctx } from '../src/server/office/context.js';
@@ -112,4 +112,28 @@ test('simultaneous leads correlate by UUID; no reply timeout frees only the wait
   assert.equal(relay.view('owner', 'main', 'owner')?.at(-1)?.state, 'failed');
   assert.equal(relay.accept('node', 'owner', { t: 'lead.reply', id: a.id, text: 'Late answer' }), false);
   assert.equal(relay.submit('owner', lead, 'Try again', 'Jonathan').state, 'queued');
+});
+
+test('project coworkers and visiting managers are watch-only; HQ managers retain held messages', t => {
+  const f = fixture(t), owner = f.client('owner'), manager = f.client('manager'), coworker = f.client('outsider');
+  f.admit();
+  const id = 'project:Project:ceo', turn = sendTalk(f.ctx, owner, id, 'PRIVATE_QUESTION');
+  f.ws.frame({ t: 'lead.reply', id: turn.id, text: 'PRIVATE_ANSWER' });
+  const item = sendManagerMessage(f.ctx, manager, id, 'PRIVATE_HELD');
+  assert.equal(talkView(f.ctx, manager)?.manager, true);
+  assert.equal(talkView(f.ctx, manager)?.leads.find(l => l.id === id)?.messages?.[0].id, item.id);
+  const warnings: string[] = []; f.ctx.warn = (_c, text) => { if (text) warnings.push(text); };
+  for (const viewer of [coworker, manager]) {
+    viewer.floor = f.project;
+    const view = talkView(f.ctx, viewer)!;
+    assert.equal(view.mine, false); assert.equal(view.manager, false);
+    assert.equal(view.leads.length, 2);
+    assert.ok(view.leads.every(l => l.floorId === 'project' && l.title && l.leadStatus));
+    assert.doesNotMatch(JSON.stringify(view), /PRIVATE_|conversation|messages|private-session|private-dept/);
+    const before = f.ws.sent.length;
+    talkHandlers['hq.talk'](f.ctx, viewer, { t: 'hq.talk', lead: id, text: 'forged' });
+    assert.match(warnings.at(-1)!, /Only Jonathan/);
+    assert.throws(() => sendManagerMessage(f.ctx, viewer, id, 'forged held'), /HQ only/);
+    assert.equal(f.ws.sent.length, before);
+  }
 });

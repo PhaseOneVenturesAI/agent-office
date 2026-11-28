@@ -12,6 +12,7 @@ export function leadStatus(lead: HQLead) {
   return { busy: 'working', idle: 'idle', off: 'offline', unknown: 'status unknown' }[lead.leadStatus?.status ?? 'unknown'];
 }
 export function openTalk(net: Net, id: string, extra?: { el: HTMLElement; close(): void }) {
+  if (!store.leadTalk?.mine && !store.leadTalk?.manager) { extra?.close(); return; }
   const account = store.me.account?.name;
   const log = h('div.talk-log', { 'aria-live': 'polite' }), held = h('section.talk-held'), note = h('p.talk-note');
   const text = h('textarea', { rows: 3, maxlength: 4000, 'aria-label': 'Message', placeholder: 'Write a message…' });

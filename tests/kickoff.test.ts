@@ -1,3 +1,4 @@
+import { legacyCubby } from './support/legacy-cubby.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -54,7 +55,7 @@ function fixture(t: any, options: { disabled?: boolean; run?: KickoffRunner } = 
   return { dir, remote, env, building, drafts, ctx, nodes, def, floor, alice, bob, kickoff, git };
 }
 function publish(f: ReturnType<typeof fixture>) {
-  const setup = f.ctx.cubbies.setup(f.def.id, 'alice', 0, 'Nova', {} as any), ws = socket();
+  const setup = legacyCubby(f.ctx.cubbies, f.def.id, 'alice', 0, 'Nova', {} as any), ws = socket();
   f.nodes.attach(ws as any, setup.token);
   ws.frame({ t: 'hello', host: 'private', providers: [] });
   ws.frame({ t: 'cubby.hello', floorId: f.def.id, computerId: 'computer-alice', computerName: 'Mac mini' });

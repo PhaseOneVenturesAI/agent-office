@@ -32,5 +32,8 @@ test('/lite lists every lead on HQ but only the floor\'s own project leads elsew
   const floors: any[] = [{ id: 'hq', name: 'HQ', hq: { ownerName: 'J', mine: true } }, { id: 'plimbo', name: 'Plimbo' }, { id: 'studio-x', name: 'Phase One' }];
   assert.deepEqual(floorLeads(leads, 'hq', floors).map(l => l.id), ['cofounder', 'p', 'a', 's']);
   assert.deepEqual(floorLeads(leads, 'plimbo', floors).map(l => l.id), ['p']);
-  assert.deepEqual(floorLeads(leads, 'studio-x', floors).map(l => l.id), ['s'], 'a draft floor matches its Studio lead by name');
+  const drafts: any[] = [...floors.slice(0, 2), { id: 'studio-x', name: 'Phase One', draft: true }, { id: 'draft-phase-one', name: 'Phase One', draft: true }];
+  const studio = [...leads.slice(0, 3), { id: 's', project: 'Phase One', floorId: 'draft-phase-one' }];
+  assert.deepEqual(floorLeads(studio, 'studio-x', drafts).map(l => l.id), ['s'], 'a draft floor matches its Studio lead by name even when an older same-name floor claimed its floorId');
+  assert.deepEqual(floorLeads(studio, 'plimbo', drafts).map(l => l.id), ['p']);
 });
