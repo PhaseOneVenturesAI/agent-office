@@ -11,7 +11,7 @@ export function boundMacSnapshot(frame: MacSnapshot): MacSnapshot {
   if (fits()) return frame;
   for (const row of frame.projects) {
     row.agents = row.agents.map(a => ({ id: a.id, tool: a.tool.slice(0, 20), role: a.role, status: a.status,
-      task: a.task.slice(0, 40), branch: a.branch.slice(0, 40), lead: a.lead, startedAt: a.startedAt,
+      kind: a.kind, lastTool: a.lastTool, updatedAt: a.updatedAt, task: a.task.slice(0, 40), branch: a.branch.slice(0, 40), lead: a.lead, startedAt: a.startedAt,
       ...(a.harnessRole ? { harnessRole: a.harnessRole.slice(0, 20) } : {}) }));
     if (row.project.needs) row.project.needs.items = row.project.needs.items.map(s => s.slice(0, 80));
   }

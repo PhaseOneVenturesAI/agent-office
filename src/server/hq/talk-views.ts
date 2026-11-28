@@ -1,3 +1,4 @@
+import { projectWorkView } from './live-work.js';
 import type { Ctx } from '../office/context.js';
 import type { Client } from '../office/client.js';
 import type { HQTalkView } from '../../shared/protocol/hq.js';
@@ -13,7 +14,7 @@ export function talkView(ctx: Ctx, c: Client): HQTalkView | undefined {
   if (!access) leads = leads.filter(l => l.floorId === ctx.floorOf(c)?.id);
   if (!leads.length) return;
   if (access) leads = messageLeads(ctx, c, owner, leads, true);
-  return { ownerName: ctx.hq.ownerName, ownerColor: ctx.cubbies.records.color(owner), mine, manager: !!access && !mine, leads };
+  return { ownerName: ctx.hq.ownerName, ownerColor: ctx.cubbies.records.color(owner), mine, manager: !!access && !mine, leads: projectWorkView(leads, mine || !!access && ctx.hq.is(ctx.floorOf(c)?.id)) };
 }
 const last = new WeakMap<Client, string>();
 export function talkChanged(ctx: Ctx) {

@@ -24,7 +24,7 @@ export function bodySpot(lead: HQLead) {
   return lead.where === 'pitch' ? { x: pitch[0], z: pitch[1] } : deskSpot(lead);
 }
 export function statusText(lead: HQLead) {
-  const role = [lead.role, lead.leadStatus ? ({ busy: 'working', idle: 'idle', off: 'offline', unknown: 'status unknown' }[lead.leadStatus.status]) : '', lead.working ? `${lead.working} ${lead.mac ? (lead.working === 1 ? 'helper' : 'helpers') : 'working'}` : ''].filter(Boolean).join(' · ');
+  const role = [lead.role, lead.doing ?? (lead.leadStatus ? ({ busy: 'working', idle: 'idle', off: 'offline', unknown: 'status unknown' }[lead.leadStatus.status]) : ''), lead.working ? `${lead.working} ${lead.mac ? (lead.working === 1 ? 'helper' : 'helpers') : 'working'}` : ''].filter(Boolean).join(' · ');
   return leadMessageBadge(lead) ?? (lead.needsYou ? `${role} · ✋ ${needsPlate(lead.needs)}` : role);
 }
 /** A real, readable card in the spot the lead left. E opens its conversation and Go there. */
@@ -104,9 +104,7 @@ export class HQLeadWorld {
       if (lead.needsYou) { model.rig.armL.rotation.z = -2.5; model.rig.armL.rotation.x = -.25; }
       model.root.userData.handRaised = lead.needsYou;
     }
-    for (const model of this.helpers.models) {
-      model.update(dt, t);
-    }
-    hqDeclutter(this.people.map(p => p.model.root), this.helpers.models.map(m => m.root), this.faces.map(f => f.mesh), camera);
+    this.helpers.update(dt, t);
+    hqDeclutter(this.people.map(p => p.model.root), this.helpers.roots, this.faces.map(f => f.mesh), camera);
   }
 }

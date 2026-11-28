@@ -1,3 +1,4 @@
+import { liveWorkProjects } from './live-work.js';
 import { talkChanged } from './talk-views.js';
 import { hqProjects, hqSources } from './sources.js';
 import { selectedPitch } from './pitch.js';
@@ -18,7 +19,7 @@ export const hqView: ViewPieces['hq'] = (ctx, floor, c) => {
   return { floorId: floor!.id, ownerName: ctx.hq.ownerName, mine: ctx.hq.owns(c.accountId),
     ...(owner && ctx.hq.owns(c.accountId) ? { mac: ctx.hq.mac?.status(owner) } : {}),
     ...(owner ? { pitches: ctx.hq.mac?.pitchViews(owner) } : {}),
-    ownerColor: ctx.cubbies.records.color(owner ?? ctx.hq.ownerName), projects: owner ? publicProjects(liveProjects(hqProjects(ctx, owner), hqSources(ctx, owner)), ctx.hq.owns(c.accountId)) : [], leads: owner ? messageLeads(ctx, c, owner, leadsFor(ctx, owner, ctx.hq.owns(c.accountId)), true) : [] };
+    ownerColor: ctx.cubbies.records.color(owner ?? ctx.hq.ownerName), projects: owner ? publicProjects(liveWorkProjects(liveProjects(hqProjects(ctx, owner), hqSources(ctx, owner)), leadsFor(ctx, owner, ctx.hq.owns(c.accountId))), ctx.hq.owns(c.accountId)) : [], leads: owner ? messageLeads(ctx, c, owner, leadsFor(ctx, owner, ctx.hq.owns(c.accountId)), true) : [] };
 };
 export function hqPitch(ctx: Ctx, c: Client) {
   const floor = ctx.floorOf(c);

@@ -41,6 +41,7 @@ export class MacConnector {
     this.ready = true; void this.snapshot();
     this.timer = setInterval(() => void this.snapshot(), 15_000);
   }
+  sendActivity(frame: import('../../../shared/protocol/live-work.js').HQActivity) { return this.ready && !this.closed ? this.send?.(frame) : false; }
   sendLead(frame: LeadStateFrame | LeadReply) { return this.ready && !this.closed ? this.send?.(frame) : false; }
   private async snapshot() {
     if (this.polling) return;

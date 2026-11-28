@@ -1,4 +1,6 @@
+import { LiveWorkWorld } from './live-work';
 import * as THREE from 'three';
+import { HQ_FURNISHED_PROJECTS } from '../../../shared/protocol/hq';
 import type { HQView } from '../../../shared/protocol/hq';
 import { PersonalHelper } from '../cubbies/personal-agents/helper';
 import { textPlane } from '../../world/toon';
@@ -6,10 +8,15 @@ import { deskSpot } from './lead-world';
 
 export class HQHelpers {
   readonly models: PersonalHelper[] = [];
-  clear() { this.models.forEach(m => m.dispose()); this.models.length = 0; }
+  private live = new LiveWorkWorld();
+  get roots() { return [...this.models.map(m => m.root), ...this.live.roots]; }
+  update(dt: number, t: number) { this.models.forEach(m => m.update(dt, t)); this.live.update(dt, t); }
+  clear() { this.live.clear(); this.models.forEach(m => m.dispose()); this.models.length = 0; }
   set(view: HQView, group: THREE.Group) {
     const seen = new Set<string>();
     for (const lead of view.leads ?? []) {
+      if (lead.projectIndex >= HQ_FURNISHED_PROJECTS) continue;
+      if (lead.helpers) { this.live.add(lead, view.ownerColor, group, deskSpot(lead)); continue; }
       const workers = (view.projects[lead.projectIndex]?.workers ?? []).filter(w => w.departmentIndex === lead.departmentIndex && !seen.has(w.id));
       workers.forEach(w => seen.add(w.id));
       const spot = deskSpot(lead), department = lead.departmentIndex !== undefined;

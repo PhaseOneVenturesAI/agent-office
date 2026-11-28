@@ -1,3 +1,4 @@
+import { withLiveWork } from './live-work.js';
 import { hqProjects, hqSources } from './sources.js';
 import { liveWorkers, sameProject } from './live.js';
 import { HQ_FURNISHED_PROJECTS, visibleNeeds } from '../../shared/protocol/hq.js';
@@ -58,7 +59,7 @@ export function leadsFor(ctx: Ctx, owner: string, mine: boolean) {
   const sources = remembered ?? hqSources(ctx, owner);
   const leads = projectLeads(remembered?.flatMap(s => s.projects) ?? hqProjects(ctx, owner), sources, [...ctx.floors.values()].map(f => ({ id: f.id, repo: f.def.repo, name: f.def.name })), mine);
   if (ctx.hq.mac?.owner()) leads.unshift({ id: 'cofounder', mac: true, project: 'HQ', projectIndex: -1, role: 'Chief of staff', title: 'Cofounder', computer: 'your Mac', where: 'hq', needsYou: false, leadStatus: ctx.hq.mac.cofounder(owner) ?? { status: 'unknown', updatedAt: 0 } });
-  return leads.filter(l => l.mac || l.projectIndex < HQ_FURNISHED_PROJECTS).map(l => ({ ...l, ...(mine && l.mac ? { conversation: ctx.hq.mac?.talk.view(owner, l.id, owner) } : {}) }));
+  return withLiveWork(leads, sources, l => ctx.hq.mac?.activity(owner, l)).filter(l => l.mac || l.projectIndex < HQ_FURNISHED_PROJECTS).map(l => ({ ...l, ...(mine && l.mac ? { conversation: ctx.hq.mac?.talk.view(owner, l.id, owner) } : {}) }));
 }
 /** Add only location metadata on a project floor; never grant cubby-interior admission. */
 export function withHQLeads(ctx: Ctx, c: Client, state: CubbiesState): CubbiesState {

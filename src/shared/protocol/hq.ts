@@ -1,3 +1,4 @@
+import { cleanWorkerWork } from './live-work.js';
 import type { CubbyInfo, CubbyOwnerMessage } from './cubbies.js';
 import type { OwnerColor } from '../personal-agents/appearance.js';
 export interface LeadStatus { status: 'busy' | 'idle' | 'off' | 'unknown'; updatedAt: number }
@@ -32,6 +33,8 @@ export interface HQView {
 export const HQ_FURNISHED_PROJECTS = 6;
 export type LeadWhere = 'hq' | 'project' | 'pitch';
 export interface HQLead {
+  doing?: string;
+  helpers?: import('./live-work.js').WorkHelper[];
   mac?: boolean;
   conversation?: HQTalkLine[];
   leadStatus?: LeadStatus;
@@ -80,7 +83,7 @@ export function managerMessageText(item: Pick<HQMessage, 'manager' | 'text'>) {
 }
 
 export interface HQNeeds { open: number | null; items: string[]; stale: boolean; at: string }
-export interface HQWorker { id: string; title: string; provider: string; role: string; branch: string; startedAt: number; departmentIndex?: number }
+export interface HQWorker { kind?: 'worker' | 'factory' | 'subagent'; doing?: string; status?: 'working' | 'idle'; id: string; title: string; provider: string; role: string; branch: string; startedAt: number; departmentIndex?: number }
 /** Reject invalid identity strings rather than turning them into another lead's identity. */
 export const leadId = (v: unknown): string | undefined => typeof v === 'string' && /^[A-Za-z0-9_.:-]{1,80}$/.test(v) ? v : undefined;
 export function cleanNeeds(raw: unknown): HQNeeds | undefined {
@@ -94,7 +97,7 @@ function cleanLiveProject(p: Record<string, any>) {
   const needs = cleanNeeds(p.needs), lead = leadId(p.lead);
   const workers = Array.isArray(p.workers) ? p.workers.slice(0, 64).flatMap((w: any) => {
     if (!w || typeof w.id !== 'string' || !/^[\w:.-]{1,128}$/.test(w.id)) return [];
-    return [{ id: w.id, title: label(w.title, 160), provider: label(w.provider, 40), role: label(w.role, 60), branch: label(w.branch, 120),
+    return [{ ...cleanWorkerWork(w), id: w.id, title: label(w.title, 160), provider: label(w.provider, 40), role: label(w.role, 60), branch: label(w.branch, 120),
       startedAt: typeof w.startedAt === 'number' && Number.isFinite(w.startedAt) ? w.startedAt : 0,
       ...(Number.isInteger(w.departmentIndex) && w.departmentIndex >= 0 && w.departmentIndex < 8 ? { departmentIndex: w.departmentIndex } : {}) }];
   }) : undefined;

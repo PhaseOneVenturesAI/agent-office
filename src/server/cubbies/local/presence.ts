@@ -1,3 +1,4 @@
+import { livePresence, presenceWork, presenceTitle, processStart } from './presence-live.js';
 import { readdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -28,7 +29,7 @@ export function runsDir(home = os.homedir()): string {
 }
 
 /** The live records whose folder is one of the project's worktrees (at most 64). */
-export function presence(roots: readonly string[], dir = runsDir(), isAlive: (pid: number) => boolean = alive): PresenceAgent[] {
+export function presence(roots: readonly string[], dir = runsDir(), isAlive: (pid: number) => boolean = alive, start = processStart): PresenceAgent[] {
   let files: string[];
   try { files = readdirSync(dir).filter((f) => /^\d+-[0-9a-f]{1,32}\.json$/.test(f)).sort(); }
   catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []; throw new Error('Harness presence unavailable'); }
@@ -37,15 +38,15 @@ export function presence(roots: readonly string[], dir = runsDir(), isAlive: (pi
   for (const file of files) {
     let r: any;
     try { r = jsonFile(path.join(dir, file), 8192); } catch { continue; }
-    if (r?.schema !== 1 || !Number.isSafeInteger(r.pid) || r.pid <= 1 || !isAlive(r.pid)) continue;
+    if (r?.schema !== 1) continue;
     const folder = canonical(r.folder);
-    if (!folder || !roots.includes(folder)) continue;
+    if (!folder || !roots.includes(folder) || !livePresence(r, isAlive, start)) continue;
     const role = cubbyRole(r.role, r.readOnly, r.kind);
     const tool = PROVIDERS[r.provider] ?? 'agent';
     out.push({
       pid: r.pid,
       agent: {
-        id: `harness:${r.pid}`,
+        ...presenceWork(r, file),
         tool,
         role,
         harnessRole: clean(r.role, 60),
@@ -53,9 +54,8 @@ export function presence(roots: readonly string[], dir = runsDir(), isAlive: (pi
         ...(typeof r.startedAt === 'string' && Number.isFinite(Date.parse(r.startedAt)) ? { startedAt: Date.parse(r.startedAt) } : {}),
         ...(typeof r.department === 'string' ? { department: clean(r.department, 60) } : {}),
         ...(typeof r.leadTitle === 'string' ? { leadTitle: clean(r.leadTitle, 60) } : {}),
-        task: clean(r.title, 80) || (role === 'reviewer' ? 'Review' : 'Harness task'),
+        task: presenceTitle(r.title) || (role === 'reviewer' ? 'Review' : 'Harness task'),
         branch: clean(r.branch),
-        status: 'working',
         ...(r.role === 'designer' ? { designer: true } : {}),
         ...(role === 'reviewer' && r.role === 'researcher' ? { progress: 'research' } : {}),
       },
