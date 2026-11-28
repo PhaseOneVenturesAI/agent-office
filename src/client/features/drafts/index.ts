@@ -1,3 +1,4 @@
+import { studioTalk } from '../../shared/studio/actions';
 import { defaultOwnerColor, personalRole } from '../../../shared/personal-agents/appearance';
 /**
  * Draft floors (cubbies step 2): a project before its kickoff, seen only by its owner. While you're on
@@ -223,7 +224,7 @@ export function installDrafts(ctx: Ctx, deps: DraftsDeps) {
         r.rotation.y += diff * (1 - Math.exp(-dt * 4));
       }
     }
-    scene.say(leadAt === 'greet' ? greeting(draft) : '');
+    scene.say(leadAt === 'greet' ? draft.studio ? 'Hi Jonathan. What are we building?' : greeting(draft) : '');
     scene.lead.update(dt, t, moving, false);
   }
 
@@ -287,11 +288,12 @@ export function installDrafts(ctx: Ctx, deps: DraftsDeps) {
     if (store.floor !== m.floorId) deps.ride(m.floorId);
   });
 
-  const act = () => studioAction(here() ?? {}, lead());
+  const act = () => here()?.studio ? { talk: true, label: 'Talk to Studio lead' } : studioAction(here() ?? {}, lead());
   const use = () => {
     const draft = here();
     if (!draft) return;
-    if (draft.cubbyId) deps.cubbies().talk(draft.cubbyId);
+    if (draft.studio) studioTalk(ctx.net);
+    else if (draft.cubbyId) deps.cubbies().talk(draft.cubbyId);
     else deps.cubbies().setUp(0);
   };
 
@@ -301,7 +303,7 @@ export function installDrafts(ctx: Ctx, deps: DraftsDeps) {
       const a = act();
       // Kick off beside E, or why there's none (nothing while it's kicking off).
       const offer = kick.walking() ? null : kickoffOffer({ here: here(), canKickoff: store.drafts.canKickoff });
-      const ko = !offer ? [] : offer.can ? [key(KICKOFF_KEY, offer.label)] : [aside(offer.why)];
+      const ko = !offer ? [] : offer.can ? [key(KICKOFF_KEY, here()?.studio ? 'Open floor' : offer.label)] : [aside(offer.why)];
       return { k: `studio-${a.label}-${offer ? (offer.can ? 'k' : 'no') : ''}`, parts: [hintTitle('🛋️ Studio table'), aside(here()?.name ?? up?.name ?? ''), key('E', a.label), ...ko] };
     },
     use: (_it, k) => {
@@ -319,7 +321,7 @@ export function installDrafts(ctx: Ctx, deps: DraftsDeps) {
         : { k: `draftlead-setup-${name}`, parts: [hintTitle(`💬 ${name}`), aside('set up at the studio table to talk')] };
     },
     use: (_it, k) => {
-      if (k === 'E' && here()?.cubbyId) use();
+      if (k === 'E' && (here()?.cubbyId || here()?.studio)) use();
     },
   });
 

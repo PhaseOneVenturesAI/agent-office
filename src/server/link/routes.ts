@@ -36,7 +36,7 @@ export const linkRoutes: Route[] = [{
   async handle(ctx, { req, res, session }) {
     const owner = session.account?.id, mac = ctx.hq?.mac;
     if (!owner || !ctx.hq?.owns(owner) || !mac) return send(res, 403, { error: 'Owner only' });
-    if (req.method === 'GET') return send(res, 200, { pending: mac.pairings.pending(owner), links: mac.links(owner) });
+    if (req.method === 'GET') return send(res, 200, { pending: mac.pairings.pending(owner), links: mac.links(owner), projects: mac.projects(owner)?.map(p => ({ name: p.name, status: p.requestStatus })) ?? [] });
     if (req.method !== 'POST' || !sameOrigin(req, ctx.cfg) || !req.headers['content-type']?.startsWith('application/json')) return send(res, 403, { error: 'Same-origin JSON required' });
     try {
       const p = JSON.parse(await readBody(req, 1024));

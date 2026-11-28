@@ -1,0 +1,31 @@
+import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { HQStudio } from '../../src/server/hq/studio.js';
+import { HQMac } from '../../src/server/hq/mac.js';
+import { HQ } from '../../src/server/hq/index.js';
+import { Building } from '../../src/server/building.js';
+import { Nodes } from '../../src/server/nodes.js';
+import { Cubbies } from '../../src/server/cubbies/index.js';
+import { floorHelpers } from '../../src/server/office/floors.js';
+import { socket } from './draft-board.js';
+import { EMPTY_BOARDS } from '../../src/shared/protocol/drafts.js';
+import type { Ctx } from '../../src/server/office/context.js';
+export function studioFixture(t: any) {
+  mkdirSync('.paradev',{recursive:true});const dir=mkdtempSync(path.resolve('.paradev/studio-server-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
+  const building=new Building(dir,path.join(dir,'projects'));
+  const account=(id:string)=>({name:id==='owner'?'Jonathan':id==='manager'?'Ivan':'Eve', email:id+'@example.test'});
+  const hq=new HQ(dir,'owner@example.test','manager@example.test',account,building), nodes=new Nodes(dir,()=>{});t.after(()=>nodes.close());
+  const cubbies=new Cubbies(dir,true,nodes,id=>account(id).name,()=>true,()=>{});
+  const sent:any[]=[], ctx:any={cfg:{dataDir:dir},building,hq,nodes,cubbies,cloudflare:{},accounts:{get:account},clients:new Map(),floors:new Map(),sendTo:(c:any,m:any)=>sent.push({to:c.accountId,...m}),broadcast:(m:any)=>sent.push(m),toFloor:(_f:any,m:any)=>sent.push(m),floorsChanged(){},goToFloor(c:any,f:any){c.peer.floor=f.id;}, drafts:{enabled:true,owns:()=>false,isNew:()=>false,records:{rows:new Map()}}};
+  ctx.openFloor=(def:any)=>{const f={id:def.id,def,info:()=>({...def,dir:'metadata',workers:0,people:0,busy:0,waiting:0,wing:0}),shutdown:async()=>{}};ctx.floors.set(def.id,f);return f;};
+  ctx.openFloor(building.list()[0]);Object.assign(ctx,floorHelpers(ctx));t.after(()=>ctx.cancelFloorsChanged());
+  hq.studio=new HQStudio(ctx);hq.mac=new HQMac(dir,hq,nodes,()=>{});
+  const ws=socket();nodes.attach(ws as any,hq.mac.setup('owner','hq').token);ws.frame({t:'hello',host:'test',providers:[]});
+  const admit=()=>ws.frame({t:'hq.hello',computerId:'mac',computerName:'Fixture Mac'});
+  const client=(id:string)=>{const c={id,accountId:id,peer:{name:account(id).name,floor:'hq'}};ctx.clients.set(id,c);return c as any;};
+  const owner=client('owner'),manager=client('manager'),coworker=client('coworker');
+  const boards={...EMPTY_BOARDS,ideas:[{id:'idea',title:'One inbox',feedback:[]}],screens:[{id:'home-v2',title:'Home',version:2,status:'review',feedback:[]}]};
+  const snapshot=(state='draft')=>ws.frame({t:'hq.snapshot',computerId:'mac',observedAt:Date.now(),projects:[{project:{name:'Studio Test',localState:state,hasMainLead:true,lead:randomUUID(),departmentLeads:[]},agents:[],draft:boards}]});
+  return {dir,ctx:ctx as Ctx,studio:hq.studio,ws,admit,snapshot,owner,manager,coworker,sent,building};
+}

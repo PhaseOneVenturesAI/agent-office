@@ -1,3 +1,4 @@
+import { installStudio } from './features/hq/studio';
 import { installHQ } from './features/hq';
 import { installPitch } from './features/pitch';
 import './style.css';
@@ -178,6 +179,8 @@ installGong(ctx, { burstOver: parts.views.burstOver, workerViews: parts.views.wo
 installPitch(ctx, { setMeetingNotice: parts.boards.setMeetingNotice, lights: () => [parts.stage.hemi, parts.stage.ambient, parts.stage.sun] });
 installDrafts(ctx, { ride: (id) => parts.travel.ride(id), lights: () => [parts.stage.hemi, parts.stage.ambient, parts.stage.sun], idleAgents: () => parts.worlds.idleAgents(), cubbies: () => parts.cubbies, aimed: () => parts.pointer.target() });
 installHQ(ctx, { idleAgents: () => parts.worlds.idleAgents(), cubbies: () => parts.cubbies, ride: id => parts.travel.ride(id) });
+
+installStudio(ctx, id => parts.travel.ride(id));
 
 parts.hintbar = installHintBar(ctx, core, parts);
 parts.emotes = installEmotes(ctx);

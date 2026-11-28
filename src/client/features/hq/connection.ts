@@ -3,6 +3,7 @@ import { store } from '../../state';
 import { h, openModal, toast, type Modal } from '../../ui/dom';
 import './connection.css';
 interface LinkState {
+  projects?: { name: string; status?: string }[];
   pending: { id: string; computerName: string; expiresAt: number }[];
   links: { id: string; computerName: string; connected: boolean; lastSeen: number }[];
 }
@@ -38,6 +39,7 @@ function openLinks(initial: LinkState, approval?: string) {
         h('div.hq-link-actions', {}, h('button.btn', { onclick: () => void act(p.id, 'approve') }, 'Approve'), h('button.btn', { onclick: () => void act(p.id, 'deny') }, 'Deny'))));
     }
     if (approval && !data.pending.some(p => p.id === approval)) body.append(h('p', {}, 'This pairing has expired or was already decided.'));
+    for (const project of data.projects ?? []) if (project.status) body.append(h('p', {}, `${project.name} · ${project.status}`));
     for (const link of data.links) body.append(h('section.hq-link-record', {}, h('h3', {}, link.computerName),
       h('p', {}, link.connected ? 'Connected' : `Offline since ${new Date(link.lastSeen).toLocaleString()}`),
       // The office can't see why a Mac is away; an expired Cloudflare sign-in is the usual reason, and the Mac can't report it past Access.

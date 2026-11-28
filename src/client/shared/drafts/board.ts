@@ -9,6 +9,7 @@ export type CardBoard = 'ideas' | 'screens';
 
 /** One card as the board and its window show it: an idea or a screen, the same shape. */
 export interface BoardCard {
+  version?: number;
   board: CardBoard;
   id: string;
   title: string;
@@ -33,7 +34,7 @@ export const SCREEN_CHIP: Record<DraftScreen['status'], { text: string; bg: stri
 };
 
 const fromIdea = (i: DraftIdea): BoardCard => ({ board: 'ideas', id: i.id, title: i.title, ...(i.note ? { note: i.note } : {}), ...(i.image ? { image: i.image } : {}), feedback: i.feedback });
-const fromScreen = (s: DraftScreen): BoardCard => ({ board: 'screens', id: s.id, title: s.title, status: s.status, ...(s.note ? { note: s.note } : {}), ...(s.image ? { image: s.image } : {}), feedback: s.feedback });
+const fromScreen = (s: DraftScreen): BoardCard => ({ board: 'screens', version: s.version, id: s.id, title: s.title, status: s.status, ...(s.note ? { note: s.note } : {}), ...(s.image ? { image: s.image } : {}), feedback: s.feedback });
 
 /** A board's cards, in the order the computer sent them. */
 export function boardCards(b: DraftBoards, board: CardBoard): BoardCard[] {

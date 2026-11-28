@@ -9,6 +9,8 @@ export function cleanLeadStatus(raw: unknown): LeadStatus | undefined {
 }
 /** Connector metadata is projected by publicProjects before reaching a browser. */
 export interface HQProject {
+  localState?: 'draft' | 'present';
+  requestStatus?: string;
   own?: true;
   lead?: string;
   leadStatus?: LeadStatus;
@@ -63,7 +65,7 @@ export function cleanProjects(raw: unknown): HQProject[] {
     const repo = typeof p.repo === 'string' && /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/.test(p.repo) ? p.repo : undefined;
     const own = p.own === true && !ownSeen;
     if (own) ownSeen = true;
-    return [{ ...(own ? { own: true as const } : {}), ...(repo ? { repo } : {}), name, hasMainLead: p.hasMainLead, ...cleanLiveProject(p), departmentLeads: p.departmentLeads.slice(0, 8).flatMap((d: unknown) => {
+    return [{ ...(own ? { own: true as const } : {}), ...(repo ? { repo } : {}), name, ...(p.localState === 'draft' || p.localState === 'present' ? { localState: p.localState } : {}), ...(typeof p.requestStatus === 'string' ? { requestStatus: label(p.requestStatus, 120) } : {}), hasMainLead: p.hasMainLead, ...cleanLiveProject(p), departmentLeads: p.departmentLeads.slice(0, 8).flatMap((d: unknown) => {
       if (!d || typeof d !== 'object') return [];
       const r = d as Record<string, unknown>, department = label(r.department, 40), title = label(r.title, 60);
       return department && title ? [{ department, title, ...(cleanLeadStatus(r.leadStatus) ? { leadStatus: cleanLeadStatus(r.leadStatus) } : {}), ...(leadId(r.lead) ? { lead: leadId(r.lead) } : {}) }] : [];
@@ -106,7 +108,7 @@ function cleanLiveProject(p: Record<string, any>) {
 /** Owner-only prose; count and observation age remain visible to managers. */
 export const visibleNeeds = (needs: HQNeeds | undefined, mine: boolean): HQNeeds | undefined => needs && { ...needs, items: mine ? needs.items : [] };
 export function publicProjects(projects: HQProject[], mine: boolean): HQProject[] {
-  return projects.map(({ lead: _lead, needs, departmentLeads, ...p }) => ({ ...p,
+  return projects.filter(p => mine || p.localState !== 'draft').map(({ lead: _lead, needs, requestStatus, departmentLeads, ...p }) => ({ ...p, ...(mine && requestStatus ? { requestStatus } : {}),
     departmentLeads: departmentLeads.map(({ lead: _id, ...d }) => d), ...(needs ? { needs: visibleNeeds(needs, mine) } : {}) }));
 }
 /** A short local time for people ("Nov 26, 06:16"); the ISO value stays in the data. */

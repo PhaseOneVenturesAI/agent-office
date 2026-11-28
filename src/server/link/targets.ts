@@ -1,8 +1,9 @@
+import { projectRegistry } from './project-registry.js';
 import type { TalkTarget } from '../../shared/protocol/lead-talk.js';
 import type { MacConfig } from '../hq/local/config.js';
 import { macEntries } from '../hq/local/snapshot.js';
 import { sessionRecords } from '../hq/local/sessions.js';
-import { canonical, jsonFile, uuid } from '../cubbies/local/io.js';
+import { canonical, uuid } from '../cubbies/local/io.js';
 import { LeadError } from '../cubbies/local/lead.js';
 
 export interface LocalTarget { key: string; project?: string; sessionId?: string; appSession?: string }
@@ -14,7 +15,7 @@ function target(ids: unknown[], project?: string): LocalTarget {
 }
 /** Exactly the snapshot's filtering, cleaning, department ordering and project cap. */
 export function resolveTarget(config: MacConfig, selected: TalkTarget): LocalTarget {
-  const registry = jsonFile(config.projectsFile, 256 * 1024);
+  const registry = projectRegistry(config);
   if ('cofounder' in selected) {
     const c = registry?.cofounder;
     if (!c || (!uuid(c.leadSessionId) && !appId(c.leadAppSession))) throw new LeadError("Cofounder isn't registered on this Mac");

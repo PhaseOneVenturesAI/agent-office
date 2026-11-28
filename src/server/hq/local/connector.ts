@@ -15,6 +15,8 @@ export class MacConnector {
   private timer?: NodeJS.Timeout;
   private generation = 0;
   private polling = false;
+  private hasDrafts = false;
+  private lastSnapshot = 0;
   private ready = false;
   private connections = new Set<string>();
   private release: () => void;
@@ -39,20 +41,21 @@ export class MacConnector {
     if (this.connections.size >= 256) this.connections.delete(this.connections.values().next().value!);
     this.connections.add(f.connection);
     this.ready = true; void this.snapshot();
-    this.timer = setInterval(() => void this.snapshot(), 15_000);
+    this.timer = setInterval(() => { if (this.hasDrafts || Date.now() - this.lastSnapshot >= 15_000) void this.snapshot(); }, 3000);
   }
   sendActivity(frame: import('../../../shared/protocol/live-work.js').HQActivity) { return this.ready && !this.closed ? this.send?.(frame) : false; }
-  sendLead(frame: LeadStateFrame | LeadReply) { return this.ready && !this.closed ? this.send?.(frame) : false; }
-  private async snapshot() {
+  sendLead(frame: LeadStateFrame | LeadReply | import('../../../shared/protocol/studio.js').ProjectResult) { return this.ready && !this.closed ? this.send?.(frame) : false; }
+  async snapshot() {
     if (this.polling) return;
     const generation = this.generation; this.polling = true;
     try {
       const frame = await (this.collect?.() ?? macSnapshot(this.config, { images: this.images }));
+      this.hasDrafts = frame.projects.some(p => p.project.localState === 'draft'); this.lastSnapshot = Date.now();
       const current = () => this.ready && generation === this.generation;
       if (!current() || this.send?.(frame) === false) return;
       for (const [i, row] of frame.projects.entries()) {
         const sent = this.sentImages.get(i) ?? new Set<string>(); this.sentImages.set(i, sent);
-        const hashes = new Set(row.pitch?.pieces.flatMap(p => [...p.images, ...(p.image ? [p.image] : [])]).map(i => i.hash));
+        const hashes = new Set([...(row.pitch?.pieces.flatMap(p => [...p.images, ...(p.image ? [p.image] : [])]).map(i => i.hash) ?? []), ...[...(row.draft?.ideas ?? []), ...(row.draft?.screens ?? [])].flatMap(c => c.image ? [c.image.hash] : [])]);
         const images = [...this.images.get(i)?.values() ?? []].filter(image => hashes.has(image.meta.hash));
         await sendDesignImages('hq', images, sent, f => this.send?.({ ...f, t: 'hq.image', projectIndex: i, computerId: this.config.computerId }), current);
       }

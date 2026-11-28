@@ -35,7 +35,7 @@ export function cleanDraftBoards(raw: unknown): DraftBoards {
   const screens: DraftScreen[] = [];
   for (const s of Array.isArray(r.screens) ? r.screens.slice(0, DRAFT_LIMITS.screens) : []) {
     if (!['sketch', 'review', 'approved'].includes(s?.status)) continue;
-    const c = card(s); if (c) screens.push({ ...c, status: s.status });
+    const c = card(s); if (c) screens.push({ ...c, status: s.status, ...(Number.isSafeInteger(s.version) && s.version > 0 && s.version <= 1000 ? { version: s.version } : {}) });
   }
   const name = text(r.brand?.name, 80), tagline = text(r.brand?.tagline, 200);
   return { ideas, decisions: lines(r.decisions), plan: lines(r.plan), screens, brand: {

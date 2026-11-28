@@ -1,5 +1,7 @@
 import './card.css';
-import { DRAFT_LIMITS, type DraftsClientMsg } from '../../../shared/protocol/drafts';
+import { openStudioCard } from '../studio/review';
+import type { ClientMsg } from '../../../shared/protocol';
+import { DRAFT_LIMITS } from '../../../shared/protocol/drafts';
 import { store } from '../../state';
 import { h, openModal, type Modal } from '../../ui/dom';
 import { deviceTrusted } from '../cubby/devices';
@@ -16,7 +18,7 @@ import { draftImage, imageCanvas, onDraftImage } from './images';
 // Everything shown is put in as text, never as HTML.
 
 export interface CardWindowDeps {
-  send(msg: DraftsClientMsg): void;
+  send(msg: ClientMsg): void;
   /** Opens the lead's chat (where 📱 Add this device is), for a device the computer doesn't trust yet. */
   openChat?(cubbyId: string): void;
   /** Puts the cursor in the box straight away (the 3D office; on a phone it'd pop the keyboard up). */
@@ -38,6 +40,7 @@ interface Pending {
 }
 
 export function openDraftCard(deps: CardWindowDeps, board: CardBoard, cardId: string): Modal {
+  if (store.drafts.here?.studio) return openStudioCard(deps.send, board, cardId);
   let at = { board, id: cardId };
   const title = h('h2');
   const chip = h('span.dc-chip');

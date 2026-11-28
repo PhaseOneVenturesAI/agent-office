@@ -1,3 +1,4 @@
+import { installLiteStudio } from './lite-studio';
 import { installLiteLeads } from './lite-leads';
 import { installLiteHQ } from './shared/hq/phone';
 import { installLitePitch } from './lite-pitch';
@@ -52,6 +53,7 @@ const net = new Net(() => store.profile, () => null, true);
 installLitePitch(net);
 installLiteHQ();
 installLiteLeads(net);
+installLiteStudio(net);
 const settings = loadSettings();
 const notifier = new DesktopNotifier(() => settings.notify, (id) => openWorker(id));
 

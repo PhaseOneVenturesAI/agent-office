@@ -1,3 +1,4 @@
+import { studioActions } from '../../shared/studio/actions';
 import { openTalk, wireTalk } from '../../shared/hq/talk';
 import { talkFloor } from './talk-floor';
 import { selectMacPitch } from './mac-lead';
@@ -34,7 +35,7 @@ export function installHQ(ctx: Ctx, deps: { idleAgents(): IdleAgent[] } & HQLead
   ctx.interactions.define('hqboard', {
     reach: 5,
     hint: it => ({ k: 'hq-board', parts: [hintTitle(it.label ?? 'Portfolio'), key('E', it.label === 'Link your Mac' ? 'Link your Mac' : 'Read board')] }),
-    use: onE(it => { if (shown && store.hq && it.label === 'Link your Mac') { connectMac(ctx); return; } if (shown && store.hq) openHQBoard(store.hq, it.label === 'Portfolio' ? undefined : it.label, (index, piece) => selectMacPitch(ctx, index, piece), id => openTalk(ctx.net, id)); }),
+    use: onE(it => { if (shown && store.hq && it.label === 'Link your Mac') { connectMac(ctx); return; } if (shown && store.hq) openHQBoard(store.hq, it.label === 'Portfolio' ? undefined : it.label, (index, piece) => selectMacPitch(ctx, index, piece), id => openTalk(ctx.net, id), () => studioActions(ctx.net)); }),
   });
   const restore = () => { for (const fn of undo.reverse()) fn(); undo = []; quiet = []; shown = false; world.group.visible = false; };
   store.on('hq', () => { if (!store.hq || store.hq.floorId !== store.floor) { restore(); content = ''; } });

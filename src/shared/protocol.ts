@@ -1,3 +1,5 @@
+import type { StudioClientMsg, StudioServerMsg } from './protocol/studio.js';
+export * from './protocol/studio.js';
 import type { HQClientMsg, HQServerMsg } from './protocol/hq.js';
 export * from './protocol/hq.js';
 import type { PitchClientMsg, PitchServerMsg } from './protocol/pitch.js';
@@ -55,7 +57,7 @@ export * from './protocol/toys.js';
 export * from './protocol/usage.js';
 export * from './protocol/workers.js';
 
-export type ClientMsg =
+export type ClientMsg = StudioClientMsg
   | HQClientMsg
   | PitchClientMsg
   | CubbiesClientMsg
@@ -91,7 +93,7 @@ export type ClientMsg =
   | CarClientMsg
   | DogClientMsg;
 
-export type ServerMsg =
+export type ServerMsg = StudioServerMsg
   | HQServerMsg
   | PitchServerMsg
   | CubbiesServerMsg

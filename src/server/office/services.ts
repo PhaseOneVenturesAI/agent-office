@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { HQStudio } from '../hq/studio.js';
 import { HQMac } from '../hq/mac.js';
 import { HQ } from '../hq/index.js';
 import { Drafts } from '../drafts/index.js';
@@ -110,6 +111,7 @@ export function createServices(ctx: Ctx): BuildingServices {
   const drafts = new Drafts(cfg.dataDir, process.env.AGENT_OFFICE_CUBBIES === '1', process.env.AGENT_OFFICE_PROJECT_STARTERS, id => accounts.get(id)?.name, ctx.building);
   cubbies = new Cubbies(cfg.dataDir, process.env.AGENT_OFFICE_CUBBIES === '1', nodes, id => accounts.get(id)?.name, id => floors.has(id), () => cubbiesChanged(ctx), Date.now, id => ctx.building.list().find(d => d.id === id)?.draft ? drafts.records.rows.get(id)?.owner ?? '' : undefined);
 
+  hq.studio = new HQStudio(ctx);
   hq.mac = new HQMac(cfg.dataDir, hq, nodes, () => cubbiesChanged(ctx));
 
   // Behind Cloudflare Access, its edge login is the front door (see cloudflare.ts): no office

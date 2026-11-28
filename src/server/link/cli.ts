@@ -1,5 +1,6 @@
 import { linkLiveActivity } from './live.js';
 import os from 'node:os';
+import { LinkProjects } from './projects.js';
 import { setTimeout as delay } from 'node:timers/promises';
 import { officeOrigin } from '../join-access.js';
 import { configureMac } from '../hq/local/config.js';
@@ -24,6 +25,7 @@ export async function linkCommand(args: string[], home = os.homedir(), log = con
   try { serviceHeaders(home, origin); }
   catch (e) { if (e instanceof ServiceTokenError) { log(e.message); return args.includes('--run') ? 78 : 1; } throw e; }
   const stop = new AbortController(), interrupt = () => stop.abort();
+  let projects: LinkProjects | undefined;
   let talks: Awaited<ReturnType<typeof startLeadTalk>> | undefined;
   let live: ReturnType<typeof linkLiveActivity> | undefined;
   let connector: MacConnector | undefined, refresh: (() => void) | undefined;
@@ -46,8 +48,9 @@ export async function linkCommand(args: string[], home = os.homedir(), log = con
       }
       if (!token) { log('Mac pairing expired; run link again'); return 1; }
     }
-    connector = new MacConnector(config, token!, undefined, frame => talks?.talk.receive(frame));
-    talks = await startLeadTalk(config, frame => connector!.sendLead(frame));
+    connector = new MacConnector(config, token!, undefined, frame => { talks?.talk.receive(frame); void projects?.receive(frame); });
+    talks = await startLeadTalk(config, frame => { connector!.sendLead(frame); if (frame.t === 'lead.reply') void connector!.snapshot(); });
+    projects = new LinkProjects(config, frame => { connector!.sendLead(frame); void connector!.snapshot(); });
     live = linkLiveActivity(config, frame => connector!.sendActivity(frame));
     talks.activity.on('activity', live.activity);
     refresh = startNeedsRefresh(home, log);
@@ -58,7 +61,7 @@ export async function linkCommand(args: string[], home = os.homedir(), log = con
     if (stop.signal.aborted) return 0;
     log(e instanceof AccessRequired ? signInNeeded(origin) : (e as Error).message); return 1;
   } finally {
-    live?.close(); refresh?.(); await talks?.close(); await connector?.close();
+    live?.close(); projects?.close(); refresh?.(); await talks?.close(); await connector?.close();
     for (const s of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.removeListener(s, interrupt);
   }
 }

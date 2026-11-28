@@ -1,3 +1,4 @@
+import { studioHandlers } from '../../hq/studio-handlers.js';
 import { talkHandlers } from '../../hq/talk-handlers.js';
 import { hqHandlers } from '../../hq/handlers.js';
 import { hqView } from '../../hq/views.js';
@@ -43,6 +44,7 @@ import type { FeatureHooks, HandlerMap, ViewPieces } from './types.js';
 export const handlers: HandlerMap<ClientMsg> = {
   ...hqHandlers,
   ...talkHandlers,
+  ...studioHandlers,
   ...pitchHandlers,
   ...cubbiesHandlers,
   ...draftsHandlers,
