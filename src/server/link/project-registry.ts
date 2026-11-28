@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import type { MacConfig } from '../hq/local/config.js';
 import { canonical, jsonFile } from '../cubbies/local/io.js';
+import { processOfficeRequests } from './harness-requests.js';
 export interface LinkProject { name: string; path: string; url?: string; localState: 'draft' | 'present'; leadSessionId?: string; office?: 'draft' }
 export interface OfficeRequest { schema: 1; kind: 'new-project' | 'kicked-off' | 'add-project'; id: string; createdAt: string; project: string; folder: string; repoUrl: string | null; leadSessionId: string | null; source: 'office-link' }
 export const linkRegistryFile = (home: string) => path.join(home, '.agent-office/link/projects.json');
@@ -31,5 +32,7 @@ export function saveProject(config: MacConfig, project: LinkProject) {
 export function writeRequest(config: MacConfig, kind: OfficeRequest['kind'], id: string, p: LinkProject) {
   const request: OfficeRequest = { schema: 1, kind, id, createdAt: new Date().toISOString(), project: p.name, folder: path.basename(p.path), repoUrl: p.url ?? null, leadSessionId: p.leadSessionId ?? null, source: 'office-link' };
   privateRecord(path.join(requestsDir(config.home), `${id}.json`), request);
+  // Register it now rather than waiting; never awaited, never fails the action.
+  void processOfficeRequests(config.home);
   return request;
 }

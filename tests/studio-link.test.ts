@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, statSync, existsSync } from 'node:fs';
+import { renameSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, statSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { cleanProjectCommand, cleanProjectResult, projectFolder, validFolder, validRepo } from '../src/shared/protocol/studio.js';
@@ -69,7 +69,7 @@ test('new → normal headless resume → open uses fixed argv, same session, pri
   const opened=optionalRegistry(linkRegistryFile(f.home)).projects['Studio Test']; assert.equal(opened.localState,'present'); assert.equal(opened.office,undefined); assert.equal(opened.leadSessionId,p.leadSessionId);
   const n=f.calls().length; await f.link.receive({t:'project.open',id:openId,project:'Studio Test',confirm:'Studio Test'}); assert.equal(f.calls().length,n);
   assert.match(requestStatuses(f.home)[0].status,/Waiting/);
-  mkdirSync(path.join(requestsDir(f.home),'done')); writeFileSync(path.join(requestsDir(f.home),'done',openId+'.json'),JSON.stringify({status:'registered'})); assert.equal(requestStatuses(f.home)[0].status,'Harness: registered');
+  mkdirSync(path.join(requestsDir(f.home),'done')); renameSync(path.join(requestsDir(f.home),openId+'.json'),path.join(requestsDir(f.home),'done',openId+'.json')); assert.equal(requestStatuses(f.home)[0].status,'Registered on this Mac');
 });
 test('add clones with fixed argv; existing origin mismatch and existing new folder refused; harness wins by path or name', async t => {
   const f=fixture(t); await f.link.receive({t:'project.add',id:randomUUID(),repo:'PhaseOneVenturesAI/Skedaddle'}); assert.equal(f.results.at(-1).ok,true);
