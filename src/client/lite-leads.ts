@@ -6,7 +6,8 @@ import { leadStatus, openTalk, wireTalk } from './shared/hq/talk';
 export function floorLeads<L extends { id: string; project: string; floorId?: string }>(leads: L[], floorId = store.floor, floors = store.floors): L[] {
   const floor = floors.find(f => f.id === floorId);
   if (!floor || floor.hq) return leads;
-  return leads.filter(l => l.id !== 'cofounder' && (l.floorId === floor.id || !l.floorId && !!floor.name && l.project.toLowerCase() === floor.name.toLowerCase()));
+  // A Studio draft floor carries its project's name; the lead's floorId may point at an older floor of the same name.
+  return leads.filter(l => l.id !== 'cofounder' && (l.floorId === floor.id || (!l.floorId || !!floor.draft) && !!floor.name && l.project.toLowerCase() === floor.name.toLowerCase()));
 }
 export function installLiteLeads(net: Net) {
   wireTalk(net);
