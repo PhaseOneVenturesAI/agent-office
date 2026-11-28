@@ -15,8 +15,8 @@ export function installLiteLeads(net: Net) {
   const paint = () => {
     const view = store.leadTalk, leads = view ? floorLeads(view.leads) : [];
     section.hidden = !leads.length;
-    section.replaceChildren(...(leads.length ? [h('h2', {}, 'Leads'), h('ul', {}, ...leads.map(lead => h('li', {},
-      h('button.btn', { onclick: () => openTalk(net, lead.id) }, `${lead.id === 'cofounder' ? '' : lead.project + ' · '}${lead.title} · ${leadStatus(lead)}`))))] : []));
+    section.replaceChildren(...(view && leads.length ? [h('h2', {}, 'Leads'), h('ul', {}, ...leads.map(lead => h('li', {},
+      h(view.mine || view.manager ? 'button.btn' : 'span', { ...(view.mine || view.manager ? { onclick: () => openTalk(net, lead.id) } : {}) }, `${lead.id === 'cofounder' ? '' : lead.project + ' · '}${lead.title} · ${leadStatus(lead)}`))))] : []));
   };
   store.on('leadTalk', paint); store.on('floor', paint); store.on('floors', paint); paint();
 }

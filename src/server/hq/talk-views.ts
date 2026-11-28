@@ -9,7 +9,7 @@ export function talkView(ctx: Ctx, c: Client): HQTalkView | undefined {
   if (c.out || !c.accountId || !ctx.hq?.enabled) return;
   const owner = ctx.hq.mac?.owner();
   if (!owner) return;
-  const access = hqAccess(ctx, c), mine = ctx.hq.owns(c.accountId);
+  const mine = ctx.hq.owns(c.accountId), access = (mine || ctx.hq.is(ctx.floorOf(c)?.id)) ? hqAccess(ctx, c) : undefined;
   let leads = leadsFor(ctx, owner, mine).filter(l => l.mac);
   if (!access) leads = leads.filter(l => l.floorId === ctx.floorOf(c)?.id);
   if (!leads.length) return;

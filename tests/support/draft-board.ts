@@ -1,3 +1,4 @@
+import { legacyCubby } from './legacy-cubby.js';
 import { mkdtempSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
@@ -44,7 +45,7 @@ export function boardFixture(t: any) {
   const nodes = new Nodes(dir, () => cubbies?.refresh());
   cubbies = new Cubbies(dir, true, nodes, id => id, id => building.list().some(d => d.id === id), () => {}, Date.now,
     id => building.list().find(d => d.id === id)?.draft ? drafts.records.rows.get(id)?.owner : undefined);
-  const setup = cubbies.setup(def.id, 'alice', 0, 'Nova', {} as any), ws = socket();
+  const setup = legacyCubby(cubbies, def.id, 'alice', 0, 'Nova', {} as any), ws = socket();
   nodes.attach(ws as any, setup.token); ws.frame({ t: 'hello', host: 'private', providers: [] });
   const hello = () => ws.frame({ t: 'cubby.hello', floorId: def.id, computerId: 'alice-computer', computerName: 'Computer' });
   const publish = (raw: unknown) => ws.frame({ t: 'cubby.snapshot', floorId: def.id, observedAt: Date.now(), agents: [], plan: [], needsYou: [], draft: raw });

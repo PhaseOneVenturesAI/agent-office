@@ -48,8 +48,8 @@ export interface HQLead {
   role: string; title: string; computer: string; where: LeadWhere;
   floorId?: string; cubby?: CubbyInfo; needsYou: boolean;
 }
-/** Only sent to HQ's owner/managers, on this cubby's source floor. */
-export interface HQLeadAway { hqFloorId: string; lead: HQLead; departments?: HQLead[] }
+/** Legacy source-floor metadata for the owner; project-floor managers receive watch-only lead views. */
+export interface HQLeadPresence { hqFloorId: string; lead: HQLead; departments?: HQLead[] }
 export interface HQTalkLine { id: string; role: 'user' | 'assistant'; text: string; from?: string; at: number; state: import('./lead-talk.js').LeadState; path?: 'inbox' | 'headless'; error?: string }
 export type HQTalkClientMsg = { t: 'hq.talk'; lead: string; text: string } | { t: 'hq.pass'; id: string } | { t: 'hq.leads.get' };
 export interface HQTalkView { ownerName: string; ownerColor: OwnerColor; mine: boolean; manager: boolean; leads: HQLead[] }

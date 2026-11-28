@@ -38,9 +38,9 @@ export function projectLive(ctx: Ctx, deps: HQLeadDeps) {
           const glow = new THREE.Mesh(new THREE.CircleGeometry(.85, 32), new THREE.MeshBasicMaterial({ color: '#ffd166', transparent: true, opacity: lead.needs?.stale ? .08 : .22, depthWrite: false }));
           glow.name = 'hq-project-needs-glow'; glow.rotation.x = -Math.PI / 2; glow.position.set(spot.x, (p.y ?? 0) + .04, spot.z); group.add(glow);
         }
-        // Department leads have no independent cubby chat. Their one body visits the same project room.
+        // Department leads have no independent cubby chat. Their project bodies remain in the same room.
         for (const d of info?.hqLead?.departments ?? []) {
-          if (d.where !== 'project' || !info?.interior) continue;
+          if (!info?.interior) continue;
           const model = new PersonalPerson(d.title, info.ownerColor ?? '#5b3cc4', info.interior.look);
           model.setUniform(info.ownerName, d.project, personalRole({ department: d.role }), info.ownerColor ?? '#5b3cc4', d.role); model.setDoing(d.role);
           // Standing spaces between existing cubby furniture; never move or replace its helpers.
@@ -60,9 +60,9 @@ export function projectLive(ctx: Ctx, deps: HQLeadDeps) {
       active.add(model);
       if (!overridden.has(model)) overridden.set(model, model.root.getObjectByName('personal-nameplate')?.userData.lines?.[1] ?? '');
       shade.set(model, lead.needsYou && !!lead.needs?.stale);
-      model.root.userData.handRaised = lead.needsYou && lead.where === 'project';
+      model.root.userData.handRaised = lead.needsYou;
       model.setDoing(statusText(lead));
-      if (lead.needsYou && lead.where === 'project') {
+      if (lead.needsYou) {
         model.rig.armL.rotation.z = -2.5; model.rig.armL.rotation.x = -.25;
       }
     }

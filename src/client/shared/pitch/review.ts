@@ -56,7 +56,7 @@ export function openPitchPiece(deps: ReviewDeps, pieceId: string, initial = 0, a
     busy = true; paint();
     try {
       const key = await ownerDeviceKey(account);
-      if (!(view.displayFloorId ? view.ownerDevices?.some(d => d.fingerprint === key.fingerprint) : deviceTrusted(cb, key))) throw Error('Add this device in your lead’s cubby chat before leaving a verdict.');
+      if (!(view.displayFloorId ? view.ownerDevices?.some(d => d.fingerprint === key.fingerprint) : deviceTrusted(cb, key))) throw Error('Use an already trusted browser for legacy pitch verdicts until they move to the Mac link.');
       if (cb?.lamp === 'asleep') throw Error('Reconnect your computer to save a verdict.');
       const payload = { cubbyId: view.cubbyId, floorId: view.floorId, computerId: view.computerId, version: view.pitch.version,
         pieceId, verdict, ...(text ? { note: text } : {}), requestId: crypto.randomUUID(), at: Date.now() };

@@ -92,8 +92,8 @@ async function shot(name, phone) {
       assert.deepEqual(labels.overlaps, [], `${name} ${suffix}: helper plates must not overlap status cards or lead plates`);
       assert.deepEqual(labels.oversized, [], `${name} ${suffix}: close plates must stay within 1.3× their size at 3 m`);
       if (name === '03-lead-on-project-floor-hq') {
-        assert.ok(labels.cards.some(c => c.name === 'On the Plimbo floor'), 'CEO status card is in view');
-        assert.ok(labels.cards.find(c => c.name === 'On the Plimbo floor').text.includes('✋ 2 need you'));
+        assert.equal(labels.cards.length, 0, 'no away cards');
+        assert.ok(labels.leads.some(l => l.name.includes('Plimbo CEO')), 'CEO stays at HQ');
       }
       if (name === '04-needs-you-hq') assert.ok(labels.leads.some(l => l.name.includes('Plimbo CEO')), 'CEO plate is in view');
     }
@@ -137,7 +137,7 @@ async function useLead(id, card = false, away = false) {
 async function cubbyView() {
   return page.evaluate(() => {
     const r = window.__audit.parts.cubbies.rooms().get(0), lead = r?.interior?.lead?.root;
-    const cards = []; window.__office.scene.getObjectByName('hq-away-cards').traverse(o => { if (o.name === 'hq-lead-status') { r.group.updateWorldMatrix(true, false); const local = r.group.worldToLocal(o.position.clone()); cards.push({ ...o.userData, withinRoom: Math.abs(local.x) + o.geometry.parameters.width / 2 < r.place.width / 2 }); } });
+    const cards = []; window.__office.scene.getObjectByName('hq-away-cards')?.traverse(o => { if (o.name === 'hq-lead-status') { r.group.updateWorldMatrix(true, false); const local = r.group.worldToLocal(o.position.clone()); cards.push({ ...o.userData, withinRoom: Math.abs(local.x) + o.geometry.parameters.width / 2 < r.place.width / 2 }); } });
     return { body: lead?.visible, cards, watching: r.info?.watching, interior: !!r.interior };
   });
 }
@@ -243,9 +243,8 @@ try {
   await page.evaluate(async () => (await import('/features/hq/ui.ts')).openHQBoard(window.__office.store.hq, 'Plimbo'));
   assert.match(await page.locator('.hq-board').innerText(), /Live task 8.*kimi.*live-8/); assert.match(await page.locator('.hq-board').innerText(), /\+3 more/); await close();
   publish({ linked: true }); await enter();
-  assert.equal((await leadView()).bodies.filter(b => b.id === first).length, 0); assert.equal((await leadView()).cards[0].statusText, 'On the Plimbo floor');
+  assert.equal((await leadView()).bodies.filter(b => b.id === first).length, 1); assert.equal((await leadView()).cards.length, 0);
   await stand(-11.5, -3.9, -11.5, -6.7, 0); await shot('03-lead-on-project-floor-hq');
-  await useLead(first, true); await page.locator('.hq-go').click(); await page.waitForTimeout(700); assert.equal(sent.filter(m => m.t === 'floor.go').at(-1).floor, 'normal');
   await projectFloor(); await page.evaluate(() => window.__audit.parts.travel.arrive('elevator')); await page.waitForTimeout(700); assert.equal((await cubbyView()).body, true);
   assert.equal(await page.evaluate(() => { const r = window.__audit.parts.cubbies.rooms().get(0); const ids = r.interior.roster.map(a => a.id); return ids.length === new Set(ids).size && ids.filter(id => id.startsWith('harness:')).length === 8; }), true);
   const spot = await page.evaluate(async () => { const { furniture, toFloor } = await import('/features/cubbies/model.ts'); const r = window.__audit.parts.cubbies.rooms().get(0); return toFloor(r.place, furniture(r.place.width, r.place.depth).lead.x, furniture(r.place.width, r.place.depth).lead.z); });
@@ -258,9 +257,9 @@ try {
   await useLead(first); assert.match(await page.locator('.hq-needs').innerText(), /stale.*as of/); assert.match(await page.locator('.hq-needs').innerText(), /<script>literal text<\/script>/); assert.equal(await page.locator('.hq-needs script').count(), 0); await close();
   push(page, { t: 'hq.gong', project: 'Plimbo', pr: 123 }); await page.waitForSelector('.toast'); assert.match(await page.locator('.toast').last().innerText(), /Plimbo: PR #123 merged/); await shot('05-gong-toast');
   readyPitch = pitch.pitch; await enter();
-  const pitched = await leadView(); assert.equal(pitched.bodies.filter(b => b.id === first).length, 1); assert.ok(pitched.bodies.find(b => b.id === first).position[0] > 9); assert.equal(pitched.cards[0].statusText, 'In the pitch room');
+  const pitched = await leadView(); assert.equal(pitched.bodies.filter(b => b.id === first).length, 1); assert.ok(pitched.bodies.find(b => b.id === first).position[0] < 0); assert.equal(pitched.cards.length, 0);
   await stand(16.7, 11.7, 16.7, 9.3, .05); await shot('07-pitch-walk');
-  await account('manager'); await enter(false); await useLead(first, true); assert.equal(await page.locator('.hq-needs').innerText().then(t => t.includes('literal text')), false); await close();
+  await account('manager'); await enter(false); await useLead(first); assert.equal(await page.locator('.hq-needs').innerText().then(t => t.includes('literal text')), false); await close();
   // Real lite entry receives exactly the same owner/manager-filtered HQ view.
   const lite = await browser.newPage(); await lite.route('**/api/**', r => r.fulfill({ contentType: 'application/json', body: '{}' }));
   await lite.addInitScript(() => localStorage.setItem('agent-office.profile', JSON.stringify({ name: 'Jonathan', color: '#5b3cc4', look: { skin: 0, hair: 0, style: 0 } })));

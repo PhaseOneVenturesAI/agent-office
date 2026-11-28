@@ -18,7 +18,6 @@ import { projectLock } from './lock.js';
 import { LeadError, NativeLead, type Lead } from './lead.js';
 import { roster } from './roster.js';
 import { execFileSync } from 'node:child_process';
-import { BridgeLead } from './bridge.js';
 import { commitsSince, headOf, loadSeen, saveSeen, wakeSummary } from './wake.js';
 import { run } from './io.js';
 
@@ -68,7 +67,7 @@ export class CubbyConnector {
     this.release = deps.release ?? projectLock(config.state);
     try { if (!deps.release) persistSelection(config); }
     catch (error) { this.release(); throw error; }
-    this.lead = deps.lead ?? (config.bridge ? new BridgeLead(config.state) : new NativeLead(config));
+    this.lead = deps.lead ?? new NativeLead(config);
   }
   get notice() { return this.lead.blocker; }
   connected(send: Send, computerName = friendlyName()): void {

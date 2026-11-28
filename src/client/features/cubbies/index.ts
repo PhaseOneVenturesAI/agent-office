@@ -3,7 +3,7 @@
  * wall (hall.ts, which the office floor builds shut and this opens while the floor has cubbies). Each of
  * the hall's slots shows its owner's name, lamp and how many are working; yours has your computer, your
  * lead and every agent in the project's folder on it, and E talks to the lead or checks on a helper.
- * A free one sets up with E. Nothing here shows, collides or answers E while the floor has no hall
+ * Empty rooms have no setup action. Nothing shows, collides or answers E while the floor has no hall
  * (store.cubbies.enabled) or the hall hasn't placed the cubbies (setPlacements).
  */
 import * as THREE from 'three';
@@ -17,7 +17,7 @@ import { CUBBY_HALL, HALL_SLOTS, HALL_WAY_OUT, inCubbyHall } from '../../../shar
 import { STATUS_TEXT, agentCard, clip, type CubbyIt, type CubbyPlacement } from './model';
 import { CubbyRoom } from './room';
 import { openAgentCard, openLeadChat, type CubbyWindows } from '../../shared/cubby/chat';
-import { openJoin, openSetup, type SetupDialog } from './ui-setup';
+import { toast } from '../../ui/dom';
 import { knockAside, knockTitle, knockWaiting, watchingTitle } from './share-model';
 import { wireSharing } from './sharing';
 
@@ -43,14 +43,11 @@ export interface Cubbies {
   readonly group: THREE.Group;
   /** Each placed cubby, by slot (empty while disabled). */
   rooms(): ReadonlyMap<number, CubbyRoom>;
-  /** Opens the setup window for the cubby in `slot`, as E at a free cubby does (a draft's studio table uses it). */
+  /** Compatibility seam for the protected draft Studio: explains that setup moved to the Mac link. */
   setUp(slot: number): void;
   /** Opens the chat with your cubby's lead, as E at the lead does. */
   talk(cubbyId: string): void;
 }
-
-/** How long after asking to set a cubby up its token is still welcome without the setup window. */
-const TOKEN_WAIT = 5 * 60_000;
 
 /** What the cubbies need from the rest of the page: what you're aiming at, for whose name tag shows. */
 export interface CubbiesDeps { aimed: () => unknown }
@@ -161,7 +158,7 @@ export function installCubbies(ctx: Ctx, deps: CubbiesDeps = { aimed: () => null
     const focus = { x: p.x, z: p.z, aimed: deps.aimed(), yaw: ctx.player.camYaw, camera: ctx.camera };
 
     for (const r of rooms.values()) r.update(f.dt, f.t, Date.now(), focus);
-    // While a window (the chat, Send a task, setup) is open, the cubby's labels would show huge behind it.
+    // While a window (the chat or Send a task) is open, the cubby's labels would show huge behind it.
     hideLabels(modalOpen());
   });
 
@@ -201,27 +198,8 @@ export function installCubbies(ctx: Ctx, deps: CubbiesDeps = { aimed: () => null
     });
   }
 
-  // ---- Setting up -----------------------------------------------------------------------------------
-  let setup: SetupDialog | null = null;
-  let askedAt = -Infinity;
-  ctx.messages.onAny((m) => {
-    // Answers only the account that asked (see CubbiesServerMsg); never logged.
-    const t = m as unknown as { t: string; id?: unknown; floorId?: unknown; token?: unknown };
-    if (t.t !== 'cubbies.token' || typeof t.token !== 'string' || typeof t.floorId !== 'string' || t.floorId !== store.floor) return;
-    const token = { token: t.token, floorId: t.floorId };
-    if (setup?.open) setup.showToken(token);
-    else if (performance.now() - askedAt < TOKEN_WAIT) openJoin(token);
-    setup = null;
-    askedAt = -Infinity;
-  });
-
-  function setUp(slot: number) {
-    if (setup?.open) return;
-    setup = openSetup(slot, (leadName, look, ownerColor) => {
-      askedAt = performance.now();
-      send({ t: 'cubbies.setup', slot, leadName, look, ownerColor });
-    });
-  }
+  // Kept as a safe seam for the parallel draft-floor worker; no token or setup flow.
+  function setUp(_slot: number) { toast('Cubby setup removed: use agent-office link <url>'); }
 
   const at = (it: Interactable) => it as CubbyIt;
   const roomOf = (it: Interactable) => rooms.get(at(it).slot);
@@ -240,13 +218,13 @@ export function installCubbies(ctx: Ctx, deps: CubbiesDeps = { aimed: () => null
     hint: (it) => {
       const info = roomOf(it)?.info;
       if (!info) {
-        const can = store.cubbies.setupAllowed;
-        return { k: `cubby-free-${can}`, parts: [hintTitle('✨ Free cubby'), can ? key('E', 'Set up') : aside('sign in to set up your cubby')] };
+        return { k: 'cubby-free', parts: [hintTitle('Cubby room')] };
       }
       if (info.mine) {
         const where = info.interior ? `Runs on your ${clip(info.interior.computerName, 24)}` : 'waiting for your computer to join';
-        return { k: `cubby-mine-${where}${qk()}`, parts: [hintTitle('🚪 Your cubby'), aside(where), ...(info.lamp === 'asleep' ? [key('E', 'Set up')] : []), ...sendKey()] };
+        return { k: `cubby-mine-${where}${qk()}`, parts: [hintTitle('🚪 Your cubby'), aside(where), ...sendKey()] };
       }
+      if (store.leadTalk?.ownerName === info.ownerName) return { k: 'cubby-linked', parts: [hintTitle(info.ownerName), aside('Watch-only')] };
       if (info.watching) return { k: `cubby-watch-${info.ownerName}`, parts: [hintTitle(watchingTitle(info.ownerName)), key('E', 'Leave')] };
       const what = knockAside(info);
       const waiting = share.knocked(info.id);
@@ -258,9 +236,9 @@ export function installCubbies(ctx: Ctx, deps: CubbiesDeps = { aimed: () => null
     use: (it, k) => {
       const info = roomOf(it)?.info;
       if (k !== 'E') return;
+      if (store.leadTalk?.ownerName === info?.ownerName) return;
       if (info && !info.mine) return info.watching ? share.leave(info) : share.knock(info);
-      if ((info && info.lamp !== 'asleep') || !store.cubbies.setupAllowed) return;
-      setUp(at(it).slot);
+
     },
   });
 

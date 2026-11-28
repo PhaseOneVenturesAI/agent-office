@@ -1,3 +1,4 @@
+import { legacyCubby } from './support/legacy-cubby.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, existsSync, symlinkSync, statSync } from 'node:fs';
@@ -114,7 +115,7 @@ test('shared-floor owner-only delivery, chunked images, verdict relay and authen
   const dir = files(t); let c!: Cubbies;
   const nodes = new Nodes(dir, () => c?.refresh()); t.after(() => nodes.close());
   c = new Cubbies(dir, true, nodes, id => id, id => id === 'floor', () => {});
-  const a = c.setup('floor', 'alice', 0, 'Lead', {} as any), ws = socket();
+  const a = legacyCubby(c, 'floor', 'alice', 0, 'Lead', {} as any), ws = socket();
   nodes.attach(ws as any, a.token); ws.frame({ t: 'hello', host: 'private', providers: [] });
   ws.frame({ t: 'cubby.hello', floorId: 'floor', computerId: 'computer-alice', computerName: 'Computer' });
   const p = localPitch(dir).pitch!, image = [...localPitch(dir).images.values()][0];
@@ -179,7 +180,7 @@ for (const reason of ['disconnect', 'record', 'floor', 'account', 'not-admitted'
     const dir = files(t); let c!: Cubbies, floor = true, account = true;
     const nodes = new Nodes(dir, () => c?.refresh()); t.after(() => nodes.close());
     c = new Cubbies(dir, true, nodes, id => account ? id : undefined, () => floor, () => {});
-    const a = c.setup('floor', 'alice', 0, 'Lead', {} as any), ws = socket();
+    const a = legacyCubby(c, 'floor', 'alice', 0, 'Lead', {} as any), ws = socket();
     nodes.attach(ws as any, a.token); ws.frame({ t: 'hello', host: 'private', providers: [] });
     ws.frame({ t: 'cubby.hello', floorId: 'floor', computerId: 'computer-alice' });
     const { pitch, images } = localPitch(dir), image = [...images.values()][0];

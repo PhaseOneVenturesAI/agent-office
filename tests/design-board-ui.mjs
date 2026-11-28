@@ -260,7 +260,7 @@ try {
   await page.waitForTimeout(100);
   push({ t: 'cubbies', state: cubbies('working', { ...interior(), ownerDevices: [{ fingerprint: '0'.repeat(32), label: 'Mac', addedAt: 1 }] }) });
   await page.waitForTimeout(100);
-  assert.match(await page.locator('.draft-card').innerText(), /can't leave feedback yet[\s\S]*Add this device/);
+  assert.match(await page.locator('.draft-card').innerText(), /cannot leave legacy feedback/);
   assert.equal(await page.locator('.draft-card .dc-chat').isVisible(), true);
   await page.locator('.draft-card form').evaluate((f) => { f.querySelector('textarea').value = 'must not send'; f.requestSubmit(); });
   await page.waitForTimeout(100);
@@ -268,7 +268,7 @@ try {
   await shot('05-card-untrusted');
   await page.locator('.draft-card .dc-chat').click();
   await page.waitForSelector('.cubby-chat');
-  assert.match(await page.locator('.cubby-chat').innerText(), /Add this device/);
+  assert.equal(await page.getByRole('button', { name: '📱 Add this device' }).count(), 0);
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   await page.waitForTimeout(100);

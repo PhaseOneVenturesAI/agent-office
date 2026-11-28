@@ -90,8 +90,8 @@ export async function roster(config: LocalConfig, deps: RosterDeps = {}): Promis
   } catch { errors.push('Paradev metadata unavailable'); }
   for (const p of scan.processes) {
     if (!scoped(p.cwd)) continue;
-    // The lead's own session (the bridge's, open in its app) is the room's lead, not a stray local session.
-    const isLead = !!config.bridge && p.session === config.session;
+    // The lead's own session is the room's lead, not a stray local session.
+    const isLead = p.session === config.session;
     add({ id: isLead ? `lead:${config.session}` : `pid:${p.pid}`, tool: p.tool, role: isLead ? 'lead' : 'direct', task: isLead ? 'Project lead' : `${p.tool} session`,
       branch: clean(config.branches.get(p.cwd)), status: 'unknown' }, p.pid, p.session);
   }

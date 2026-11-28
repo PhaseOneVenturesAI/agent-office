@@ -7,7 +7,6 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ask, change, fileStore, pinFile, pinOf, readPins, writePins } from '../src/server/cubbies/local/devices.js';
 import { withDeviceLock } from '../src/server/cubbies/local/device-lock.js';
-import { stateFor } from '../src/server/cubbies/local/cli.js';
 import { owner, testOwnerKey } from './support/cubby-keys.js';
 
 function directory(t: { after(fn: () => void): void }) {
@@ -15,28 +14,6 @@ function directory(t: { after(fn: () => void): void }) {
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   return dir;
 }
-
-test('a connector with stale pins cannot restore a device revoked by the CLI process', async t => {
-  const home = directory(t), project = path.join(home, 'repo');
-  execFileSync('git', ['init', '-q', project]);
-  const state = await stateFor(project, home);
-  mkdirSync(state, { recursive: true });
-  const phone = pinOf(testOwnerKey().ownerKey, 'Phone', 1);
-  writePins(state, 'floor', [pinOf(owner.ownerKey, 'Mac', 1), phone]);
-  const connector = fileStore(state, 'floor', owner.ownerKey);
-  const stalePins = connector.pins();
-  // Run the actual CLI handler in another process with an isolated project and home.
-  execFileSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', `
-    import { cubbyCommand } from ${JSON.stringify(new URL('../src/server/cubbies/local/cli.ts', import.meta.url).href)};
-    process.exitCode = await cubbyCommand(['devices', 'revoke', ${JSON.stringify(phone.fingerprint)}, '--project', ${JSON.stringify(project)}]);
-  `], { env: { ...process.env, HOME: home } });
-  const revokedFile = statSync(pinFile(state, 'floor')).ino;
-  connector.pins = () => stalePins;
-  ask(connector, { requestId: 'later', key: testOwnerKey().ownerKey, label: 'Tablet' }, Date.now());
-  assert.deepEqual(readPins(state, 'floor')!.map(p => p.key), [owner.ownerKey]);
-  assert.equal(connector.waiting().length, 1);
-  assert.equal(statSync(pinFile(state, 'floor')).ino, revokedFile, 'request-only updates do not rewrite pins');
-});
 
 test('a connector waits for a separate process transaction and re-reads its revoked pins', { timeout: 5000 }, async t => {
   const state = directory(t), phone = pinOf(testOwnerKey().ownerKey, 'Phone', 1);

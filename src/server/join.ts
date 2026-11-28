@@ -13,8 +13,6 @@ import WebSocket from 'ws';
 import { AGENT_PROVIDERS, type AgentProvider } from '../shared/providers.js';
 import type { NodeFrame } from './nodes.js';
 import { accessHeaders, ACCESS_HELP, officeOrigin, nodeSocket, handshakeFailure } from './join-access.js';
-import { configure, type LocalOptions } from './cubbies/local/config.js';
-import { CubbyConnector } from './cubbies/local/connector.js';
 
 const HELP = `agent-office join — make this computer a satellite of an office
 
@@ -30,17 +28,6 @@ Options:
   --token <t>     The join token (env AGENT_OFFICE_NODE_TOKEN)
   --name <name>   What to call this machine (default: its hostname)
   --cloudflare-access  Use an existing cloudflared user application-token cache
-  --cubbies      Opt in to signed owner chat and project-scoped agent presence
-  --owner-key <key>  Required P-256 public key copied from your cubby setup window
-  --replace-owner-key  Locally authorize replacing the pinned owner device key
-  --floor <id>   Cubby floor (requires --cubbies)
-  --project <p>  Local repository/worktree root (requires --cubbies)
-  --lead-provider claude|codex  Local provider selection (registry takes priority)
-  --lead-session <UUID>  Existing native session; never forks the conversation
-  --lead-profile personal|phase-one  Local Claude subscription profile
-  --new-lead     Locally authorize a new persistent lead only if none is recorded
-  --lead-bridge  Talk to the project's lead session already running here (it runs
-                 agent-office cubby wait); never starts a second lead
   -h, --help      Show this help
 `;
 
@@ -113,8 +100,9 @@ export async function joinCommand(argv: string[]): Promise<number> {
   let url = '';
   let name: string | undefined;
   let cloudflareAccess = false;
-  let cubbies = false;
-  const local: LocalOptions = {};
+  if (argv.some(a => ['--cubbies', '--hq', '--owner-key', '--replace-owner-key', '--floor', '--project', '--lead-provider', '--lead-session', '--lead-profile', '--new-lead', '--lead-bridge'].includes(a.split('=')[0]))) {
+    console.error('removed: use `agent-office link <url>`'); return 2;
+  }
   let token = process.env.AGENT_OFFICE_NODE_TOKEN ?? '';
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -130,17 +118,6 @@ export async function joinCommand(argv: string[]): Promise<number> {
       } else if (a === '--token') token = value();
       else if (a === '--name') name = value();
       else if (a === '--cloudflare-access') cloudflareAccess = true;
-      else if (a === '--hq') throw Error('Use agent-office link <office-url> instead of join --hq');
-      else if (a === '--cubbies') cubbies = true;
-      else if (a === '--owner-key') local.ownerKey = value();
-      else if (a === '--replace-owner-key') local.replaceOwnerKey = true;
-      else if (a === '--floor') local.floor = value();
-      else if (a === '--project') local.project = value();
-      else if (a === '--lead-provider') local.provider = value();
-      else if (a === '--lead-session') local.session = value();
-      else if (a === '--lead-profile') local.profile = value();
-      else if (a === '--new-lead') local.newLead = true;
-      else if (a === '--lead-bridge') local.bridge = true;
       else if (a.startsWith('-')) throw new Error(`unknown option ${a}`);
       else if (url) throw new Error(`one office at a time: ${url} or ${a}?`);
       else url = a;
@@ -157,29 +134,10 @@ export async function joinCommand(argv: string[]): Promise<number> {
     console.error('agent-office join: a join token is needed (--token) — an admin mints one in the office, ☰ → 🛰️ Satellites → Invite a machine');
     return 2;
   }
-  if (!cubbies && Object.keys(local).length) {
-    console.error('Local options require --cubbies; default join is presence-only.'); return 2;
-  }
-
   try { url = officeOrigin(url); } catch { console.error('Use an http(s) office origin without credentials, path, query or fragment'); return 2; }
-  const origin = new URL(url);
-  if (cubbies && origin.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(origin.hostname)) {
-    console.error('Cubby chat requires HTTPS, except on your own loopback computer.'); return 2;
-  }
   let access: Awaited<ReturnType<typeof accessHeaders>> | undefined;
   if (cloudflareAccess) {
     try { access = await accessHeaders(url); } catch { console.error(ACCESS_HELP); return 1; }
-  }
-  let connector: CubbyConnector | undefined;
-  if (cubbies) {
-    if (!url.startsWith('https://') && !['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname)) {
-      console.error('Cubby owner chat requires HTTPS (HTTP is allowed only on loopback).'); return 2;
-    }
-    try {
-      connector = new CubbyConnector(await configure(local), token);
-      if (connector.notice) console.error(connector.notice);
-      console.log('Cubbies enabled. Native permissions stay local; stop join to turn this connector off.');
-    } catch (error) { console.error(`Cubby setup: ${(error as Error).message}`); return 2; }
   }
   const ws = url.replace(/^http/, 'ws').replace(/\/$/, '');
   const say = (line: string) => console.log(`  ${line}`);
@@ -194,7 +152,6 @@ export async function joinCommand(argv: string[]): Promise<number> {
   const shutdown = new AbortController();
   let quit: (() => void) | undefined;
   const interrupt = () => {
-    connector?.disconnected();
     shutdown.abort();
     quit?.();
   };
@@ -221,7 +178,6 @@ export async function joinCommand(argv: string[]): Promise<number> {
     process.removeListener('SIGTERM', interrupt);
     process.removeListener('SIGHUP', interrupt);
     quit?.();
-    await connector?.close();
   }
 
   /** One connection's whole life; undefined to retry, an exit code to stop. */
@@ -234,7 +190,6 @@ export async function joinCommand(argv: string[]): Promise<number> {
       const finish = (code: number | undefined, message?: string) => {
         if (ended) return;
         ended = true;
-        connector?.disconnected();
         if (heartbeat) clearInterval(heartbeat);
         if (expiry) clearTimeout(expiry);
         if (quit === leave) quit = undefined;
@@ -249,15 +204,10 @@ export async function joinCommand(argv: string[]): Promise<number> {
         if (ended) return;
         retry = 0;
         socket.send(JSON.stringify(hello(nodeName)));
-        connector?.connected((frame) => {
-          if (ended || socket.readyState !== WebSocket.OPEN || socket.bufferedAmount >= 128 * 1024) return false;
-          socket.send(JSON.stringify(frame)); return true;
-        }, nodeName);
         out('✓ joined — this machine is on the office wall (☰ → 🛰️ Satellites). Leave this running; Ctrl-C leaves.');
         heartbeat = setInterval(() => socket.send(JSON.stringify({ t: 'ping' } satisfies NodeFrame)), HELLO_MS);
         if (access) expiry = setTimeout(() => finish(1, ACCESS_HELP), Math.min(2 ** 31 - 1, Math.max(1, access.expiresAt - Date.now() - 1000)));
       });
-      socket.on('message', (raw) => { if (!ended) connector?.receive(raw); });
       socket.on('close', (code) => {
         if (code === 4001 || code === 4000) {
           finish(1, "✗ the office doesn't know this token — it was revoked, or it's mistyped. Mint a new one in ☰ → 🛰️ Satellites.");

@@ -300,7 +300,7 @@ try {
   // Someone else's: name, lamp and count only, and E knocks (cubbies step 4, tests/cubby-sharing-ui.mjs).
   assert.match(hints.alex, /Alex Fixture.*2 working.*E.*Knock/);
   assert.match(hints.sam, /asleep/);
-  assert.match(hints.free, /Free cubby.*E.*Set up/);
+  assert.match(hints.free, /Cubby room/);
   assert.match(hints.direct, /Tool and branch/);
   // Inside your own cubby, from just in its door.
   const mineAt = await page.evaluate(() => { const p = window.__audit.cubbies.rooms().get(0).place; return { x: p.x, z: p.z, depth: p.depth, width: p.width }; });
@@ -372,44 +372,6 @@ try {
   assert.equal(verify('sha256', Buffer.from(JSON.stringify(['agent-office/cubby-owner-chat/v1', 'cub-me', 'fixture', 'fixture-computer', signed.requestId, signed.at, signed.text])),
     { key: createPublicKey({ key: Buffer.from(publicKey, 'base64url'), format: 'der', type: 'spki' }), dsaEncoding: 'ieee-p1363' }, Buffer.from(signed.ownerSig, 'base64url')), true);
   await shot('chat');
-  // A device the computer doesn't trust yet can't send, even if submit is forced: it asks to be added.
-  const setDevices = (devices, requests = []) => page.evaluate(([d, r]) => { const s = window.__office.store; Object.assign(s.cubbies.cubbies[0].interior, { ownerDevices: d, deviceRequests: r }); s.emit('cubbies'); }, [devices, requests]);
-  await setDevices([{ fingerprint: '0'.repeat(32), label: 'Mac', addedAt: 1 }]);
-  assert.equal(await page.locator('.cubby-chat textarea').isDisabled(), true);
-  assert.match(await page.locator('.cubby-chat').innerText(), /can't talk to Nova yet/);
-  const beforeMismatch = sent.filter((m) => m.t === 'cubbies.chat').length;
-  await page.locator('.cubby-chat form').evaluate((f) => { f.querySelector('textarea').value = 'must not send'; f.requestSubmit(); });
-  assert.equal(sent.filter((m) => m.t === 'cubbies.chat').length, beforeMismatch);
-  await page.locator('.cb-device-add').click();
-  await page.waitForTimeout(100);
-  const asked = sent.filter((m) => m.t === 'cubbies.addDevice').at(-1);
-  assert.equal(asked.publicKey, publicKey); assert.equal(asked.id, 'cub-me'); assert.equal(typeof asked.label, 'string');
-  const myCode = codeOf(publicKey);
-  assert.match(await page.locator('.cb-device-ask').innerText(), new RegExp(`Waiting for approval.*${myCode}`));
-  await shot('device-asking');
-  // Back on a trusted device: another device asks. The code here is worked out from its key, not taken from the server.
-  const phone = generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).publicKey.export({ format: 'der', type: 'spki' }).toString('base64url');
-  await setDevices([{ fingerprint: ownerFingerprint, label: 'Mac', addedAt: 1 }], [{ requestId: 'q1', label: 'iPhone', publicKey: phone, at: Date.now() }]);
-  await page.waitForSelector('.cb-device-request b');
-  assert.equal(await page.locator('.cb-device-request b').innerText(), codeOf(phone));
-  assert.equal(await page.locator('.cubby-chat textarea').isDisabled(), false);
-  await shot('device-approve');
-  await page.locator('.cb-device-request button', { hasText: 'Approve' }).click();
-  await page.waitForTimeout(200);
-  const approve = sent.filter((m) => m.t === 'cubbies.device').at(-1);
-  assert.equal(approve.action, 'add'); assert.equal(approve.target, phone);
-  assert.equal(verify('sha256', Buffer.from(JSON.stringify(['agent-office/cubby-owner-device/v1', 'cub-me', 'fixture', 'fixture-computer', approve.requestId, approve.at, 'add', phone])),
-    { key: createPublicKey({ key: Buffer.from(publicKey, 'base64url'), format: 'der', type: 'spki' }), dsaEncoding: 'ieee-p1363' }, Buffer.from(approve.ownerSig, 'base64url')), true);
-  await setDevices([{ fingerprint: ownerFingerprint, label: 'Mac', addedAt: 1 }, { fingerprint: 'b'.repeat(32), label: 'iPhone', addedAt: Date.now() }]);
-  await page.locator('.cb-device-list summary').click();
-  assert.match(await page.locator('.cb-device-list').innerText(), /Mac \(this device\)[\s\S]*iPhone/);
-  await shot('device-list');
-  await page.locator('.cb-device-remove[title="Remove iPhone"]').click();
-  await page.waitForTimeout(200);
-  const removed = sent.filter((m) => m.t === 'cubbies.device').at(-1);
-  assert.equal(removed.action, 'revoke'); assert.equal(removed.target, 'b'.repeat(32));
-  await setDevices([{ fingerprint: ownerFingerprint, label: 'Mac', addedAt: 1 }]);
-
   // A helper's card from the roster; a direct session shows tool, branch and state only.
   await page.locator('.cb-roster button', { hasText: 'Codex session' }).click();
   await page.waitForSelector('.cubby-agent');
@@ -447,33 +409,15 @@ try {
   await shot('asleep-chat');
   await page.keyboard.press('Escape');
 
-  // ---- Setting up a free cubby, then the join command. ----
+  // Empty rooms and old token replies never offer retired setup.
   await page.evaluate(() => {
-    const a = window.__audit;
-    a.ctx.interactions.use(a.ctx.usables.lists().flat().find((it) => it.kind === 'cubbydoor' && it.slot === 3), 'E', null);
+    const a = window.__audit, door = a.ctx.usables.lists().flat().find(it => it.kind === 'cubbydoor' && it.slot === 3);
+    a.ctx.interactions.use(door, 'E', null);
   });
-  await page.waitForSelector('.cubby-setup');
-  await page.fill('.cubby-setup input[aria-label="Lead name"]', 'Atlas');
-  await page.locator('.cubby-setup button[role="radio"]', { hasText: 'Bun' }).click();
-  await shot('setup');
-  await page.locator('.cubby-setup button[type="submit"]').click();
-  await page.waitForTimeout(100);
-  const setup = sent.filter((m) => m.t === 'cubbies.setup');
-  assert.equal(setup.length, 1);
-  assert.equal(setup[0].slot, 3);
-  assert.equal(setup[0].leadName, 'Atlas');
-  assert.equal(setup[0].look.style, 2);
   push({ t: 'cubbies.token', id: 'cub-new', floorId: 'fixture', token: FAKE_TOKEN });
-  await page.waitForSelector('.cb-join');
-  await page.waitForTimeout(150);
-  let cmd = await page.locator('.cb-cmd').innerText();
-  assert.equal(cmd, `agent-office join ${new URL(page.url()).origin} --token ${FAKE_TOKEN} --cubbies --floor fixture --project '<local project path>' --cloudflare-access --owner-key ${publicKey}`);
-  await page.fill('.cb-join input', '/Users/fixture/Projects/plimbo');
-  cmd = await page.locator('.cb-cmd').innerText();
-  assert.match(cmd, /--project \/Users\/fixture\/Projects\/plimbo --cloudflare-access --owner-key [A-Za-z0-9_-]+$/);
-  assert.equal(JSON.stringify(sent).includes('/Users/fixture/Projects'), false, 'the project folder never goes to the office');
-  await shot('join');
-  await page.keyboard.press('Escape');
+  await page.waitForTimeout(100);
+  assert.equal(await page.locator('.cubby-setup, .cb-join, .cb-device-add').count(), 0);
+  assert.equal(sent.filter(m => m.t === 'cubbies.setup').length, 0);
 
   // ---- Off again: everything goes. ----
   push({ t: 'cubbies', state: { enabled: false, cubbies: [], setupAllowed: false } });

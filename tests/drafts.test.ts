@@ -1,3 +1,4 @@
+import { legacyCubby } from './support/legacy-cubby.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -140,9 +141,7 @@ test('welcome and URL arrival never expose a private floor or another person’s
 test('one owner cubby supplies private boards and designers, retains boards asleep, and never persists them', t => {
   const f = fixture(t), alice = f.client('alice'), bob = f.client('bob');
   const def = f.drafts.create('Secret', 'alice'); f.ctx.openFloor(def); alice.peer.floor = def.id;
-  assert.throws(() => f.ctx.cubbies.setup(def.id, 'bob', 0, 'Nova', {} as any), /owner/);
-  assert.throws(() => f.ctx.cubbies.setup(def.id, 'alice', 1, 'Nova', {} as any), /one cubby/);
-  const setup = f.ctx.cubbies.setup(def.id, 'alice', 0, 'Nova', {} as any);
+  const setup = legacyCubby(f.ctx.cubbies, def.id, 'alice', 0, 'Nova', {} as any);
   const ws = socket(); f.nodes.attach(ws as any, setup.token);
   ws.frame({ t: 'hello', host: 'private', providers: [] });
   ws.frame({ t: 'cubby.hello', floorId: def.id, computerId: 'computer-alice', computerName: 'Mac mini' });
