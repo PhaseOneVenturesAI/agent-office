@@ -5,7 +5,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { once } from 'node:events';
 import { checkAccess, readServiceToken, serviceTokenFile } from '../src/server/link/service-token.js';
-import { cachedAccess, request } from '../src/server/link/transport.js';
+import { AccessRequired, accessRefused, cachedAccess, request } from '../src/server/link/transport.js';
 import { nodeSocket } from '../src/server/join-access.js';
 import { linkCommand } from '../src/server/link/cli.js';
 
@@ -57,9 +57,13 @@ test('the headers reach both the HTTP link requests and the /ws/node websocket u
 });
 
 test('check-access reports only OK or refused(status), never the credential', async t => {
-  const fake = (status: number) => (async () => new Response(null, { status })) as unknown as typeof fetch;
+  const fake = (status: number, location?: string) => (async () => new Response(null, { status, headers: location ? { location } : {} })) as unknown as typeof fetch;
   const dir = home(t, 0o600);
   assert.equal(await checkAccess(dir, 'https://office.example', fake(200)), 'service token OK');
+  // Access let it through and the office app redirected to its own login: that's a working token.
+  assert.equal(await checkAccess(dir, 'https://office.example', fake(302, 'https://office.example/login')), 'service token OK');
+  assert.equal(await checkAccess(dir, 'https://office.example', fake(302, '/login')), 'service token OK');
+  assert.equal(await checkAccess(dir, 'https://office.example', fake(302, 'https://team.cloudflareaccess.com/cdn-cgi/access/login/office.example')), 'refused (302)');
   assert.equal(await checkAccess(dir, 'https://office.example', fake(302)), 'refused (302)');
   assert.equal(await checkAccess(dir, 'https://office.example', fake(403)), 'refused (403)');
   assert.equal(await checkAccess(dir, 'https://office.example', (async () => { throw Error(SECRET); }) as unknown as typeof fetch), 'refused (network error)');
@@ -74,4 +78,18 @@ test('link refuses an unsafe token file up front (78 under launchd) and never lo
   assert.equal(await linkCommand(['https://office.example', '--run', '--check-access'], dir, s => logs.push(s)), 2);
   assert.ok(logs.some(l => /chmod 600/.test(l)));
   assert.ok(logs.every(l => !l.includes(SECRET) && !l.includes(ID)));
+});
+
+test('only Cloudflare Access redirects count as refusals on pair, poll and the websocket', async t => {
+  assert.equal(accessRefused(302, 'https://phaseoneventures.cloudflareaccess.com/cdn-cgi/access/login/office.example'), true);
+  assert.equal(accessRefused(302, 'https://office.example/cdn-cgi/access/login'), true);
+  assert.equal(accessRefused(302, 'https://office.example/login'), false);
+  assert.equal(accessRefused(307, '/login'), false);
+  assert.equal(accessRefused(302), true, 'no Location is still treated as a refusal');
+  assert.equal(accessRefused(401, '/login'), true);
+  const s = http.createServer((req, res) => { res.writeHead(302, { location: '/login' }); res.end(); });
+  s.on('upgrade', (_req, sock) => { sock.end('HTTP/1.1 302 Found\r\nLocation: /login\r\nContent-Length: 0\r\n\r\n'); });
+  s.listen(0, '127.0.0.1'); await once(s, 'listening'); t.after(() => s.close());
+  const origin = `http://127.0.0.1:${(s.address() as any).port}`;
+  await assert.rejects(request(origin, '/api/mac-link/poll', {}, {}), (e: Error) => !(e instanceof AccessRequired) && /HTTP 302/.test(e.message));
 });

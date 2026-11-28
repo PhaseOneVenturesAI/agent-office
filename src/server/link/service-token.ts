@@ -51,6 +51,6 @@ export async function checkAccess(home: string, origin: string, fetcher: typeof 
   try {
     const response = await fetcher(origin + '/', { method: 'GET', headers, redirect: 'manual', signal: AbortSignal.timeout(10_000) });
     await response.body?.cancel();
-    return accessRefused(response.status) ? `refused (${response.status})` : 'service token OK';
+    return accessRefused(response.status, response.headers.get('location')) ? `refused (${response.status})` : 'service token OK';
   } catch { return 'refused (network error)'; }
 }
