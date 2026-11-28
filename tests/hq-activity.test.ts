@@ -75,12 +75,15 @@ test('activity coalesces latest per lead per second, hashes helpers, caps, remov
   clock.advance(1000); assert.equal(sent.at(-1)!.frame.helpers.length, 8);
   live.activity(event('SubagentStop', { agentId: 'private-0' })); clock.advance(1000); assert.equal(sent.at(-1)!.frame.helpers.length, 7);
   clock.advance(HELPER_TTL_MS); assert.equal(sent.at(-1)!.frame.helpers.length, 0);
-  for (const reset of ['Stop', 'SessionStart']) {
-    live.activity(event('SubagentStart', { agentId: 'new' })); clock.advance(1000);
-    assert.equal(sent.at(-1)!.frame.helpers[0].title, 'Helper');
-    live.activity(event(reset)); clock.advance(1000);
-    assert.equal(sent.at(-1)!.frame.doing, undefined); assert.deepEqual(sent.at(-1)!.frame.helpers, []);
-  }
+  // A turn ending (Stop) clears the tool line but keeps background sub-agents; a new session clears both.
+  live.activity(event('SubagentStart', { agentId: 'background' })); live.activity(event('PreToolUse', { tool: 'Edit', summary: 'Edit a.ts' })); clock.advance(1000);
+  live.activity(event('Stop')); clock.advance(1000);
+  assert.equal(sent.at(-1)!.frame.doing, undefined); assert.equal(sent.at(-1)!.frame.helpers.length, 1);
+  live.activity(event('SubagentStop', { agentId: 'background' })); clock.advance(1000); assert.deepEqual(sent.at(-1)!.frame.helpers, []);
+  live.activity(event('SubagentStart', { agentId: 'new' })); clock.advance(1000);
+  assert.equal(sent.at(-1)!.frame.helpers[0].title, 'Helper');
+  live.activity(event('SessionStart')); clock.advance(1000);
+  assert.equal(sent.at(-1)!.frame.doing, undefined); assert.deepEqual(sent.at(-1)!.frame.helpers, []);
   assert.ok(sent.every((s, i) => !i || s.at - sent[i - 1].at >= 1000));
   assert.doesNotMatch(JSON.stringify(sent), /private|PRIVATE|sessionId|agentId|cwd|reply|Users/);
   live.close(); assert.equal(clock.pending.size, 0);

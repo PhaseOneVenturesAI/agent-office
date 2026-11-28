@@ -33,7 +33,9 @@ export class LiveActivity {
     if (lead.identity.sessionId !== event.sessionId) { lead.helpers.clear(); lead.doing = undefined; }
     lead.identity = { schema: 1, event: 'SessionStart', sessionId: event.sessionId, appSession: event.appSession };
     lead.touched = now;
-    if (event.event === 'Stop' || event.event === 'SessionStart') { lead.doing = undefined; lead.helpers.clear(); }
+    // A finished turn ends the tool line; background sub-agents keep running until SubagentStop or the TTL.
+    if (event.event === 'Stop') lead.doing = undefined;
+    if (event.event === 'SessionStart') { lead.doing = undefined; lead.helpers.clear(); }
     if (event.event === 'PreToolUse' || event.event === 'PostToolUse') lead.doing = activityLine(event.summary, event.tool);
     if (event.agentId && (event.event === 'SubagentStart' || event.event === 'SubagentStop')) {
       const id = createHash('sha256').update(event.agentId).digest('hex').slice(0, 32);
