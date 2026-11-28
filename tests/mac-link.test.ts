@@ -109,7 +109,7 @@ test('real HTTP and websocket refusals never follow redirects or leak credential
   const receiver = await listen(t, http.createServer((_req,res) => { leaked++; res.end(); }));
   for (const status of [401,403,302]) {
     let seen: http.IncomingMessage | undefined;
-    const origin = await listen(t, http.createServer((req,res) => { seen = req; res.writeHead(status, { location: receiver }); res.end(); }));
+    const origin = await listen(t, http.createServer((req,res) => { seen = req; res.writeHead(status, { location: status === 302 ? 'https://team.cloudflareaccess.com/cdn-cgi/access/login/office' : receiver }); res.end(); }));
     await assert.rejects(request(origin, '/api/mac-link/pair', {}, { 'CF-Access-Token': 'test-secret' }), AccessRequired);
     assert.equal(seen?.url, '/api/mac-link/pair');
     const result = await connection(origin, 'node-secret', 'Mac', { 'CF-Access-Token': 'test-secret' }, { disconnected() {} } as any, new AbortController().signal);

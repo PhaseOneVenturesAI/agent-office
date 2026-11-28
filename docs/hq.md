@@ -39,6 +39,16 @@ Cloudflare sign-in needed: run `cloudflared access login https://office.example`
 
 The run loop retries every five minutes without exiting, reading the cache again on each attempt. Complete that sign-in locally; the next retry can reconnect. A first-run pairing refused by Access prints the same instruction; sign in and run `link` again.
 
+To stop sign-in expiry from disconnecting the Mac, give the link a Cloudflare Access **service token** (a Service Auth policy on the office's Access application). Save its Client ID and Secret, created by your Cloudflare admin, as `~/.agent-office/link/cf-service-token.json` with mode `0600`:
+
+```sh
+printf '%s' '{"clientId":"<client id>","clientSecret":"<client secret>"}' > ~/.agent-office/link/cf-service-token.json
+chmod 600 ~/.agent-office/link/cf-service-token.json
+agent-office link https://office.example --check-access
+```
+
+When that file exists, the link sends `CF-Access-Client-Id` and `CF-Access-Client-Secret` on every pairing and poll request and on the `/ws/node` websocket, instead of the cloudflared login. It reads the file again for each connection, so replacing the token takes effect at the next reconnect. The values are only sent to an `https` office and are never logged or printed. Without the file, the cloudflared login is used as above. If the file is readable by anyone else, is a link, or lacks either field, the link refuses to start and names the fix (under `--run` it exits `78`). `--check-access` makes one request and prints only `service token OK` or `refused (<reason>)`.
+
 ### Snapshot sources and privacy
 
 The link reads the project registry selected by `registryFile()`: `~/Documents/GitHub/AgentHarness/projects.json`, with the existing older `~/Documents/AgentHarness/projects.json` fallback. Project keys supply names. Allowed entry fields are `path`, `url`, `localState`, `hostId`, `leadSessionId`, `leadThreadId`, `leadAppSession`, `departmentLeads` (`department`, `title`, `sessionId`, `appSession`) and `sidebarGroup`; `office` is checked only to filter hidden entries. It never consults `lead`, `note`, `historicalLead` or `creativeLineage`. Entries marked `office: "hidden"`, `localState: "archived"` or `"remote-only"`, and missing paths, are excluded together with their workers and needs. Git verifies existing worktree roots; linking creates no project floors and clones no repositories.
@@ -57,7 +67,7 @@ It uses no shell, accepts no office-supplied command or arguments, times out aft
 
 Local project paths, session-registry names, process IDs, working directories, socket paths, app-session identities, registry prose and raw transcripts never leave the Mac. Explicit lead replies are sent through the talk relay to the owner. Cleaned lead IDs reach the server only for matching and never reach browsers. Presence worker IDs keep their existing opaque harness identity. URL credentials and query strings are removed from repository links. Published pitch and board text is intentionally sent; source files and raw registry records are not. A local lock prevents two links on the same Mac. Link records persist privately in `hq-macs.json`; snapshots stay in server memory and are republished after a restart.
 
-HQ prefers the freshest connected link snapshot, with the owner's cubby snapshots as fallback when none is fresh. Repository slugs or project names associate matching open floors. Mac-linked leads appear at HQ and on their own project floor with the same chat. Each project's lead card and portfolio entry can open its published pitch read-only. Existing cubby pitch verdicts still use their signed cubby connection.
+HQ prefers the freshest connected link snapshot, with the owner's cubby snapshots as fallback when none is fresh. Repository slugs or project names associate matching open floors. A project whose projects.json `url` is not a GitHub URL takes its repository from the checkout's `origin` remote, read from its git config on disk (no git command, no network). Mac-linked leads appear at HQ and on their own project floor with the same chat. Each project's lead card and portfolio entry can open its published pitch read-only. Existing cubby pitch verdicts still use their signed cubby connection.
 
 Managers receive projects, lead statuses, helpers and needs counts/age, but no link controls, pairing secrets, tokens, local paths, matching session IDs or needs text. Outsiders receive only names and statuses for linked leads on their current project floor, never HQ conversations. Mac manager messages stay held for the owner until Pass on; they can also be declined. Existing cubby ownership, sharing and signed control rules remain in place.
 

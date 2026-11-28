@@ -43,4 +43,5 @@ export function cleanLeadFrame(raw: any): LeadStateFrame | LeadReply | undefined
 }
 
 /** The text a lead receives. Always says who it is from; never claims to be Jonathan's approval. */
-export const deliveredText = (f: Pick<LeadSend, 'from' | 'text'>) => `From ${f.from} in Agent Office:\n${f.text}`;
+export const deliveredText = (f: Pick<LeadSend, 'from' | 'text'>) =>
+  `[Agent Office · from ${f.from}]\n(Answer here; your reply goes back to the office automatically. Don't use SendMessage for it.)\n\n${f.text}`;

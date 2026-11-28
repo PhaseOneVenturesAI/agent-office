@@ -1,16 +1,28 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import type { MacConnector } from '../hq/local/connector.js';
+import os from 'node:os';
 import { accessHeaders, nodeSocket } from '../join-access.js';
+import { serviceHeaders } from './service-token.js';
 export const ACCESS_RETRY_MS = 5 * 60_000;
 export const backoff = (attempt: number) => Math.min(1000 * 2 ** Math.min(attempt, 5), 30_000);
-export const accessRefused = (status: number) => status === 401 || status === 403 || status >= 300 && status < 400;
+/** A Cloudflare Access sign-in redirect, as opposed to the office app's own redirects (e.g. `/` → `/login`). */
+export function accessRedirect(location: string | null | undefined): boolean {
+  if (!location) return true; // a redirect with nowhere stated can't be shown to be the app's own
+  try {
+    const url = new URL(location, 'https://office.invalid');
+    return url.hostname.endsWith('.cloudflareaccess.com') || url.pathname.startsWith('/cdn-cgi/access/');
+  } catch { return true; }
+}
+/** 401/403, or a redirect to Cloudflare Access sign-in. An app redirect means Access let the request through. */
+export const accessRefused = (status: number, location?: string | null) =>
+  status === 401 || status === 403 || status >= 300 && status < 400 && accessRedirect(location);
 export const signInNeeded = (origin: string) => `Cloudflare sign-in needed: run \`cloudflared access login ${origin}\``;
 export class AccessRequired extends Error {}
 /** A bounded response, no credential-bearing redirects and no server-supplied URLs. */
 export async function request(origin: string, route: string, body: unknown, headers: Record<string, string>) {
   const response = await fetch(origin + route, { method: 'POST', headers: { ...headers, 'content-type': 'application/json' },
     body: JSON.stringify(body), redirect: 'manual', signal: AbortSignal.timeout(10_000) });
-  if (accessRefused(response.status)) { await response.body?.cancel(); throw new AccessRequired(); }
+  if (accessRefused(response.status, response.headers.get('location'))) { await response.body?.cancel(); throw new AccessRequired(); }
   if (!response.ok) { await response.body?.cancel(); throw Error(`Link request failed (HTTP ${response.status})`); }
   const reader = response.body?.getReader(); if (!reader) throw Error('Empty link response');
   let text = '', size = 0; const decoder = new TextDecoder();
@@ -19,8 +31,11 @@ export async function request(origin: string, route: string, body: unknown, head
   } finally { await reader.cancel(); }
   return JSON.parse(text + decoder.decode());
 }
-export async function cachedAccess(origin: string): Promise<Record<string, string>> {
+/** A service token file wins; without one, the user's cached cloudflared login. An unsafe token file throws. */
+export async function cachedAccess(origin: string, home = os.homedir()): Promise<Record<string, string>> {
   if (!origin.startsWith('https:')) return {};
+  const service = serviceHeaders(home, origin);
+  if (service) return service;
   try { return (await accessHeaders(origin)).headers; } catch { return {}; }
 }
 export type ConnectionResult = { access?: boolean; connected?: boolean; revoked?: boolean };
@@ -40,7 +55,7 @@ export function connection(origin: string, token: string, name: string, headers:
       ping = setInterval(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'ping' })); }, 15_000);
     });
     ws.on('message', raw => { if (!ended) connector.receive(raw); });
-    ws.on('unexpected-response', (_req, res) => { const access = accessRefused(res.statusCode ?? 0); res.destroy(); finish({ access }); });
+    ws.on('unexpected-response', (_req, res) => { const access = accessRefused(res.statusCode ?? 0, res.headers.location); res.destroy(); finish({ access }); });
     ws.on('error', () => finish());
     ws.on('close', code => finish({ revoked: code === 4000 || code === 4001 }));
     if (signal.aborted) abort();
